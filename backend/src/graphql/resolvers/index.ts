@@ -30,6 +30,7 @@ export const resolvers = {
   Date: dateScalar,
   UserPreferences: userResolvers.UserPreferences,
   Workout: workoutResolvers.Workout,
+  ChatMessage: chatResolvers.ChatMessage,
   
   Query: {
     ...authResolvers.Query,

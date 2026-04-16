@@ -46,6 +46,7 @@ export default function ContextAICoach({
       variables: {
         input: {
           content,
+          channel: 'COACH',
           context: statsReference ? { statsReference } : undefined,
         },
       },

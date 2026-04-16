@@ -105,8 +105,16 @@ const client = new ApolloClient({
             },
           },
           myChatHistory: {
-            keyArgs: false,
-            merge(existing = [], incoming) {
+            keyArgs: ['channel'],
+            merge(existing = [], incoming, { args }) {
+              const offset = Number(args?.offset ?? 0);
+
+              // For default query window (offset=0), always refresh from server snapshot
+              // to avoid stale chat lists after mutation/subscription race conditions.
+              if (offset === 0) {
+                return incoming;
+              }
+
               const merged = [...existing, ...incoming];
               const seen = new Set<string>();
               return merged.filter((item: any) => {

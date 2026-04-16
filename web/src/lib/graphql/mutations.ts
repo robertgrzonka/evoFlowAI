@@ -85,6 +85,7 @@ export const SEND_MESSAGE_MUTATION = gql`
       id
       content
       role
+      channel
       timestamp
     }
   }
@@ -102,6 +103,8 @@ export const UPDATE_PREFERENCES_MUTATION = gql`
         weeklyWorkoutsGoal
         weeklyActiveMinutesGoal
         primaryGoal
+        coachingTone
+        proactivityLevel
         activityLevel
         dietaryRestrictions
         notifications
@@ -124,6 +127,8 @@ export const SET_GOALS_WITH_AI_MUTATION = gql`
           weeklyWorkoutsGoal
           weeklyActiveMinutesGoal
           primaryGoal
+          coachingTone
+          proactivityLevel
           activityLevel
           dietaryRestrictions
           notifications
@@ -157,6 +162,16 @@ export const DELETE_WORKOUT_MUTATION = gql`
 export const DELETE_FOOD_ITEM_MUTATION = gql`
   mutation DeleteFoodItem($id: ID!) {
     deleteFoodItem(id: $id)
+  }
+`;
+
+export const UPSERT_DAILY_ACTIVITY_MUTATION = gql`
+  mutation UpsertDailyActivity($input: UpsertDailyActivityInput!) {
+    upsertDailyActivity(input: $input) {
+      date
+      steps
+      estimatedCalories
+    }
   }
 `;
 

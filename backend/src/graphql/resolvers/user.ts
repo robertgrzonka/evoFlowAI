@@ -16,6 +16,14 @@ export const userResolvers = {
       const value = String(preferences?.primaryGoal || 'maintenance');
       return value.toUpperCase();
     },
+    coachingTone: (preferences: any) => {
+      const value = String(preferences?.coachingTone || 'supportive');
+      return value.toUpperCase();
+    },
+    proactivityLevel: (preferences: any) => {
+      const value = String(preferences?.proactivityLevel || 'medium');
+      return value.toUpperCase();
+    },
   },
 
   Query: {},
@@ -34,6 +42,8 @@ export const userResolvers = {
         weeklyWorkoutsGoal,
         weeklyActiveMinutesGoal,
         primaryGoal,
+        coachingTone,
+        proactivityLevel,
         dietaryRestrictions,
         activityLevel,
         notifications,
@@ -69,6 +79,12 @@ export const userResolvers = {
       if (weeklyActiveMinutesGoal !== undefined) updateData['preferences.weeklyActiveMinutesGoal'] = weeklyActiveMinutesGoal;
       if (primaryGoal !== undefined) {
         updateData['preferences.primaryGoal'] = String(primaryGoal || 'MAINTENANCE').toLowerCase();
+      }
+      if (coachingTone !== undefined) {
+        updateData['preferences.coachingTone'] = String(coachingTone || 'SUPPORTIVE').toLowerCase();
+      }
+      if (proactivityLevel !== undefined) {
+        updateData['preferences.proactivityLevel'] = String(proactivityLevel || 'MEDIUM').toLowerCase();
       }
       if (dietaryRestrictions !== undefined) updateData['preferences.dietaryRestrictions'] = dietaryRestrictions;
       if (activityLevel !== undefined) updateData['preferences.activityLevel'] = nextActivityLevel;

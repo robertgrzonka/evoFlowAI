@@ -21,6 +21,16 @@ const userPreferencesSchema = new Schema<UserPreferences>({
     enum: ['fat_loss', 'maintenance', 'muscle_gain', 'strength'],
     default: 'maintenance'
   },
+  coachingTone: {
+    type: String,
+    enum: ['supportive', 'direct'],
+    default: 'supportive'
+  },
+  proactivityLevel: {
+    type: String,
+    enum: ['low', 'medium', 'high'],
+    default: 'medium'
+  },
   dietaryRestrictions: [{ type: String }],
   activityLevel: {
     type: String,
@@ -67,6 +77,8 @@ const userSchema = new Schema<UserDocument>({
       weeklyWorkoutsGoal: 4,
       weeklyActiveMinutesGoal: 180,
       primaryGoal: 'maintenance',
+      coachingTone: 'supportive',
+      proactivityLevel: 'medium',
       dietaryRestrictions: [],
       activityLevel: 'moderate',
       notifications: true

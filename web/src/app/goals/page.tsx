@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
-import { ArrowLeft } from 'lucide-react';
 import { ME_QUERY } from '@/lib/graphql/queries';
 import { SET_GOALS_WITH_AI_MUTATION, UPDATE_PREFERENCES_MUTATION } from '@/lib/graphql/mutations';
 import { clearAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
+import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
 
@@ -85,6 +84,8 @@ export default function GoalsPage() {
     }
   };
 
+  const suggestedDailyCalories = suggestDailyCaloriesByGoal(Number(dailyCalorieGoal || 0), primaryGoal);
+
   const handleSetGoalsWithAI = async () => {
     const prompt = aiGoalPrompt.trim();
     if (!prompt) {
@@ -112,24 +113,25 @@ export default function GoalsPage() {
   return (
     <AppShell>
         <div className="mb-6">
-          <Link href="/dashboard" className="inline-flex items-center text-text-secondary hover:text-text-primary transition-colors">
-            <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
-            Back to dashboard
-          </Link>
+          <PageTopBar />
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-8 bg-surface rounded-xl border border-border p-5 space-y-5">
             <h1 className="text-xl font-semibold tracking-tight text-text-primary">Goal Settings</h1>
             <p className="text-text-secondary text-sm">
-              Set calorie and activity goals manually.
-              Macro goals are set automatically to stay consistent with your plan.
+              Set your resting calorie baseline and activity goals manually.
+              Daily calorie budget scales dynamically with logged workouts.
             </p>
+            <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+              <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1.5">Strategy note</p>
+              <p className="text-sm text-text-secondary">{getGoalMicrocopy(primaryGoal)}</p>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
-                <label htmlFor="daily-goal" className="block text-sm text-text-secondary mb-2">
-                  Daily calories
+                <label htmlFor="daily-goal" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
+                  Resting calories (base)
                 </label>
                 <input
                   id="daily-goal"
@@ -142,7 +144,7 @@ export default function GoalsPage() {
                 />
               </div>
               <div>
-                <label htmlFor="weekly-workouts-goal" className="block text-sm text-text-secondary mb-2">
+                <label htmlFor="weekly-workouts-goal" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
                   Weekly workouts
                 </label>
                 <input
@@ -156,7 +158,7 @@ export default function GoalsPage() {
                 />
               </div>
               <div>
-                <label htmlFor="weekly-active-minutes-goal" className="block text-sm text-text-secondary mb-2">
+                <label htmlFor="weekly-active-minutes-goal" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
                   Weekly active minutes
                 </label>
                 <input
@@ -170,7 +172,7 @@ export default function GoalsPage() {
                 />
               </div>
               <div>
-                <label htmlFor="activity-level" className="block text-sm text-text-secondary mb-2">
+                <label htmlFor="activity-level" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
                   Activity level
                 </label>
                 <select
@@ -187,7 +189,7 @@ export default function GoalsPage() {
                 </select>
               </div>
               <div>
-                <label htmlFor="primary-goal" className="block text-sm text-text-secondary mb-2">
+                <label htmlFor="primary-goal" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
                   Primary goal
                 </label>
                 <select
@@ -202,6 +204,22 @@ export default function GoalsPage() {
                   <option value="STRENGTH">Strength</option>
                 </select>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+              <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1">Goal-based suggestion</p>
+              <p className="text-sm text-text-secondary mb-2">
+                For <span className="font-semibold text-text-primary">{formatPrimaryGoal(primaryGoal)}</span>, suggested base is{' '}
+                <span className="font-semibold text-text-primary">{suggestedDailyCalories} kcal</span>
+                {' '}({renderGoalDeltaText(primaryGoal)} vs maintenance baseline).
+              </p>
+              <button
+                type="button"
+                onClick={() => setDailyCalorieGoal(String(suggestedDailyCalories))}
+                className="btn-secondary"
+              >
+                Apply suggested base calories
+              </button>
             </div>
 
             <button
@@ -337,4 +355,39 @@ function formatPrimaryGoal(value: string) {
     default:
       return 'Maintenance';
   }
+}
+
+function getGoalMicrocopy(goal: string) {
+  switch (String(goal || '').toUpperCase()) {
+    case 'FAT_LOSS':
+      return 'Keep a moderate deficit and prioritize protein + satiety meals to preserve performance.';
+    case 'MUSCLE_GAIN':
+      return 'Use a controlled surplus, hit protein targets daily, and keep training progression consistent.';
+    case 'STRENGTH':
+      return 'Fuel around sessions, keep carbs around harder workouts, and monitor recovery quality.';
+    case 'MAINTENANCE':
+    default:
+      return 'Aim for stable intake and consistent training rhythm to maintain composition and performance.';
+  }
+}
+
+function goalDeltaByType(goal: string) {
+  const normalized = String(goal || '').toUpperCase();
+  if (normalized === 'FAT_LOSS') return -300;
+  if (normalized === 'MUSCLE_GAIN') return 300;
+  if (normalized === 'STRENGTH') return 150;
+  return 0;
+}
+
+function suggestDailyCaloriesByGoal(currentBase: number, goal: string) {
+  const safeCurrent = Number.isFinite(currentBase) && currentBase > 0 ? currentBase : 2000;
+  const delta = goalDeltaByType(goal);
+  return Math.max(800, Math.round(safeCurrent + delta));
+}
+
+function renderGoalDeltaText(goal: string) {
+  const delta = goalDeltaByType(goal);
+  if (delta > 0) return `+${delta} kcal`;
+  if (delta < 0) return `${delta} kcal`;
+  return '0 kcal';
 }

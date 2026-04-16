@@ -2,8 +2,10 @@ import { AuthenticationError, UserInputError } from 'apollo-server-express';
 import { withFilter } from 'graphql-subscriptions';
 import { FoodItem } from '../../models/FoodItem';
 import { Workout } from '../../models/Workout';
+import { DailyActivity } from '../../models/DailyActivity';
 import { Context } from '../context';
 import { OpenAIService } from '../../services/openaiService';
+import { buildDynamicTargets } from '../../utils/activityBudget';
 
 const toDayRange = (date: string) => {
   const startDate = new Date(date);
@@ -11,6 +13,16 @@ const toDayRange = (date: string) => {
   endDate.setDate(endDate.getDate() + 1);
 
   return { startDate, endDate };
+};
+
+const toWeekRange = (endDateInput?: string) => {
+  const endDate = endDateInput ? new Date(endDateInput) : new Date();
+  endDate.setHours(0, 0, 0, 0);
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - 6);
+  const nextDay = new Date(endDate);
+  nextDay.setDate(nextDay.getDate() + 1);
+  return { startDate, endDate, nextDay };
 };
 
 const parseIntensity = (value: string) => value.toLowerCase();
@@ -71,6 +83,8 @@ const buildFallbackTips = (remainingProtein: number, remainingCalories: number, 
   return [nutritionTip, trainingTip, recoveryTip];
 };
 
+const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+
 export const workoutResolvers = {
   Workout: {
     intensity: (parent: { intensity?: string }) => String(parent.intensity || 'medium').toUpperCase(),
@@ -98,6 +112,20 @@ export const workoutResolvers = {
         .skip(offset);
     },
 
+    dailyActivity: async (_: any, { date }: { date: string }, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+
+      const record = await DailyActivity.findOne({ userId: context.user.id, date });
+      const steps = Number(record?.steps || 0);
+      return {
+        date,
+        steps,
+        estimatedCalories: 0,
+      };
+    },
+
     workoutCoachSummary: async (_: any, { date }: { date: string }, context: Context) => {
       if (!context.user) {
         throw new AuthenticationError('You must be logged in');
@@ -105,7 +133,7 @@ export const workoutResolvers = {
 
       const { startDate, endDate } = toDayRange(date);
 
-      const [meals, workouts] = await Promise.all([
+      const [meals, workouts, dayActivity] = await Promise.all([
         FoodItem.find({
           userId: context.user.id,
           createdAt: { $gte: startDate, $lt: endDate },
@@ -114,26 +142,43 @@ export const workoutResolvers = {
           userId: context.user.id,
           performedAt: { $gte: startDate, $lt: endDate },
         }),
+        DailyActivity.findOne({
+          userId: context.user.id,
+          date,
+        }),
       ]);
 
       const consumedCalories = meals.reduce((acc, meal) => acc + meal.nutrition.calories, 0);
       const consumedProtein = meals.reduce((acc, meal) => acc + meal.nutrition.protein, 0);
       const caloriesBurned = workouts.reduce((acc, workout) => acc + (workout.caloriesBurned || 0), 0);
 
-      const calorieGoal = context.user.preferences?.dailyCalorieGoal || 2000;
-      const proteinGoal = context.user.preferences?.proteinGoal || 150;
-      const primaryGoal = context.user.preferences?.primaryGoal || 'maintenance';
+      const steps = Number(dayActivity?.steps || 0);
+      const stepsCalories = 0;
+      const dynamicTargets = buildDynamicTargets({
+        baseCalories: context.user.preferences?.dailyCalorieGoal || 2000,
+        activityLevel: context.user.preferences?.activityLevel,
+        primaryGoal: context.user.preferences?.primaryGoal,
+        workoutCalories: caloriesBurned,
+        stepCalories: stepsCalories,
+        manualProtein: context.user.preferences?.proteinGoal,
+        manualCarbs: context.user.preferences?.carbsGoal,
+        manualFat: context.user.preferences?.fatGoal,
+      });
+
       const netCalories = consumedCalories - caloriesBurned;
-      const remainingCalories = calorieGoal - netCalories;
-      const remainingProtein = Math.max(0, proteinGoal - consumedProtein);
+      const remainingCalories = dynamicTargets.calorieBudget - consumedCalories;
+      const remainingProtein = Math.max(0, dynamicTargets.proteinGoal - consumedProtein);
 
       return {
         date,
         consumedCalories,
         consumedProtein,
-        calorieGoal,
-        proteinGoal,
+        calorieGoal: dynamicTargets.calorieBudget,
+        proteinGoal: dynamicTargets.proteinGoal,
         caloriesBurned,
+        steps,
+        stepsCalories,
+        calorieBudget: dynamicTargets.calorieBudget,
         netCalories,
         remainingCalories,
         remainingProtein,
@@ -147,7 +192,7 @@ export const workoutResolvers = {
       }
 
       const { startDate, endDate } = toDayRange(date);
-      const [meals, workouts] = await Promise.all([
+      const [meals, workouts, dayActivity] = await Promise.all([
         FoodItem.find({
           userId: context.user.id,
           createdAt: { $gte: startDate, $lt: endDate },
@@ -156,25 +201,41 @@ export const workoutResolvers = {
           userId: context.user.id,
           performedAt: { $gte: startDate, $lt: endDate },
         }),
+        DailyActivity.findOne({
+          userId: context.user.id,
+          date,
+        }),
       ]);
 
       const consumedCalories = meals.reduce((acc, meal) => acc + meal.nutrition.calories, 0);
       const consumedProtein = meals.reduce((acc, meal) => acc + meal.nutrition.protein, 0);
       const caloriesBurned = workouts.reduce((acc, workout) => acc + (workout.caloriesBurned || 0), 0);
 
-      const calorieGoal = context.user.preferences?.dailyCalorieGoal || 2000;
-      const proteinGoal = context.user.preferences?.proteinGoal || 150;
+      const steps = Number(dayActivity?.steps || 0);
+      const stepsCalories = 0;
+      const dynamicTargets = buildDynamicTargets({
+        baseCalories: context.user.preferences?.dailyCalorieGoal || 2000,
+        activityLevel: context.user.preferences?.activityLevel,
+        primaryGoal: context.user.preferences?.primaryGoal,
+        workoutCalories: caloriesBurned,
+        stepCalories: stepsCalories,
+        manualProtein: context.user.preferences?.proteinGoal,
+        manualCarbs: context.user.preferences?.carbsGoal,
+        manualFat: context.user.preferences?.fatGoal,
+      });
       const primaryGoal = context.user.preferences?.primaryGoal || 'maintenance';
       const netCalories = consumedCalories - caloriesBurned;
-      const remainingCalories = calorieGoal - netCalories;
-      const remainingProtein = Math.max(0, proteinGoal - consumedProtein);
+      const remainingCalories = dynamicTargets.calorieBudget - consumedCalories;
+      const remainingProtein = Math.max(0, dynamicTargets.proteinGoal - consumedProtein);
 
       try {
         const aiInsight = await openAIService.generateDashboardInsights({
           date,
-          calorieGoal,
-          proteinGoal,
+          calorieGoal: dynamicTargets.calorieBudget,
+          proteinGoal: dynamicTargets.proteinGoal,
           primaryGoal,
+          coachingTone: context.user.preferences?.coachingTone,
+          proactivityLevel: context.user.preferences?.proactivityLevel,
           consumedCalories,
           consumedProtein,
           caloriesBurned,
@@ -187,6 +248,9 @@ export const workoutResolvers = {
           summary: aiInsight.summary,
           tips: aiInsight.tips,
           caloriesBurned,
+          steps,
+          stepsCalories,
+          calorieBudget: dynamicTargets.calorieBudget,
           netCalories,
           remainingCalories,
           remainingProtein,
@@ -198,11 +262,107 @@ export const workoutResolvers = {
           summary: fallbackSummary,
           tips: buildFallbackTips(remainingProtein, remainingCalories, netCalories),
           caloriesBurned,
+          steps,
+          stepsCalories,
+          calorieBudget: dynamicTargets.calorieBudget,
           netCalories,
           remainingCalories,
           remainingProtein,
         };
       }
+    },
+
+    weeklyEvoReview: async (_: any, { endDate }: { endDate?: string }, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+
+      const { startDate, endDate: weekEndDate, nextDay } = toWeekRange(endDate);
+      const [meals, workouts, activityDays] = await Promise.all([
+        FoodItem.find({
+          userId: context.user.id,
+          createdAt: { $gte: startDate, $lt: nextDay },
+        }),
+        Workout.find({
+          userId: context.user.id,
+          performedAt: { $gte: startDate, $lt: nextDay },
+        }),
+        DailyActivity.find({
+          userId: context.user.id,
+          date: {
+            $gte: startDate.toISOString().split('T')[0],
+            $lte: weekEndDate.toISOString().split('T')[0],
+          },
+        }),
+      ]);
+
+      const calorieGoal = context.user.preferences?.dailyCalorieGoal || 2000;
+      const proteinGoal = context.user.preferences?.proteinGoal || 150;
+      const weeklyWorkoutGoal = context.user.preferences?.weeklyWorkoutsGoal || 4;
+      const weeklyMinutesGoal = context.user.preferences?.weeklyActiveMinutesGoal || 180;
+
+      const totalCalories = meals.reduce((acc, meal) => acc + meal.nutrition.calories, 0);
+      const totalProtein = meals.reduce((acc, meal) => acc + meal.nutrition.protein, 0);
+      const totalWorkoutBurned = workouts.reduce((acc, workout) => acc + (workout.caloriesBurned || 0), 0);
+      const totalBurned = totalWorkoutBurned;
+      const totalMinutes = workouts.reduce((acc, workout) => acc + (workout.durationMinutes || 0), 0);
+
+      const mealDays = new Set(
+        meals.map((meal) => new Date(meal.createdAt).toISOString().split('T')[0])
+      ).size;
+      const workoutDays = new Set(
+        workouts.map((workout) => new Date(workout.performedAt).toISOString().split('T')[0])
+      ).size;
+      const trackedDaySet = new Set<string>([
+        ...meals.map((meal) => new Date(meal.createdAt).toISOString().split('T')[0]),
+        ...workouts.map((workout) => new Date(workout.performedAt).toISOString().split('T')[0]),
+        ...activityDays.map((day) => day.date),
+      ]);
+      const trackedDays = trackedDaySet.size;
+      const isCompleteWeek = trackedDays >= 7;
+
+      const netWeeklyCalories = totalCalories - totalBurned;
+      const targetWeeklyCalories = calorieGoal * 7;
+      const avgDailyProtein = totalProtein / 7;
+
+      const calorieDeltaRatio = targetWeeklyCalories > 0
+        ? Math.abs(netWeeklyCalories - targetWeeklyCalories) / targetWeeklyCalories
+        : 1;
+      const proteinRatio = proteinGoal > 0 ? avgDailyProtein / proteinGoal : 0;
+      const workoutGoalRatio = weeklyWorkoutGoal > 0 ? workouts.length / weeklyWorkoutGoal : 1;
+      const minutesGoalRatio = weeklyMinutesGoal > 0 ? totalMinutes / weeklyMinutesGoal : 1;
+
+      const nutritionScore = clampScore((1 - calorieDeltaRatio) * 60 + Math.min(1, proteinRatio) * 40);
+      const trainingScore = clampScore(Math.min(1, workoutGoalRatio) * 55 + Math.min(1, minutesGoalRatio) * 45);
+      const consistencyScore = clampScore(((mealDays / 7) * 50) + ((workoutDays / 7) * 50));
+
+      const highlights = [
+        `Calories net this week: ${Math.round(netWeeklyCalories)} kcal vs target ${Math.round(targetWeeklyCalories)} kcal.`,
+        `Avg daily protein: ${Math.round(avgDailyProtein)}g (goal ${proteinGoal}g).`,
+        `Training volume: ${workouts.length} sessions, ${Math.round(totalMinutes)} active minutes, and ${activityDays.reduce((acc, day) => acc + Number(day.steps || 0), 0)} tracked steps.`,
+      ];
+
+      const summary = [
+        `Weekly review: nutrition score ${nutritionScore}/100, training score ${trainingScore}/100, consistency ${consistencyScore}/100.`,
+        nutritionScore >= 75
+          ? 'Great nutritional control this week.'
+          : 'Nutrition needs a tighter plan next week.',
+        trainingScore >= 75
+          ? 'Training rhythm is solid.'
+          : 'Add 1-2 focused sessions or more active minutes next week.',
+      ].join(' ');
+
+      return {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: weekEndDate.toISOString().split('T')[0],
+        trackedDays,
+        isCompleteWeek,
+        summary,
+        highlights,
+        nutritionScore,
+        trainingScore,
+        consistencyScore,
+      };
     },
   },
 
@@ -241,6 +401,34 @@ export const workoutResolvers = {
       });
 
       return workout;
+    },
+
+    upsertDailyActivity: async (_: any, { input }: { input: { date: string; steps: number } }, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+
+      const steps = Number(input.steps);
+      if (!Number.isFinite(steps) || steps < 0 || steps > 120000) {
+        throw new UserInputError('Steps must be between 0 and 120000');
+      }
+
+      const date = String(input.date || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new UserInputError('Date must be in YYYY-MM-DD format');
+      }
+
+      const record = await DailyActivity.findOneAndUpdate(
+        { userId: context.user.id, date },
+        { $set: { steps: Math.round(steps) } },
+        { upsert: true, new: true }
+      );
+
+      return {
+        date,
+        steps: Number(record?.steps || 0),
+        estimatedCalories: 0,
+      };
     },
 
     deleteWorkout: async (_: any, { id }: { id: string }, context: Context) => {

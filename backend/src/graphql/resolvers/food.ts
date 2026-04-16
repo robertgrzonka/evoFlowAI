@@ -1,9 +1,11 @@
 import { AuthenticationError, UserInputError } from 'apollo-server-express';
 import { FoodItem } from '../../models/FoodItem';
+import { Workout } from '../../models/Workout';
+import { DailyActivity } from '../../models/DailyActivity';
 import { Context } from '../context';
 import { OpenAIService } from '../../services/openaiService';
 import { withFilter } from 'graphql-subscriptions';
-import { calculateMacroGoals } from '../../utils/nutritionGoals';
+import { buildDynamicTargets } from '../../utils/activityBudget';
 
 const openAIService = new OpenAIService();
 
@@ -53,6 +55,19 @@ export const foodResolvers = {
         }
       }).sort({ createdAt: 1 });
 
+      const workouts = await Workout.find({
+        userId: context.user.id,
+        performedAt: {
+          $gte: startDate,
+          $lt: endDate
+        }
+      });
+
+      const dayActivity = await DailyActivity.findOne({
+        userId: context.user.id,
+        date,
+      });
+
       // Calculate total values
       const totals = meals.reduce((acc, meal) => ({
         calories: acc.calories + meal.nutrition.calories,
@@ -61,18 +76,27 @@ export const foodResolvers = {
         fat: acc.fat + meal.nutrition.fat
       }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
-      // Calculate progress towards goals
-      const dailyGoal = context.user.preferences.dailyCalorieGoal || 2000;
-      const fallbackMacroGoals = calculateMacroGoals(dailyGoal, context.user.preferences.activityLevel);
-      const proteinGoal = context.user.preferences.proteinGoal || fallbackMacroGoals.proteinGoal;
-      const carbsGoal = context.user.preferences.carbsGoal || fallbackMacroGoals.carbsGoal;
-      const fatGoal = context.user.preferences.fatGoal || fallbackMacroGoals.fatGoal;
+      const workoutCalories = workouts.reduce((acc, workout) => acc + (workout.caloriesBurned || 0), 0);
+      const steps = Math.max(0, Number(dayActivity?.steps || 0));
+      const stepsCalories = 0;
+
+      // Calculate progress towards dynamic goals
+      const dynamicTargets = buildDynamicTargets({
+        baseCalories: context.user.preferences.dailyCalorieGoal || 2000,
+        activityLevel: context.user.preferences.activityLevel,
+        primaryGoal: context.user.preferences.primaryGoal,
+        workoutCalories,
+        stepCalories: stepsCalories,
+        manualProtein: context.user.preferences.proteinGoal,
+        manualCarbs: context.user.preferences.carbsGoal,
+        manualFat: context.user.preferences.fatGoal,
+      });
 
       const goalProgress = {
-        calories: dailyGoal > 0 ? (totals.calories / dailyGoal) * 100 : 0,
-        protein: proteinGoal > 0 ? (totals.protein / proteinGoal) * 100 : 0,
-        carbs: carbsGoal > 0 ? (totals.carbs / carbsGoal) * 100 : 0,
-        fat: fatGoal > 0 ? (totals.fat / fatGoal) * 100 : 0
+        calories: dynamicTargets.calorieBudget > 0 ? (totals.calories / dynamicTargets.calorieBudget) * 100 : 0,
+        protein: dynamicTargets.proteinGoal > 0 ? (totals.protein / dynamicTargets.proteinGoal) * 100 : 0,
+        carbs: dynamicTargets.carbsGoal > 0 ? (totals.carbs / dynamicTargets.carbsGoal) * 100 : 0,
+        fat: dynamicTargets.fatGoal > 0 ? (totals.fat / dynamicTargets.fatGoal) * 100 : 0
       };
 
       return {
@@ -81,6 +105,16 @@ export const foodResolvers = {
         totalProtein: totals.protein,
         totalCarbs: totals.carbs,
         totalFat: totals.fat,
+        dynamicGoals: {
+          calories: dynamicTargets.calorieBudget,
+          protein: dynamicTargets.proteinGoal,
+          carbs: dynamicTargets.carbsGoal,
+          fat: dynamicTargets.fatGoal,
+        },
+        steps,
+        stepsCalories,
+        workoutCalories,
+        calorieBudget: dynamicTargets.calorieBudget,
         meals,
         goalProgress
       };

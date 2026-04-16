@@ -1,29 +1,36 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
-import { ArrowLeft, Camera, Dumbbell, Flame, Trash2 } from 'lucide-react';
+import { Camera, Dumbbell, Flame, Trash2 } from 'lucide-react';
 import {
+  DAILY_ACTIVITY_QUERY,
   DAILY_STATS_QUERY,
+  DASHBOARD_INSIGHT_QUERY,
   ME_QUERY,
   MY_WORKOUTS_QUERY,
+  WEEKLY_EVO_REVIEW_QUERY,
   WORKOUT_COACH_SUMMARY_QUERY,
 } from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
+import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import ContextAICoach from '@/components/ContextAICoach';
 import { ListRowSkeleton, PageLoader, Skeleton, StatCardSkeleton } from '@/components/ui/loading';
 import { DELETE_FOOD_ITEM_MUTATION, DELETE_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
+import { UPSERT_DAILY_ACTIVITY_MUTATION } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
+type AnalysisMode = 'combined' | 'nutrition' | 'training';
 
 export default function StatsPage() {
   const router = useRouter();
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('combined');
+  const [stepsInput, setStepsInput] = useState(0);
 
   const { data: userData, loading: userLoading, error: userError } = useQuery(ME_QUERY);
   const { data: statsData, loading: statsLoading } = useQuery(DAILY_STATS_QUERY, {
@@ -36,6 +43,14 @@ export default function StatsPage() {
   });
   const { data: workoutSummaryData, loading: workoutSummaryLoading } = useQuery(WORKOUT_COACH_SUMMARY_QUERY, {
     variables: { date: selectedDate },
+    skip: !userData?.me,
+  });
+  const { data: activityData, loading: activityLoading } = useQuery(DAILY_ACTIVITY_QUERY, {
+    variables: { date: selectedDate },
+    skip: !userData?.me,
+  });
+  const { data: weeklyReviewData } = useQuery(WEEKLY_EVO_REVIEW_QUERY, {
+    variables: { endDate: selectedDate },
     skip: !userData?.me,
   });
 
@@ -58,6 +73,20 @@ export default function StatsPage() {
       { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date: selectedDate } },
     ],
   });
+  const [upsertDailyActivity, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
+    onCompleted: () => {
+      appToast.success('Steps updated', 'Daily activity has been saved.');
+    },
+    onError: (error) => {
+      appToast.error('Save failed', error.message || 'Could not update steps.');
+    },
+    refetchQueries: [
+      { query: DAILY_ACTIVITY_QUERY, variables: { date: selectedDate } },
+      { query: DAILY_STATS_QUERY, variables: { date: selectedDate } },
+      { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date: selectedDate } },
+      { query: DASHBOARD_INSIGHT_QUERY, variables: { date: selectedDate } },
+    ],
+  });
 
   useEffect(() => {
     if (!userError) return;
@@ -74,7 +103,13 @@ export default function StatsPage() {
   const stats = statsData?.dailyStats;
   const workouts = workoutsData?.myWorkouts || [];
   const workoutSummary = workoutSummaryData?.workoutCoachSummary;
+  const weeklyReview = weeklyReviewData?.weeklyEvoReview;
+  const activity = activityData?.dailyActivity;
   const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+  useEffect(() => {
+    setStepsInput(Number(activity?.steps || 0));
+  }, [activity?.steps, selectedDate]);
 
   const handleDeleteMeal = async (mealId: string) => {
     const confirmed = window.confirm('Delete this meal entry?');
@@ -100,24 +135,48 @@ export default function StatsPage() {
     }
   };
 
+  const handleSaveSteps = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!Number.isFinite(stepsInput) || stepsInput < 0 || stepsInput > 120000) {
+      appToast.info('Invalid steps', 'Steps must be between 0 and 120000.');
+      return;
+    }
+
+    await upsertDailyActivity({
+      variables: {
+        input: {
+          date: selectedDate,
+          steps: Math.round(stepsInput),
+        },
+      },
+    });
+  };
+
   return (
-    <AppShell>
-        <div className="flex items-center justify-between mb-5">
-          <Link href="/dashboard" className="inline-flex items-center text-text-secondary hover:text-text-primary transition-colors">
-            <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
-            Back to dashboard
-          </Link>
-          <span className="text-sm text-text-secondary">
-            Goal mode: {formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))}
-          </span>
+      <AppShell>
+        <div className="mb-5">
+          <PageTopBar
+            rightContent={
+              <span className="text-sm text-text-secondary">
+                Goal mode: {formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))}
+              </span>
+            }
+          />
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <div className="xl:col-span-8">
             <div className="bg-surface rounded-xl border border-border p-5 mb-6">
-              <h1 className="text-xl font-semibold tracking-tight text-text-primary mb-3">Pick Day</h1>
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <h1 className="text-xl font-semibold tracking-tight text-text-primary">Pick Day</h1>
+                <div className="inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
+                  <ModeButton label="Combined" active={analysisMode === 'combined'} onClick={() => setAnalysisMode('combined')} />
+                  <ModeButton label="Nutrition" active={analysisMode === 'nutrition'} onClick={() => setAnalysisMode('nutrition')} />
+                  <ModeButton label="Training" active={analysisMode === 'training'} onClick={() => setAnalysisMode('training')} />
+                </div>
+              </div>
               <label htmlFor="stats-date" className="block text-sm text-text-secondary mb-2">
-                Nutrition stats for selected date
+                Analysis date
               </label>
               <input
                 id="stats-date"
@@ -126,8 +185,26 @@ export default function StatsPage() {
                 onChange={(event) => setSelectedDate(event.target.value)}
                 className="input-field w-full max-w-sm"
               />
+              <form onSubmit={handleSaveSteps} className="mt-3 grid grid-cols-1 sm:grid-cols-[200px_auto] gap-2 max-w-md">
+                <input
+                  type="number"
+                  min={0}
+                  max={120000}
+                  value={stepsInput}
+                  onChange={(event) => setStepsInput(Number(event.target.value))}
+                  className="input-field w-full"
+                  placeholder="Steps"
+                />
+                <button type="submit" className="btn-secondary" disabled={savingSteps}>
+                  {savingSteps ? 'Saving...' : 'Save steps'}
+                </button>
+              </form>
+              <p className="text-xs text-text-muted mt-2">
+                {activityLoading ? 'Loading activity...' : `Steps tracked: ${Math.round(activity?.steps || 0)}`}
+              </p>
             </div>
 
+            {(analysisMode === 'combined' || analysisMode === 'nutrition') ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               {statsLoading ? (
                 <>
@@ -141,7 +218,7 @@ export default function StatsPage() {
                   <StatCard
                     title="Calories"
                     value={stats?.totalCalories?.toFixed(0) || '0'}
-                    goal={user?.preferences?.dailyCalorieGoal || 2000}
+                    goal={stats?.dynamicGoals?.calories || user?.preferences?.dailyCalorieGoal || 2000}
                     progress={goalProgress.calories}
                     unit="kcal"
                     tone="brand"
@@ -149,7 +226,7 @@ export default function StatsPage() {
                   <StatCard
                     title="Protein"
                     value={stats?.totalProtein?.toFixed(1) || '0'}
-                    goal={user?.preferences?.proteinGoal || undefined}
+                    goal={stats?.dynamicGoals?.protein || user?.preferences?.proteinGoal || undefined}
                     progress={goalProgress.protein}
                     unit="g"
                     tone="info"
@@ -157,7 +234,7 @@ export default function StatsPage() {
                   <StatCard
                     title="Carbs"
                     value={stats?.totalCarbs?.toFixed(1) || '0'}
-                    goal={user?.preferences?.carbsGoal || undefined}
+                    goal={stats?.dynamicGoals?.carbs || user?.preferences?.carbsGoal || undefined}
                     progress={goalProgress.carbs}
                     unit="g"
                     tone="success"
@@ -165,7 +242,7 @@ export default function StatsPage() {
                   <StatCard
                     title="Fat"
                     value={stats?.totalFat?.toFixed(1) || '0'}
-                    goal={user?.preferences?.fatGoal || undefined}
+                    goal={stats?.dynamicGoals?.fat || user?.preferences?.fatGoal || undefined}
                     progress={goalProgress.fat}
                     unit="g"
                     tone="brandSoft"
@@ -173,7 +250,9 @@ export default function StatsPage() {
                 </>
               )}
             </div>
+            ) : null}
 
+            {(analysisMode === 'combined' || analysisMode === 'nutrition') ? (
             <section className="bg-surface rounded-xl border border-border p-5">
               <h3 className="text-xl font-semibold tracking-tight text-text-primary mb-5">Meals for {selectedDate}</h3>
               {statsLoading ? (
@@ -218,16 +297,18 @@ export default function StatsPage() {
                   <Camera className="h-16 w-16 text-text-muted mx-auto mb-4" />
                   <p className="text-text-secondary mb-4">No meals logged for {selectedDate}</p>
                   <button
-                    onClick={() => router.push('/chat')}
+                    onClick={() => router.push('/meals')}
                     className="btn-primary inline-flex items-center space-x-2 px-4"
                   >
                     <Camera className="h-4 w-4 stroke-[1.9]" />
-                    <span>Log Meal</span>
+                    <span>Add meal</span>
                   </button>
                 </div>
               )}
             </section>
+            ) : null}
 
+            {(analysisMode === 'combined' || analysisMode === 'training') ? (
             <section className="bg-surface rounded-xl border border-border p-5 mt-4">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-xl font-semibold tracking-tight text-text-primary">Workouts for {selectedDate}</h3>
@@ -310,13 +391,36 @@ export default function StatsPage() {
                 </div>
               )}
             </section>
+            ) : null}
           </div>
 
           <div className="xl:col-span-4">
-            <div>
+            <div className="space-y-4">
+              {weeklyReview ? (
+                <section className="bg-surface rounded-xl border border-border p-4">
+                  <h4 className="text-sm font-semibold tracking-tight text-text-primary mb-2">Weekly trend snapshot</h4>
+                  {!weeklyReview.isCompleteWeek ? (
+                    <div className="rounded-lg border border-dashed border-border bg-surface-elevated p-3.5">
+                      <p className="text-sm text-text-primary font-medium mb-1">Evo is waiting for a full week of data</p>
+                      <p className="text-sm text-text-secondary">
+                        Currently, data is available for <span className="font-semibold text-text-primary">{weeklyReview.trackedDays}/7</span> days.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-text-secondary mb-3">{weeklyReview.summary}</p>
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        <WorkoutSummaryCard icon={<Camera className="h-4 w-4 text-info-400" />} label="Nutrition" value={`${weeklyReview.nutritionScore}/100`} />
+                        <WorkoutSummaryCard icon={<Dumbbell className="h-4 w-4 text-amber-300" />} label="Training" value={`${weeklyReview.trainingScore}/100`} />
+                        <WorkoutSummaryCard icon={<Flame className="h-4 w-4 text-success-400" />} label="Consistency" value={`${weeklyReview.consistencyScore}/100`} />
+                      </div>
+                    </>
+                  )}
+                </section>
+              ) : null}
               <ContextAICoach
                 title="AI Coach"
-                description="Get suggestions for this selected day and improve your next meal."
+                description={`Mode: ${analysisMode}. Ask Evo for focused suggestions based on selected date.`}
                 quickPrompts={[
                   `Review my nutrition for ${selectedDate}.`,
                   `Combine my meals and workouts for ${selectedDate} and tell me what to do next.`,
@@ -406,4 +510,28 @@ function formatPrimaryGoal(value: string) {
     default:
       return 'Maintenance';
   }
+}
+
+function ModeButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+        active
+          ? 'bg-primary-500/15 border border-primary-500/30 text-text-primary'
+          : 'text-text-secondary border border-transparent hover:text-text-primary'
+      }`}
+    >
+      {label}
+    </button>
+  );
 }

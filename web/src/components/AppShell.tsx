@@ -9,6 +9,7 @@ import {
   Dumbbell,
   LayoutDashboard,
   LogOut,
+  MessageSquareMore,
   NotebookPen,
   Settings,
   Target,
@@ -24,7 +25,8 @@ type AppShellProps = {
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/chat', label: 'Log Meal', icon: NotebookPen },
+  { href: '/chat', label: 'Chat', icon: MessageSquareMore },
+  { href: '/meals', label: 'Meals', icon: NotebookPen },
   { href: '/stats', label: 'Stats', icon: BarChart3 },
   { href: '/workouts', label: 'Workouts', icon: Dumbbell },
   { href: '/goals', label: 'Goals', icon: Target },

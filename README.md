@@ -143,6 +143,8 @@ Implemented and actively used:
 
 - Setup: `docs/SETUP.md`
 - Contribution process: `CONTRIBUTING.md`
+- Evo personality architecture: `docs/evo-personality-system.md`
+- Frontend atomic audit: `docs/frontend-atomic-audit.md`
 
 ## License
 

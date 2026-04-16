@@ -20,6 +20,8 @@ export const typeDefs = gql`
     weeklyWorkoutsGoal: Int!
     weeklyActiveMinutesGoal: Int!
     primaryGoal: PrimaryGoal!
+    coachingTone: CoachingTone!
+    proactivityLevel: ProactivityLevel!
     dietaryRestrictions: [String!]!
     activityLevel: ActivityLevel!
     notifications: Boolean!
@@ -38,6 +40,17 @@ export const typeDefs = gql`
     MAINTENANCE
     MUSCLE_GAIN
     STRENGTH
+  }
+
+  enum CoachingTone {
+    SUPPORTIVE
+    DIRECT
+  }
+
+  enum ProactivityLevel {
+    LOW
+    MEDIUM
+    HIGH
   }
 
   type NutritionInfo {
@@ -75,8 +88,20 @@ export const typeDefs = gql`
     totalProtein: Float!
     totalCarbs: Float!
     totalFat: Float!
+    dynamicGoals: GoalTargets!
+    steps: Int!
+    stepsCalories: Float!
+    workoutCalories: Float!
+    calorieBudget: Float!
     meals: [FoodItem!]!
     goalProgress: GoalProgress!
+  }
+
+  type GoalTargets {
+    calories: Float!
+    protein: Float!
+    carbs: Float!
+    fat: Float!
   }
 
   type GoalProgress {
@@ -91,6 +116,7 @@ export const typeDefs = gql`
     userId: ID!
     content: String!
     role: MessageRole!
+    channel: ChatChannel!
     timestamp: Date!
     context: MessageContext
   }
@@ -98,6 +124,12 @@ export const typeDefs = gql`
   enum MessageRole {
     USER
     ASSISTANT
+  }
+
+  enum ChatChannel {
+    GENERAL
+    COACH
+    LOG
   }
 
   type MessageContext {
@@ -154,6 +186,9 @@ export const typeDefs = gql`
     calorieGoal: Int!
     proteinGoal: Int!
     caloriesBurned: Float!
+    steps: Int!
+    stepsCalories: Float!
+    calorieBudget: Float!
     netCalories: Float!
     remainingCalories: Float!
     remainingProtein: Float!
@@ -165,9 +200,30 @@ export const typeDefs = gql`
     summary: String!
     tips: [String!]!
     caloriesBurned: Float!
+    steps: Int!
+    stepsCalories: Float!
+    calorieBudget: Float!
     netCalories: Float!
     remainingCalories: Float!
     remainingProtein: Float!
+  }
+
+  type DailyActivity {
+    date: String!
+    steps: Int!
+    estimatedCalories: Float!
+  }
+
+  type WeeklyEvoReview {
+    startDate: String!
+    endDate: String!
+    trackedDays: Int!
+    isCompleteWeek: Boolean!
+    summary: String!
+    highlights: [String!]!
+    nutritionScore: Int!
+    trainingScore: Int!
+    consistencyScore: Int!
   }
 
   type AnalyzeImageResponse {
@@ -229,6 +285,8 @@ export const typeDefs = gql`
     weeklyWorkoutsGoal: Int
     weeklyActiveMinutesGoal: Int
     primaryGoal: PrimaryGoal
+    coachingTone: CoachingTone
+    proactivityLevel: ProactivityLevel
     dietaryRestrictions: [String!]
     activityLevel: ActivityLevel
     notifications: Boolean
@@ -265,6 +323,7 @@ export const typeDefs = gql`
 
   input SendMessageInput {
     content: String!
+    channel: ChatChannel
     context: MessageContextInput
   }
 
@@ -294,6 +353,11 @@ export const typeDefs = gql`
     caloriesBurned: Int
     intensity: WorkoutIntensity!
     performedAt: String
+  }
+
+  input UpsertDailyActivityInput {
+    date: String!
+    steps: Int!
   }
 
   type AuthPayload {
@@ -330,15 +394,17 @@ export const typeDefs = gql`
     getStats(input: StatsQueryInput!): StatsResponse!
     
     # Chat
-    myChatHistory(limit: Int, offset: Int): [ChatMessage!]!
+    myChatHistory(channel: ChatChannel, limit: Int, offset: Int): [ChatMessage!]!
     
     # Recommendations
     myRecommendations(unreadOnly: Boolean): [AIRecommendation!]!
 
     # Workouts
     myWorkouts(date: String, limit: Int, offset: Int): [Workout!]!
+    dailyActivity(date: String!): DailyActivity!
     workoutCoachSummary(date: String!): WorkoutCoachSummary!
     dashboardInsight(date: String!): DashboardInsight!
+    weeklyEvoReview(endDate: String): WeeklyEvoReview!
   }
 
   type Mutation {
@@ -366,13 +432,14 @@ export const typeDefs = gql`
 
     # Workouts
     logWorkout(input: LogWorkoutInput!): Workout!
+    upsertDailyActivity(input: UpsertDailyActivityInput!): DailyActivity!
     deleteWorkout(id: ID!): Boolean!
   }
 
   type Subscription {
     # Real-time updates
     newFoodItem(userId: ID!): FoodItem!
-    newChatMessage(userId: ID!): ChatMessage!
+    newChatMessage(userId: ID!, channel: ChatChannel): ChatMessage!
     newRecommendation(userId: ID!): AIRecommendation!
     statsUpdated(userId: ID!): DailyStats!
     newWorkout(userId: ID!): Workout!

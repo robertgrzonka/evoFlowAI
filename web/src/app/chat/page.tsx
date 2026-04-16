@@ -2,138 +2,137 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
-import { ArrowLeft, ImagePlus } from 'lucide-react';
-import { LOG_MEAL_WITH_AI_MUTATION } from '@/lib/graphql/mutations';
-import { DAILY_STATS_QUERY, ME_QUERY, MY_CHAT_HISTORY_QUERY, NEW_CHAT_MESSAGE_SUBSCRIPTION } from '@/lib/graphql/queries';
+import { ChevronDown, ChevronUp, Dumbbell, Utensils } from 'lucide-react';
+import { SEND_MESSAGE_MUTATION } from '@/lib/graphql/mutations';
+import {
+  DAILY_STATS_QUERY,
+  ME_QUERY,
+  MY_CHAT_HISTORY_QUERY,
+  NEW_CHAT_MESSAGE_SUBSCRIPTION,
+  WORKOUT_COACH_SUMMARY_QUERY,
+} from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
 import AICoachAvatar from '@/components/AICoachAvatar';
+import ChatMarkdown from '@/components/ChatMarkdown';
+import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
 
-type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
-
-const mealOptions: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+type ChatChannel = 'GENERAL' | 'COACH';
+type ChatRole = 'USER' | 'ASSISTANT';
+type ChatMessage = { id: string; role: ChatRole; content: string; channel: ChatChannel };
+type CoachSummary = {
+  consumedCalories: number;
+  consumedProtein: number;
+  calorieGoal: number;
+  proteinGoal: number;
+  caloriesBurned: number;
+  steps: number;
+  calorieBudget: number;
+  netCalories: number;
+  remainingCalories: number;
+  remainingProtein: number;
+};
+type DailyStats = {
+  totalCarbs: number;
+  totalFat: number;
+  dynamicGoals?: { carbs?: number; fat?: number } | null;
+};
 
 export default function ChatPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [conversationChannel, setConversationChannel] = useState<ChatChannel>('GENERAL');
+  const [prompt, setPrompt] = useState('');
+  const [showCoachDebug, setShowCoachDebug] = useState(false);
 
-  const [content, setContent] = useState('');
-  const [mealType, setMealType] = useState<MealType>('lunch');
-  const [imageBase64, setImageBase64] = useState('');
-  const [imageMimeType, setImageMimeType] = useState('image/jpeg');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [readingImage, setReadingImage] = useState(false);
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const goalMode = String(meData?.me?.preferences?.primaryGoal || 'MAINTENANCE').toUpperCase();
 
   const { data, loading: historyLoading, error: historyError, refetch } = useQuery(MY_CHAT_HISTORY_QUERY, {
-    variables: { limit: 30, offset: 0 },
+    variables: { channel: conversationChannel, limit: 40, offset: 0 },
     fetchPolicy: 'cache-and-network',
     pollInterval: 5000,
   });
+  const { data: coachSummaryData } = useQuery(WORKOUT_COACH_SUMMARY_QUERY, {
+    variables: { date: today },
+    skip: conversationChannel !== 'COACH' || !meData?.me?.id,
+    fetchPolicy: 'cache-and-network',
+  });
+  const { data: dailyStatsData } = useQuery(DAILY_STATS_QUERY, {
+    variables: { date: today },
+    skip: conversationChannel !== 'COACH' || !meData?.me?.id,
+    fetchPolicy: 'cache-and-network',
+  });
 
   useSubscription(NEW_CHAT_MESSAGE_SUBSCRIPTION, {
-    variables: { userId: meData?.me?.id },
+    variables: { userId: meData?.me?.id, channel: conversationChannel },
     skip: !meData?.me?.id,
     onData: () => {
-      refetch({ limit: 30, offset: 0 });
+      refetch({ channel: conversationChannel, limit: 40, offset: 0 });
     },
   });
 
   useEffect(() => {
-    if (!historyError) return;
+    const channelParam = String(searchParams.get('channel') || '').toUpperCase();
+    if (channelParam === 'COACH') {
+      setConversationChannel('COACH');
+    } else if (channelParam === 'GENERAL') {
+      setConversationChannel('GENERAL');
+    }
+  }, [searchParams]);
 
+  useEffect(() => {
+    if (!historyError) return;
     appToast.error('Session expired', 'Please log in again.');
     clearAuthToken();
     router.push('/login');
   }, [historyError, router]);
 
-  const [logMealWithAI, { loading: sending }] = useMutation(LOG_MEAL_WITH_AI_MUTATION, {
-    onCompleted: () => {
-      setContent('');
-      setImageBase64('');
-      setImagePreview(null);
-      appToast.success('Meal saved', 'Evo analyzed your meal and updated your diary.');
+  const [sendMessage, { loading: sendingMessage }] = useMutation(SEND_MESSAGE_MUTATION, {
+    onCompleted: async () => {
+      setPrompt('');
+      await refetch({ channel: conversationChannel, limit: 40, offset: 0 });
     },
     onError: (error) => {
-      appToast.error('Analysis failed', error.message || 'Unable to analyze meal.');
+      appToast.error('Message failed', error.message || 'Could not send message.');
     },
-    refetchQueries: [
-      { query: DAILY_STATS_QUERY, variables: { date: today } },
-      { query: MY_CHAT_HISTORY_QUERY, variables: { limit: 30, offset: 0 } },
-    ],
   });
 
-  const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      appToast.info('Invalid file', 'Please select an image file.');
-      return;
-    }
-
-    try {
-      setReadingImage(true);
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const [meta, payload] = base64.split(',');
-      if (!payload) {
-        appToast.error('Image read failed', 'Failed to read image.');
-        return;
-      }
-
-      const mime = meta.match(/data:(.*);base64/)?.[1] || 'image/jpeg';
-      setImageBase64(payload);
-      setImageMimeType(mime);
-      setImagePreview(base64);
-    } finally {
-      setReadingImage(false);
-    }
-  };
-
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSend = async (event: React.FormEvent) => {
     event.preventDefault();
-
-    if (!content.trim() && !imageBase64) {
-      appToast.info('Missing meal input', 'Add a meal description or upload an image.');
+    const content = prompt.trim();
+    if (!content) {
+      appToast.info('Missing message', 'Write a message for Evo.');
       return;
     }
 
-    await logMealWithAI({
+    await sendMessage({
       variables: {
         input: {
-          content: content.trim() || null,
-          imageBase64: imageBase64 || null,
-          imageMimeType: imageBase64 ? imageMimeType : null,
-          mealType,
+          content,
+          channel: conversationChannel,
+          context: conversationChannel === 'COACH' ? { statsReference: today } : undefined,
         },
       },
+      refetchQueries: [{ query: MY_CHAT_HISTORY_QUERY, variables: { channel: conversationChannel, limit: 40, offset: 0 } }],
+      awaitRefetchQueries: true,
     });
   };
 
-  const messages = [...(data?.myChatHistory || [])].reverse();
-  const quickPrompts = getQuickPrompts(goalMode);
+  const messages: ChatMessage[] = [...(data?.myChatHistory || [])].reverse();
+  const quickPrompts = conversationChannel === 'COACH' ? getCoachPrompts(goalMode) : getGeneralPrompts();
+  const coachSummary: CoachSummary | null = coachSummaryData?.workoutCoachSummary || null;
+  const dailyStats: DailyStats | null = dailyStatsData?.dailyStats || null;
 
   return (
     <AppShell>
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <Link href="/dashboard" className="inline-flex items-center text-text-secondary hover:text-text-primary transition-colors">
-            <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
-            Back to dashboard
-          </Link>
-          <h1 className="text-lg font-semibold tracking-tight text-text-primary">AI Meal Chat</h1>
-        </div>
+        <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">Evo Chat</h1>} />
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-7 bg-surface border border-border rounded-xl p-4 md:p-5">
@@ -141,14 +140,17 @@ export default function ChatPage() {
               <h2 className="text-lg font-semibold tracking-tight text-text-primary">Conversation</h2>
               <span className="text-xs text-text-muted">Newest first</span>
             </div>
+            <div className="mb-4 inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
+              <ChannelTabButton label="General" active={conversationChannel === 'GENERAL'} onClick={() => setConversationChannel('GENERAL')} />
+              <ChannelTabButton label="Coach" active={conversationChannel === 'COACH'} onClick={() => setConversationChannel('COACH')} />
+            </div>
 
             {historyLoading ? (
               <ConversationSkeleton />
             ) : messages.length > 0 ? (
               <div className="max-h-[620px] overflow-y-auto pr-1 space-y-3">
-                {messages.map((message: any) => {
+                {messages.map((message) => {
                   const isUser = message.role === 'USER';
-
                   return (
                     <div key={message.id} className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
                       {!isUser ? <AICoachAvatar size="sm" /> : null}
@@ -159,10 +161,8 @@ export default function ChatPage() {
                             : 'bg-success-500/10 border-success-500/30 rounded-bl-md'
                         }`}
                       >
-                        <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted mb-1">
-                          {isUser ? 'You' : 'Evo'}
-                        </p>
-                        <p className="text-sm text-text-primary whitespace-pre-wrap">{message.content}</p>
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted mb-1">{isUser ? 'You' : 'Evo'}</p>
+                        <ChatMarkdown content={message.content} />
                       </div>
                     </div>
                   );
@@ -171,7 +171,9 @@ export default function ChatPage() {
             ) : (
               <div className="rounded-lg border border-border bg-surface-elevated p-4">
                 <p className="text-text-secondary text-sm">
-                  No messages yet. Send meal description or image from the right panel.
+                  {conversationChannel === 'COACH'
+                    ? 'No coach messages yet. Ask Evo about your current day stats and next action.'
+                    : 'No general chat messages yet. Start a conversation with Evo.'}
                 </p>
               </div>
             )}
@@ -181,94 +183,135 @@ export default function ChatPage() {
             <div className="flex items-center gap-3 mb-4">
               <AICoachAvatar size="md" />
               <div>
-                <h2 className="text-lg font-semibold tracking-tight text-text-primary">Analyze Meal</h2>
-                <p className="text-xs text-text-muted">Evo will estimate calories and macros</p>
+                <h2 className="text-lg font-semibold tracking-tight text-text-primary">
+                  {conversationChannel === 'COACH' ? 'Ask Nutrition Coach' : 'Ask General Evo'}
+                </h2>
+                <p className="text-xs text-text-muted">
+                  {conversationChannel === 'COACH'
+                    ? 'Context-aware answers based on your daily intake, training and goals'
+                    : 'General conversation, planning, and practical lifestyle support'}
+                </p>
               </div>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="mealType" className="block text-sm font-medium text-text-primary mb-2">
-                  Meal type
-                </label>
-                <select
-                  id="mealType"
-                  value={mealType}
-                  onChange={(event) => setMealType(event.target.value as MealType)}
-                  className="input-field w-full"
-                >
-                  {mealOptions.map((item) => (
-                    <option key={item} value={item}>
-                      {item.charAt(0).toUpperCase() + item.slice(1)}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
+            <form onSubmit={handleSend} className="space-y-4">
               <div>
-                <label htmlFor="content" className="block text-sm font-medium text-text-primary mb-2">
-                  Meal description
-                </label>
-                <textarea
-                  id="content"
-                  value={content}
-                  onChange={(event) => setContent(event.target.value)}
-                  placeholder="Example: grilled chicken with rice and salad, around 350g total"
-                  className="input-field w-full min-h-28 resize-y"
-                />
-              </div>
-
-              <div>
-                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-text-muted">Coach shortcuts</p>
+                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-text-muted">
+                  {conversationChannel === 'COACH' ? 'Coach shortcuts' : 'General shortcuts'}
+                </p>
                 <div className="grid grid-cols-1 gap-2">
-                  {quickPrompts.map((prompt) => (
+                  {quickPrompts.map((quickPrompt) => (
                     <button
-                      key={prompt}
+                      key={quickPrompt}
                       type="button"
-                      onClick={() => setContent(prompt)}
+                      onClick={() => setPrompt(quickPrompt)}
                       className="text-left rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:border-primary-500/30 transition-colors"
                     >
-                      {prompt}
+                      {quickPrompt}
                     </button>
                   ))}
                 </div>
               </div>
 
               <div>
-                <label htmlFor="imageUpload" className="block text-sm font-medium text-text-primary mb-2">
-                  Upload meal image
+                <label htmlFor="chatPrompt" className="block text-sm font-medium text-text-primary mb-2">
+                  Your message
                 </label>
-                <label className="w-full border border-dashed border-border rounded-lg p-3.5 flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary cursor-pointer transition-colors duration-150 ease-out">
-                  <ImagePlus className="h-4 w-4 stroke-[1.9]" />
-                  <span>Choose image</span>
-                  <input id="imageUpload" type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-                </label>
-
-                {readingImage ? (
-                  <div className="mt-3 h-36 w-full rounded-lg border border-border bg-surface-elevated animate-pulse" />
-                ) : imagePreview ? (
-                  <img src={imagePreview} alt="Meal preview" className="mt-3 h-36 w-full object-cover rounded-lg border border-border" />
-                ) : (
-                  <div className="mt-3 h-20 w-full rounded-lg border border-border bg-surface-elevated flex items-center justify-center text-xs text-text-muted">
-                    Image preview appears here
-                  </div>
-                )}
+                <textarea
+                  id="chatPrompt"
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  className="input-field w-full min-h-36 resize-y"
+                  placeholder={
+                    conversationChannel === 'COACH'
+                      ? 'Example: I have around 700 kcal left and low protein. What should I eat for dinner?'
+                      : 'Example: Help me build a realistic weekly routine for meals and workouts.'
+                  }
+                />
               </div>
 
-              <button type="submit" disabled={sending} className="btn-primary w-full inline-flex items-center justify-center gap-2">
-                {sending ? (
+              <button type="submit" disabled={sendingMessage} className="btn-primary w-full inline-flex items-center justify-center gap-2">
+                {sendingMessage ? (
                   <>
                     <ButtonSpinner />
-                    Analyzing and saving...
+                    Sending...
                   </>
+                ) : conversationChannel === 'COACH' ? (
+                  'Ask Evo coach'
                 ) : (
-                  'Analyze meal and save to diary'
+                  'Ask Evo'
                 )}
               </button>
             </form>
+
+            {conversationChannel === 'COACH' ? (
+              <div className="mt-4 rounded-lg border border-border bg-surface-elevated p-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCoachDebug((prev) => !prev)}
+                  className="w-full inline-flex items-center justify-between text-xs text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  <span className="uppercase tracking-[0.12em]">Coach debug snapshot</span>
+                  {showCoachDebug ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+                {showCoachDebug ? (
+                  <div className="mt-3 rounded-md border border-border bg-background/40 p-2.5 font-mono text-[11px] text-text-secondary space-y-1">
+                    <p>date: {today}</p>
+                    <p>budget_dynamic_kcal: {Math.round(coachSummary?.calorieBudget || 0)}</p>
+                    <p>consumed_kcal: {Math.round(coachSummary?.consumedCalories || 0)}</p>
+                    <p>burned_training_kcal: {Math.round(coachSummary?.caloriesBurned || 0)}</p>
+                    <p>remaining_kcal: {Math.round(coachSummary?.remainingCalories || 0)}</p>
+                    <p>net_kcal: {Math.round(coachSummary?.netCalories || 0)}</p>
+                    <p>protein_consumed_g: {Math.round(coachSummary?.consumedProtein || 0)}</p>
+                    <p>protein_target_g: {Math.round(coachSummary?.proteinGoal || 0)}</p>
+                    <p>protein_remaining_g: {Math.round(coachSummary?.remainingProtein || 0)}</p>
+                    <p>carbs_consumed_g: {Math.round(dailyStats?.totalCarbs || 0)}</p>
+                    <p>fat_consumed_g: {Math.round(dailyStats?.totalFat || 0)}</p>
+                    <p>steps_tracked: {Math.round(coachSummary?.steps || 0)}</p>
+                    <p className="pt-1 text-text-muted">
+                      source: workoutCoachSummary + dailyStats
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <Link
+                href="/meals"
+                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface-elevated px-2.5 py-2 text-xs text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <Utensils className="h-3.5 w-3.5" />
+                Add meal
+              </Link>
+              <Link
+                href="/workouts"
+                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface-elevated px-2.5 py-2 text-xs text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <Dumbbell className="h-3.5 w-3.5" />
+                Add workout
+              </Link>
+            </div>
           </section>
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function ChannelTabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+        active
+          ? 'bg-primary-500/15 border border-primary-500/30 text-text-primary'
+          : 'text-text-secondary border border-transparent hover:text-text-primary'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -289,34 +332,34 @@ function ConversationSkeleton() {
   );
 }
 
-function getQuickPrompts(goalMode: string) {
+function getCoachPrompts(goalMode: string) {
   if (goalMode === 'FAT_LOSS') {
     return [
-      'I need a low-calorie high-protein dinner idea for tonight.',
-      'Based on today, what should I avoid eating late evening?',
-      'How can I keep deficit but not feel hungry after training?',
+      'Review my day and suggest one low-calorie high-protein next meal.',
+      'What is most off target in my macros right now?',
+      'Give me a practical plan for the rest of today.',
     ];
   }
 
   if (goalMode === 'MUSCLE_GAIN') {
     return [
-      'Suggest a calorie-dense but clean post-workout meal.',
-      'How much protein should I still eat this evening?',
-      'Give me one snack idea to support lean bulk.',
-    ];
-  }
-
-  if (goalMode === 'STRENGTH') {
-    return [
-      'What should I eat before heavy lifting for better performance?',
-      'Give me a recovery meal with enough carbs and protein.',
-      'How do I fuel on hard training days vs rest days?',
+      'How should I finish today to support lean muscle gain?',
+      'Suggest a high-protein and high-carb dinner idea.',
+      'What should I prioritize after training today?',
     ];
   }
 
   return [
-    'Review my day and suggest one balanced next meal.',
-    'What macro is most off target right now?',
-    'Give me one simple nutrition tweak for tomorrow.',
+    'Review my current day and suggest one balanced next step.',
+    'What should I improve first: calories, protein, or meal timing?',
+    'Give me one nutrition tweak and one recovery tweak for tonight.',
+  ];
+}
+
+function getGeneralPrompts() {
+  return [
+    'Help me plan a realistic weekly routine for food and training.',
+    'I have a busy week. How can I stay consistent without overcomplicating?',
+    'Create a simple framework to improve my results in the next 14 days.',
   ];
 }

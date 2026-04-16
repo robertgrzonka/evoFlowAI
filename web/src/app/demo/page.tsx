@@ -45,7 +45,7 @@ export default function DemoPage() {
 
             <div className="grid md:grid-cols-3 gap-4 text-left">
               <div className="p-5 bg-surface rounded-lg">
-                <h3 className="text-lg font-semibold tracking-tight text-text-primary mb-2">📸 Log Meal</h3>
+                <h3 className="text-lg font-semibold tracking-tight text-text-primary mb-2">📸 Meals</h3>
                 <p className="text-text-secondary">
                   Describe or upload meal photo and get instant macronutrient analysis
                 </p>

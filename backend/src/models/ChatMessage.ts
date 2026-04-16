@@ -4,6 +4,7 @@ export interface ChatMessageDocument extends Document {
   userId: mongoose.Types.ObjectId;
   content: string;
   role: 'USER' | 'ASSISTANT';
+  channel?: 'GENERAL' | 'COACH' | 'LOG';
   timestamp: Date;
   context?: {
     relatedFoodItems?: string[];
@@ -27,6 +28,12 @@ const chatMessageSchema = new Schema<ChatMessageDocument>({
     enum: ['USER', 'ASSISTANT'],
     required: true
   },
+  channel: {
+    type: String,
+    enum: ['GENERAL', 'COACH', 'LOG'],
+    default: 'COACH',
+    index: true
+  },
   timestamp: {
     type: Date,
     default: Date.now,
@@ -43,6 +50,7 @@ const chatMessageSchema = new Schema<ChatMessageDocument>({
 
 // Index for efficient queries
 chatMessageSchema.index({ userId: 1, timestamp: -1 });
+chatMessageSchema.index({ userId: 1, channel: 1, timestamp: -1 });
 
 export const ChatMessage = mongoose.model<ChatMessageDocument>('ChatMessage', chatMessageSchema);
 

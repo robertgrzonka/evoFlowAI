@@ -1,223 +1,112 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowRight, Camera, ChartColumnIncreasing, MessageSquareMore, Sparkles } from 'lucide-react';
+import {
+  ArrowRight,
+  Camera,
+  ChartColumnIncreasing,
+  Dumbbell,
+  MessageSquareMore,
+  Target,
+  TrendingUp,
+} from 'lucide-react';
 import Link from 'next/link';
 import { hasAuthToken } from '@/lib/auth-token';
+import EvoMark from '@/components/EvoMark';
+
+const productPillars = [
+  { icon: Target, title: 'Goal Modes', desc: 'Deficyt, maintenance, muscle gain, strength.' },
+  { icon: Camera, title: 'Meals', desc: 'Opis lub zdjęcie + szybka analiza makro.' },
+  { icon: Dumbbell, title: 'Workouts', desc: 'Treningi, minuty, spalanie i kontekst dnia.' },
+  { icon: MessageSquareMore, title: 'Evo Coach', desc: 'AI wsparcie z personalizacją tonu i proaktywności.' },
+  { icon: ChartColumnIncreasing, title: 'Stats Views', desc: 'Tryby: nutrition, training, combined.' },
+  { icon: TrendingUp, title: 'Weekly Review', desc: 'Ocena tygodnia i konkretne next steps.' },
+];
 
 export default function HomePage() {
   const router = useRouter();
-  const [isHovered, setIsHovered] = useState<string | null>(null);
 
   useEffect(() => {
-    // Redirect to dashboard if user is already logged in
     if (hasAuthToken()) {
       router.push('/dashboard');
     }
   }, [router]);
 
-  const features = [
-    {
-      id: 'scan',
-      icon: Camera,
-      title: 'Log Meal',
-      description: 'Describe your meal or upload a photo for instant AI calorie and macro analysis',
-      color: 'from-primary-500 to-primary-600'
-    },
-    {
-      id: 'stats',
-      icon: ChartColumnIncreasing,
-      title: 'Track Progress',
-      description: 'View daily, weekly, monthly, and yearly summaries of your nutrition',
-      color: 'from-info-500 to-info-600'
-    },
-    {
-      id: 'chat',
-      icon: MessageSquareMore,
-      title: 'Chat with AI',
-      description: 'Get personalized advice, recommendations, and answers to nutrition questions',
-      color: 'from-success-500 to-success-600'
-    }
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-surface to-background">
-      {/* Navigation */}
-      <nav className="glass-effect fixed top-0 w-full z-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-14">
-            <div className="flex items-center space-x-2">
-              <Sparkles className="h-7 w-7 text-primary-500 stroke-[1.9]" />
-              <span className="text-lg font-semibold tracking-tight text-gradient">evoFlowAI</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Link href="/login" className="btn-ghost">
-                Login
-              </Link>
-              <Link href="/register" className="btn-primary">
-                Get Started
-              </Link>
-            </div>
+    <div className="min-h-screen bg-gradient-to-b from-background via-surface to-background">
+      <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+          <div className="inline-flex items-center gap-2">
+            <EvoMark className="h-6 w-6" />
+            <span className="text-sm font-semibold tracking-tight text-gradient">evoFlowAI</span>
+          </div>
+          <div className="inline-flex items-center gap-2">
+            <Link href="/login" className="btn-ghost">Login</Link>
+            <Link href="/register" className="btn-primary">Get Started</Link>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="pt-28 pb-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto text-center">
+      <section className="px-4 sm:px-6 lg:px-8 pt-14 pb-12">
+        <div className="mx-auto max-w-6xl">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: 'easeOut' }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="rounded-2xl border border-border bg-surface p-6 md:p-8"
           >
-            <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-5">
-              <span className="text-gradient">Intelligent</span>
-              <br />
-              <span className="text-text-primary">Nutrition Analysis</span>
-            </h1>
-            <p className="text-lg md:text-xl leading-relaxed text-text-secondary mb-7 max-w-2xl mx-auto">
-              Scan food, analyze macronutrients, and receive personalized nutrition advice 
-              powered by advanced artificial intelligence
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link href="/register" className="btn-primary h-10 px-5 inline-flex items-center">
-                Start Free
-                <ArrowRight className="ml-2 h-4 w-4 stroke-[1.9]" />
-              </Link>
-              <Link href="/demo" className="btn-secondary h-10 px-5 inline-flex items-center">
-                View Demo
-              </Link>
+            <div className="max-w-3xl">
+              <p className="inline-flex items-center rounded-full border border-primary-500/30 bg-primary-500/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-primary-300 mb-4">
+                AI nutrition + training copilot
+              </p>
+              <h1 className="text-3xl md:text-5xl font-bold tracking-tight text-text-primary mb-4">
+                One app to run your daily calories, goals and coaching flow with Evo.
+              </h1>
+              <p className="text-text-secondary text-base md:text-lg max-w-2xl">
+                Log meals and workouts in seconds, get dynamic daily guidance, and review your full week with clear AI recommendations.
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-2.5">
+                <Link href="/register" className="btn-primary inline-flex items-center h-10 px-4">
+                  Start now
+                  <ArrowRight className="ml-2 h-4 w-4 stroke-[1.9]" />
+                </Link>
+                <Link href="/demo" className="btn-secondary inline-flex items-center h-10 px-4">
+                  See demo
+                </Link>
+              </div>
             </div>
           </motion.div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-            viewport={{ once: true }}
-            className="text-center mb-12"
-          >
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-3">
-              Everything you need
-            </h2>
-            <p className="text-base md:text-lg text-text-secondary max-w-2xl mx-auto">
-              Comprehensive tool for monitoring and optimizing your nutrition
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-5">
-            {features.map((feature, index) => (
+      <section className="px-4 sm:px-6 lg:px-8 pb-12">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-6">
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-text-primary">Built for real coaching workflows</h2>
+            <p className="text-text-secondary mt-1">Everything aligned to your daily execution and weekly decisions.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {productPillars.map((pillar, index) => (
               <motion.div
-                key={feature.id}
-                initial={{ opacity: 0, y: 16 }}
+                key={pillar.title}
+                initial={{ opacity: 0, y: 12 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.08, ease: 'easeOut' }}
+                transition={{ duration: 0.3, delay: index * 0.04 }}
                 viewport={{ once: true }}
-                onMouseEnter={() => setIsHovered(feature.id)}
-                onMouseLeave={() => setIsHovered(null)}
-                className="nutrition-card group"
+                className="rounded-xl border border-border bg-surface-elevated p-4"
               >
-                <div className={`mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-border-light/50 bg-surface-elevated/80 text-text-primary transition-transform duration-200 ease-out group-hover:scale-[1.03]`}>
-                  <feature.icon className="h-[18px] w-[18px] stroke-[1.9]" />
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border mb-3">
+                  <pillar.icon className="h-4 w-4 text-text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold tracking-tight mb-2 text-text-primary">
-                  {feature.title}
-                </h3>
-                <p className="text-text-secondary leading-relaxed">
-                  {feature.description}
-                </p>
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: isHovered === feature.id ? '100%' : '0%' }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                  className={`h-0.5 bg-gradient-to-r ${feature.color} mt-4`}
-                />
+                <h3 className="font-semibold text-text-primary">{pillar.title}</h3>
+                <p className="text-sm text-text-secondary mt-1">{pillar.desc}</p>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
-
-      {/* Stats Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-surface/30">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid md:grid-cols-3 gap-5 text-center">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.97, y: 10 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.35, ease: 'easeOut' }}
-              viewport={{ once: true }}
-              className="stat-card"
-            >
-              <div className="text-3xl font-bold tracking-tight text-success-500 mb-2">95%</div>
-              <div className="text-text-secondary">AI Analysis Accuracy</div>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.97, y: 10 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.35, delay: 0.08, ease: 'easeOut' }}
-              viewport={{ once: true }}
-              className="stat-card"
-            >
-              <div className="text-3xl font-bold tracking-tight text-info-500 mb-2">10k+</div>
-              <div className="text-text-secondary">Meals Analyzed</div>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.97, y: 10 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.35, delay: 0.16, ease: 'easeOut' }}
-              viewport={{ once: true }}
-              className="stat-card"
-            >
-              <div className="text-3xl font-bold tracking-tight text-primary-500 mb-2">24/7</div>
-              <div className="text-text-secondary">AI Assistant Availability</div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: 'easeOut' }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-5">
-              Ready for <span className="text-gradient">change</span>?
-            </h2>
-            <p className="text-base md:text-lg text-text-secondary mb-7">
-              Join thousands of users who have already improved their nutrition habits with evoFlowAI
-            </p>
-            <Link href="/register" className="btn-primary h-10 px-5 inline-flex items-center">
-              Start Your Journey
-                <ArrowRight className="ml-2 h-4 w-4 stroke-[1.9]" />
-            </Link>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-border py-10 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto text-center">
-          <div className="flex items-center justify-center space-x-2 mb-4">
-            <Sparkles className="h-6 w-6 text-primary-500 stroke-[1.9]" />
-            <span className="text-base font-semibold tracking-tight text-gradient">evoFlowAI</span>
-          </div>
-          <p className="text-sm text-text-muted">
-            © 2025 evoFlowAI. All rights reserved.
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }

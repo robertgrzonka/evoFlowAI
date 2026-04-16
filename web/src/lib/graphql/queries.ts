@@ -15,6 +15,8 @@ export const ME_QUERY = gql`
         weeklyWorkoutsGoal
         weeklyActiveMinutesGoal
         primaryGoal
+        coachingTone
+        proactivityLevel
         dietaryRestrictions
         activityLevel
         notifications
@@ -54,6 +56,16 @@ export const DAILY_STATS_QUERY = gql`
       totalProtein
       totalCarbs
       totalFat
+      dynamicGoals {
+        calories
+        protein
+        carbs
+        fat
+      }
+      steps
+      stepsCalories
+      workoutCalories
+      calorieBudget
       meals {
         id
         name
@@ -76,11 +88,12 @@ export const DAILY_STATS_QUERY = gql`
 `;
 
 export const MY_CHAT_HISTORY_QUERY = gql`
-  query MyChatHistory($limit: Int, $offset: Int) {
-    myChatHistory(limit: $limit, offset: $offset) {
+  query MyChatHistory($channel: ChatChannel, $limit: Int, $offset: Int) {
+    myChatHistory(channel: $channel, limit: $limit, offset: $offset) {
       id
       content
       role
+      channel
       timestamp
       context {
         relatedFoodItems
@@ -91,11 +104,12 @@ export const MY_CHAT_HISTORY_QUERY = gql`
 `;
 
 export const NEW_CHAT_MESSAGE_SUBSCRIPTION = gql`
-  subscription NewChatMessage($userId: ID!) {
-    newChatMessage(userId: $userId) {
+  subscription NewChatMessage($userId: ID!, $channel: ChatChannel) {
+    newChatMessage(userId: $userId, channel: $channel) {
       id
       content
       role
+      channel
       timestamp
       context {
         relatedFoodItems
@@ -129,6 +143,9 @@ export const WORKOUT_COACH_SUMMARY_QUERY = gql`
       calorieGoal
       proteinGoal
       caloriesBurned
+      steps
+      stepsCalories
+      calorieBudget
       netCalories
       remainingCalories
       remainingProtein
@@ -159,9 +176,38 @@ export const DASHBOARD_INSIGHT_QUERY = gql`
       summary
       tips
       caloriesBurned
+      steps
+      stepsCalories
+      calorieBudget
       netCalories
       remainingCalories
       remainingProtein
+    }
+  }
+`;
+
+export const DAILY_ACTIVITY_QUERY = gql`
+  query DailyActivity($date: String!) {
+    dailyActivity(date: $date) {
+      date
+      steps
+      estimatedCalories
+    }
+  }
+`;
+
+export const WEEKLY_EVO_REVIEW_QUERY = gql`
+  query WeeklyEvoReview($endDate: String) {
+    weeklyEvoReview(endDate: $endDate) {
+      startDate
+      endDate
+      trackedDays
+      isCompleteWeek
+      summary
+      highlights
+      nutritionScore
+      trainingScore
+      consistencyScore
     }
   }
 `;

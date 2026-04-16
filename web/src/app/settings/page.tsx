@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import {
-  ArrowLeft,
   Bell,
   ChartColumnIncreasing,
   Dumbbell,
@@ -17,6 +15,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
+import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ME_QUERY } from '@/lib/graphql/queries';
 import { UPDATE_PREFERENCES_MUTATION } from '@/lib/graphql/mutations';
 import { clearAuthToken } from '@/lib/auth-token';
@@ -27,6 +26,8 @@ export default function SettingsPage() {
   const router = useRouter();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [evoDockEnabled, setEvoDockEnabled] = useState(true);
+  const [coachingTone, setCoachingTone] = useState<'SUPPORTIVE' | 'DIRECT'>('SUPPORTIVE');
+  const [proactivityLevel, setProactivityLevel] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
 
   const { data, loading, error } = useQuery(ME_QUERY);
   const [updatePreferences, { loading: saving }] = useMutation(UPDATE_PREFERENCES_MUTATION, {
@@ -37,6 +38,8 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!data?.me?.preferences) return;
     setNotificationsEnabled(Boolean(data.me.preferences.notifications));
+    setCoachingTone(String(data.me.preferences.coachingTone || 'SUPPORTIVE').toUpperCase() as 'SUPPORTIVE' | 'DIRECT');
+    setProactivityLevel(String(data.me.preferences.proactivityLevel || 'MEDIUM').toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH');
   }, [data]);
 
   useEffect(() => {
@@ -58,6 +61,8 @@ export default function SettingsPage() {
         variables: {
           input: {
             notifications: notificationsEnabled,
+            coachingTone,
+            proactivityLevel,
           },
         },
       });
@@ -85,28 +90,28 @@ export default function SettingsPage() {
   return (
     <AppShell>
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <Link href="/dashboard" className="inline-flex items-center text-text-secondary hover:text-text-primary transition-colors">
-            <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
-            Back to dashboard
-          </Link>
-          <button
-            onClick={handleSaveSettings}
-            disabled={saving}
-            className="btn-primary inline-flex items-center justify-center gap-2"
-          >
-            {saving ? (
-              <>
-                <ButtonSpinner />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4" />
-                Save settings
-              </>
-            )}
-          </button>
+        <div>
+          <PageTopBar
+            rightContent={
+              <button
+                onClick={handleSaveSettings}
+                disabled={saving}
+                className="btn-primary inline-flex items-center justify-center gap-2"
+              >
+                {saving ? (
+                  <>
+                    <ButtonSpinner />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Save settings
+                  </>
+                )}
+              </button>
+            }
+          />
         </div>
 
         <section className="bg-surface rounded-xl border border-border p-5">
@@ -135,6 +140,54 @@ export default function SettingsPage() {
                   checked={evoDockEnabled}
                   onChange={setEvoDockEnabled}
                 />
+                <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                  <p className="text-sm font-semibold text-text-primary mb-1.5">Evo coaching tone</p>
+                  <p className="text-xs text-text-secondary mb-3">Choose how Evo speaks to you.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCoachingTone('SUPPORTIVE')}
+                      className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                        coachingTone === 'SUPPORTIVE'
+                          ? 'border-primary-500/40 bg-primary-500/10 text-text-primary'
+                          : 'border-border text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      Supportive
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCoachingTone('DIRECT')}
+                      className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                        coachingTone === 'DIRECT'
+                          ? 'border-primary-500/40 bg-primary-500/10 text-text-primary'
+                          : 'border-border text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      Direct
+                    </button>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                  <p className="text-sm font-semibold text-text-primary mb-1.5">Evo proactivity</p>
+                  <p className="text-xs text-text-secondary mb-3">How many proactive suggestions Evo should give.</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['LOW', 'MEDIUM', 'HIGH'] as const).map((level) => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setProactivityLevel(level)}
+                        className={`rounded-md border px-3 py-2 text-xs transition-colors ${
+                          proactivityLevel === level
+                            ? 'border-primary-500/40 bg-primary-500/10 text-text-primary'
+                            : 'border-border text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        {level.charAt(0) + level.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -142,7 +195,9 @@ export default function SettingsPage() {
               <h2 className="text-base font-semibold tracking-tight text-text-primary mb-4">Current plan snapshot</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <PlanPill label="Primary goal" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} />
-                <PlanPill label="Calories / day" value={`${user?.preferences?.dailyCalorieGoal || 0} kcal`} />
+                <PlanPill label="Coaching tone" value={formatCoachingTone(String(user?.preferences?.coachingTone || 'SUPPORTIVE'))} />
+                <PlanPill label="Proactivity" value={formatProactivity(String(user?.preferences?.proactivityLevel || 'MEDIUM'))} />
+                <PlanPill label="Resting calories (base)" value={`${user?.preferences?.dailyCalorieGoal || 0} kcal`} />
                 <PlanPill label="Protein / day" value={`${user?.preferences?.proteinGoal || 0} g`} />
                 <PlanPill label="Carbs / day" value={`${user?.preferences?.carbsGoal || 0} g`} />
                 <PlanPill label="Fat / day" value={`${user?.preferences?.fatGoal || 0} g`} />
@@ -167,10 +222,10 @@ export default function SettingsPage() {
                   description="Review nutrition progress by date."
                 />
                 <QuickLinkCard
-                  onClick={() => router.push('/chat')}
+                  onClick={() => router.push('/chat?channel=COACH')}
                   icon={<MessageSquareMore className="mb-2 h-5 w-5 text-success-500 stroke-[1.9]" />}
                   title="AI Coach"
-                  description="Chat and log meals with Evo."
+                  description="Open Evo general or coach conversation."
                 />
                 <QuickLinkCard
                   onClick={() => router.push('/workouts')}
@@ -306,4 +361,15 @@ function formatPrimaryGoal(value: string) {
     default:
       return 'Maintenance';
   }
+}
+
+function formatCoachingTone(value: string) {
+  return String(value || '').toUpperCase() === 'DIRECT' ? 'Direct' : 'Supportive';
+}
+
+function formatProactivity(value: string) {
+  const normalized = String(value || '').toUpperCase();
+  if (normalized === 'LOW') return 'Low';
+  if (normalized === 'HIGH') return 'High';
+  return 'Medium';
 }

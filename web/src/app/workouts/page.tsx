@@ -2,9 +2,9 @@
 
 import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
-import Link from 'next/link';
-import { ArrowLeft, Dumbbell, Flame, Timer, Trash2 } from 'lucide-react';
+import { Dumbbell, Flame, Timer, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
+import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, Skeleton } from '@/components/ui/loading';
 import { DELETE_WORKOUT_MUTATION, LOG_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
 import {
@@ -98,6 +98,9 @@ export default function WorkoutsPage() {
 
   const summary = summaryData?.workoutCoachSummary;
   const workouts = workoutsData?.myWorkouts || [];
+  const weeklyWorkoutsGoal = Number(meData?.me?.preferences?.weeklyWorkoutsGoal || 4);
+  const weeklyActiveMinutesGoal = Number(meData?.me?.preferences?.weeklyActiveMinutesGoal || 180);
+  const minutesToday = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
 
   const handleDeleteWorkout = async (workoutId: string) => {
     const confirmed = window.confirm('Delete this workout entry?');
@@ -114,12 +117,12 @@ export default function WorkoutsPage() {
   return (
     <AppShell>
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <Link href="/dashboard" className="inline-flex items-center text-text-secondary hover:text-text-primary transition-colors">
-            <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
-            Back to dashboard
-          </Link>
-          <h1 className="text-lg font-semibold tracking-tight text-text-primary">Workout Coach</h1>
+        <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">Workout Coach</h1>} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <MetricCard icon={<Dumbbell className="h-4 w-4" />} label="Sessions today" value={`${workouts.length}`} />
+          <MetricCard icon={<Timer className="h-4 w-4" />} label="Minutes today" value={`${minutesToday} min`} />
+          <MetricCard icon={<Flame className="h-4 w-4" />} label="Weekly sessions goal" value={`${weeklyWorkoutsGoal}`} />
+          <MetricCard icon={<Flame className="h-4 w-4" />} label="Weekly minutes goal" value={`${weeklyActiveMinutesGoal} min`} />
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
@@ -146,6 +149,23 @@ export default function WorkoutsPage() {
                   className="input-field w-full"
                   placeholder="e.g. Upper body strength + core"
                 />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  'Upper body strength',
+                  'Lower body strength',
+                  'HIIT cardio',
+                  'Recovery walk',
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setTitle(preset)}
+                    className="rounded-full border border-border bg-surface-elevated px-2.5 py-1 text-xs text-text-secondary hover:text-text-primary"
+                  >
+                    {preset}
+                  </button>
+                ))}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
 import { ImagePlus, MessageCircle, Minus, Send, X } from 'lucide-react';
+import Link from 'next/link';
 import AICoachAvatar from '@/components/AICoachAvatar';
+import ChatMarkdown from '@/components/ChatMarkdown';
 import { ButtonSpinner } from '@/components/ui/loading';
 import {
   ME_QUERY,
@@ -20,6 +22,9 @@ import { appToast } from '@/lib/app-toast';
 type DockTab = 'chat' | 'meal' | 'workout';
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
+type ChatChannel = 'GENERAL' | 'COACH';
+type ChatRole = 'USER' | 'ASSISTANT';
+type ChatMessage = { id: string; role: ChatRole; content: string; channel: ChatChannel };
 
 const mealOptions: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -28,6 +33,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DockTab>('chat');
   const [messageInput, setMessageInput] = useState('');
+  const [chatChannel, setChatChannel] = useState<ChatChannel>('GENERAL');
   const [unreadCount, setUnreadCount] = useState(0);
 
   const [mealType, setMealType] = useState<MealType>('lunch');
@@ -43,18 +49,18 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const { data: historyData, loading: historyLoading, refetch } = useQuery(MY_CHAT_HISTORY_QUERY, {
-    variables: { limit: 20, offset: 0 },
+    variables: { channel: chatChannel, limit: 20, offset: 0 },
     fetchPolicy: 'cache-and-network',
     pollInterval: 8000,
     skip: hidden,
   });
-  const messages = historyData?.myChatHistory || [];
+  const messages: ChatMessage[] = historyData?.myChatHistory || [];
 
   useSubscription(NEW_CHAT_MESSAGE_SUBSCRIPTION, {
-    variables: { userId: meData?.me?.id },
+    variables: { userId: meData?.me?.id, channel: chatChannel },
     skip: !meData?.me?.id || hidden,
     onData: () => {
-      refetch({ limit: 20, offset: 0 });
+      refetch({ channel: chatChannel, limit: 20, offset: 0 });
       if (!isOpen) setUnreadCount((prev) => prev + 1);
     },
   });
@@ -63,35 +69,39 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
     onError: (error) => {
       appToast.error('Message failed', error.message || 'Could not send message.');
     },
-    onCompleted: () => {
+    onCompleted: async () => {
       setMessageInput('');
-      refetch({ limit: 20, offset: 0 });
+      await refetch({ channel: chatChannel, limit: 20, offset: 0 });
     },
+    awaitRefetchQueries: true,
   });
 
   const [logMealWithAI, { loading: loggingMeal }] = useMutation(LOG_MEAL_WITH_AI_MUTATION, {
     onError: (error) => {
       appToast.error('Meal save failed', error.message || 'Could not add meal.');
     },
-    onCompleted: () => {
+    onCompleted: async () => {
       setMealDescription('');
       setMealImageBase64('');
       setMealImageMimeType('image/jpeg');
       setActiveTab('chat');
       appToast.success('Meal added', 'Evo logged your meal to today.');
-      refetch({ limit: 20, offset: 0 });
+      await refetch({ channel: chatChannel, limit: 20, offset: 0 });
     },
+    awaitRefetchQueries: true,
   });
 
   const [logWorkout, { loading: loggingWorkout }] = useMutation(LOG_WORKOUT_MUTATION, {
     onError: (error) => {
       appToast.error('Workout save failed', error.message || 'Could not add workout.');
     },
-    onCompleted: () => {
+    onCompleted: async () => {
       setWorkoutTitle('');
       setActiveTab('chat');
       appToast.success('Workout added', 'Evo logged your training session.');
+      await refetch({ channel: chatChannel, limit: 20, offset: 0 });
     },
+    awaitRefetchQueries: true,
   });
 
   useEffect(() => {
@@ -119,9 +129,8 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
       variables: {
         input: {
           content,
-          context: {
-            statsReference: today,
-          },
+          channel: chatChannel,
+          context: chatChannel === 'COACH' ? { statsReference: today } : undefined,
         },
       },
     });
@@ -169,6 +178,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
         },
       },
     });
+    await refetch({ channel: chatChannel, limit: 20, offset: 0 });
   };
 
   const handleWorkoutSubmit = async (event: React.FormEvent) => {
@@ -189,6 +199,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
         },
       },
     });
+    await refetch({ channel: chatChannel, limit: 20, offset: 0 });
   };
 
   return (
@@ -231,11 +242,15 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
           {activeTab === 'chat' ? (
             <div className="p-3 space-y-3">
+              <div className="inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
+                <TabButton active={chatChannel === 'GENERAL'} onClick={() => setChatChannel('GENERAL')} label="General" />
+                <TabButton active={chatChannel === 'COACH'} onClick={() => setChatChannel('COACH')} label="Coach" />
+              </div>
               <div ref={chatScrollRef} className="h-72 overflow-y-auto space-y-2 pr-1">
                 {historyLoading ? (
                   <p className="text-sm text-text-secondary">Loading conversation...</p>
                 ) : messages.length > 0 ? (
-                  messages.map((message: any) => {
+                  messages.map((message) => {
                     const isUser = message.role === 'USER';
                     return (
                       <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -245,7 +260,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                           }`}
                         >
                           <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-1">{isUser ? 'You' : 'Evo'}</p>
-                          <p className="text-sm text-text-primary whitespace-pre-wrap">{message.content}</p>
+                          <ChatMarkdown content={message.content} />
                         </div>
                       </div>
                     );
@@ -260,12 +275,29 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                   value={messageInput}
                   onChange={(event) => setMessageInput(event.target.value)}
                   className="input-field w-full"
-                  placeholder="Ask Evo about your day..."
+                  placeholder={chatChannel === 'COACH' ? 'Ask Evo about today goals...' : 'Ask Evo anything...'}
                 />
                 <button type="submit" disabled={sendingMessage} className="btn-primary inline-flex h-10 w-10 items-center justify-center px-0">
                   {sendingMessage ? <ButtonSpinner /> : <Send className="h-4 w-4" />}
                 </button>
               </form>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Link
+                  href={`/chat?channel=${chatChannel}`}
+                  onClick={() => setIsOpen(false)}
+                  className="inline-flex items-center justify-center rounded-md border border-primary-500/30 bg-primary-500/10 px-2.5 py-2 text-xs font-medium text-text-primary hover:bg-primary-500/15 transition-colors"
+                >
+                  Open full chat
+                </Link>
+                <Link
+                  href="/meals"
+                  onClick={() => setIsOpen(false)}
+                  className="inline-flex items-center justify-center rounded-md border border-border bg-surface-elevated px-2.5 py-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  Open meal log view
+                </Link>
+              </div>
             </div>
           ) : null}
 

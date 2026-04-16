@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useMutation, useQuery } from '@apollo/client';
 import {
+  DAILY_ACTIVITY_QUERY,
   DAILY_STATS_QUERY,
   DASHBOARD_INSIGHT_QUERY,
   ME_QUERY,
   MY_WORKOUTS_QUERY,
+  WEEKLY_EVO_REVIEW_QUERY,
 } from '@/lib/graphql/queries';
 import { Camera, ChartColumnIncreasing, Dumbbell, Plus, Quote, Target, Trash2 } from 'lucide-react';
 import { clearAuthToken, hasAuthToken } from '@/lib/auth-token';
@@ -24,6 +26,7 @@ import {
 import {
   DELETE_FOOD_ITEM_MUTATION,
   LOG_WORKOUT_MUTATION,
+  UPSERT_DAILY_ACTIVITY_MUTATION,
 } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
 
@@ -39,6 +42,7 @@ export default function DashboardPage() {
   const [quickWorkoutDuration, setQuickWorkoutDuration] = useState(35);
   const [quickWorkoutBurned, setQuickWorkoutBurned] = useState(250);
   const [quickWorkoutIntensity, setQuickWorkoutIntensity] = useState<WorkoutIntensity>('MEDIUM');
+  const [quickSteps, setQuickSteps] = useState(6000);
 
   const { data: userData, loading: userLoading, error: userError } = useQuery(ME_QUERY);
   const { data: statsData, loading: statsLoading } = useQuery(DAILY_STATS_QUERY, {
@@ -51,6 +55,14 @@ export default function DashboardPage() {
   });
   const { data: insightData, loading: insightLoading } = useQuery(DASHBOARD_INSIGHT_QUERY, {
     variables: { date: today },
+    skip: !userData?.me,
+  });
+  const { data: activityData } = useQuery(DAILY_ACTIVITY_QUERY, {
+    variables: { date: today },
+    skip: !userData?.me,
+  });
+  const { data: weeklyReviewData, loading: weeklyReviewLoading } = useQuery(WEEKLY_EVO_REVIEW_QUERY, {
+    variables: { endDate: today },
     skip: !userData?.me,
   });
 
@@ -75,6 +87,20 @@ export default function DashboardPage() {
       { query: MY_WORKOUTS_QUERY, variables: { date: today, limit: 4, offset: 0 } },
       { query: DASHBOARD_INSIGHT_QUERY, variables: { date: today } },
       { query: DAILY_STATS_QUERY, variables: { date: today } },
+      { query: DAILY_ACTIVITY_QUERY, variables: { date: today } },
+    ],
+  });
+  const [upsertDailyActivity, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
+    onCompleted: () => {
+      appToast.success('Activity updated', 'Steps were saved for daily tracking.');
+    },
+    onError: (error) => {
+      appToast.error('Save failed', error.message || 'Could not update daily activity.');
+    },
+    refetchQueries: [
+      { query: DAILY_ACTIVITY_QUERY, variables: { date: today } },
+      { query: DASHBOARD_INSIGHT_QUERY, variables: { date: today } },
+      { query: DAILY_STATS_QUERY, variables: { date: today } },
     ],
   });
 
@@ -94,6 +120,13 @@ export default function DashboardPage() {
     }
   }, [userError, router]);
 
+  useEffect(() => {
+    const steps = activityData?.dailyActivity?.steps;
+    if (steps !== undefined && steps !== null) {
+      setQuickSteps(Number(steps));
+    }
+  }, [activityData?.dailyActivity?.steps]);
+
   if (!mounted || userLoading) {
     return <PageLoader />;
   }
@@ -102,6 +135,8 @@ export default function DashboardPage() {
   const stats = statsData?.dailyStats;
   const workouts = workoutsData?.myWorkouts || [];
   const insight = insightData?.dashboardInsight;
+  const activity = activityData?.dailyActivity;
+  const weeklyReview = weeklyReviewData?.weeklyEvoReview;
   const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
   const completedMeals = stats?.meals?.length || 0;
   const totalTrainingMinutes = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
@@ -165,6 +200,23 @@ export default function DashboardPage() {
     });
   };
 
+  const handleQuickSteps = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!Number.isFinite(quickSteps) || quickSteps < 0 || quickSteps > 120000) {
+      appToast.info('Invalid steps', 'Steps must be between 0 and 120000.');
+      return;
+    }
+
+    await upsertDailyActivity({
+      variables: {
+        input: {
+          date: today,
+          steps: Math.round(quickSteps),
+        },
+      },
+    });
+  };
+
   return (
     <AppShell>
       <div className="space-y-5">
@@ -215,13 +267,13 @@ export default function DashboardPage() {
                 </div>
               </blockquote>
 
-              <div className="grid grid-cols-2 lg:grid-cols-6 gap-2.5">
-                <SummaryPill label="Goal mode" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} />
-                <SummaryPill label="Meals today" value={String(completedMeals)} />
-                <SummaryPill label="Training today" value={dailyTrainingLabel} />
-                <SummaryPill label="Net kcal" value={`${insight.netCalories.toFixed(0)}`} />
-                <SummaryPill label="Kcal left" value={`${insight.remainingCalories.toFixed(0)}`} />
-                <SummaryPill label="Protein left" value={`${Math.max(0, insight.remainingProtein).toFixed(0)} g`} />
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                <EmojiMetric emoji="🎯" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} tooltip="Goal mode" />
+                <EmojiMetric emoji="🍽️" value={String(completedMeals)} tooltip="Meals today" />
+                <EmojiMetric emoji="🏋️" value={`${workouts.length}`} tooltip={`Training today (${dailyTrainingLabel})`} />
+                <EmojiMetric emoji="⚖️" value={`${insight.netCalories.toFixed(0)}`} tooltip="Net calories (food - workouts)" />
+                <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)}`} tooltip="Calories left for today" />
+                <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)}g`} tooltip="Protein left for today" />
               </div>
 
               <div className="rounded-lg border border-border bg-surface-elevated p-3">
@@ -242,6 +294,47 @@ export default function DashboardPage() {
             <p className="text-sm text-text-secondary">No coach summary yet.</p>
           )}
         </motion.section>
+
+        <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold tracking-tight text-text-primary">Weekly Evo review</h3>
+            <span className="text-xs text-text-secondary">Last 7 days</span>
+          </div>
+          {weeklyReviewLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-12 w-full rounded-lg" />
+              <Skeleton className="h-10 w-full rounded-lg" />
+            </div>
+          ) : weeklyReview ? (
+            !weeklyReview.isCompleteWeek ? (
+              <div className="rounded-lg border border-dashed border-border bg-surface-elevated p-3.5">
+                <p className="text-sm text-text-primary font-medium mb-1">Evo is collecting weekly data</p>
+                <p className="text-sm text-text-secondary">
+                  Data has been collected for <span className="font-semibold text-text-primary">{weeklyReview.trackedDays}/7</span> days.
+                  Once the full week is complete, you will see the full weekly review with scores and recommendations.
+                </p>
+              </div>
+            ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-text-secondary">{weeklyReview.summary}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <ScorePill label="Nutrition" score={weeklyReview.nutritionScore} />
+                <ScorePill label="Training" score={weeklyReview.trainingScore} />
+                <ScorePill label="Consistency" score={weeklyReview.consistencyScore} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                {weeklyReview.highlights.map((highlight: string) => (
+                  <div key={highlight} className="rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm text-text-secondary">
+                    {highlight}
+                  </div>
+                ))}
+              </div>
+            </div>
+            )
+          ) : (
+            <p className="text-sm text-text-secondary">Weekly review will appear after more logs.</p>
+          )}
+        </section>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-8 space-y-4">
@@ -268,7 +361,7 @@ export default function DashboardPage() {
                     <StatCard
                       title="Calories"
                       value={stats?.totalCalories?.toFixed(0) || '0'}
-                      goal={user?.preferences?.dailyCalorieGoal || 2000}
+                      goal={stats?.dynamicGoals?.calories || user?.preferences?.dailyCalorieGoal || 2000}
                       progress={goalProgress.calories}
                       unit="kcal"
                       tone="brand"
@@ -276,7 +369,7 @@ export default function DashboardPage() {
                     <StatCard
                       title="Protein"
                       value={stats?.totalProtein?.toFixed(1) || '0'}
-                      goal={user?.preferences?.proteinGoal || undefined}
+                      goal={stats?.dynamicGoals?.protein || user?.preferences?.proteinGoal || undefined}
                       progress={goalProgress.protein}
                       unit="g"
                       tone="info"
@@ -284,7 +377,7 @@ export default function DashboardPage() {
                     <StatCard
                       title="Carbs"
                       value={stats?.totalCarbs?.toFixed(1) || '0'}
-                      goal={user?.preferences?.carbsGoal || undefined}
+                      goal={stats?.dynamicGoals?.carbs || user?.preferences?.carbsGoal || undefined}
                       progress={goalProgress.carbs}
                       unit="g"
                       tone="success"
@@ -292,7 +385,7 @@ export default function DashboardPage() {
                     <StatCard
                       title="Fat"
                       value={stats?.totalFat?.toFixed(1) || '0'}
-                      goal={user?.preferences?.fatGoal || undefined}
+                      goal={stats?.dynamicGoals?.fat || user?.preferences?.fatGoal || undefined}
                       progress={goalProgress.fat}
                       unit="g"
                       tone="brandSoft"
@@ -309,9 +402,9 @@ export default function DashboardPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <ActionCard
                   icon={<Camera />}
-                  title="Log Meal"
+                  title="Meals"
                   description="Describe meal or add photo"
-                  onClick={() => router.push('/chat')}
+                  onClick={() => router.push('/meals')}
                   tone="brand"
                 />
                 <ActionCard
@@ -334,8 +427,8 @@ export default function DashboardPage() {
             <div className="bg-surface rounded-xl border border-border p-4 md:p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-base font-semibold tracking-tight text-text-primary">Today meals</h3>
-                <button onClick={() => router.push('/chat')} className="text-info-400 hover:text-info-300 text-sm transition-colors">
-                  Open Log Meal
+                <button onClick={() => router.push('/meals')} className="text-info-400 hover:text-info-300 text-sm transition-colors">
+                  Open Meals
                 </button>
               </div>
               {statsLoading ? (
@@ -377,7 +470,7 @@ export default function DashboardPage() {
                 <div className="text-center py-10">
                   <Camera className="h-12 w-12 text-text-muted mx-auto mb-3" />
                   <p className="text-text-secondary mb-4">No meals logged today</p>
-                  <button onClick={() => router.push('/chat')} className="btn-primary inline-flex items-center space-x-2 px-4">
+                  <button onClick={() => router.push('/meals')} className="btn-primary inline-flex items-center space-x-2 px-4">
                     <Camera className="h-4 w-4" />
                     <span>Log first meal</span>
                   </button>
@@ -439,6 +532,34 @@ export default function DashboardPage() {
                       <Plus className="h-4 w-4" />
                       Add workout
                     </>
+                  )}
+                </button>
+              </form>
+            </section>
+
+            <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
+              <div className="flex items-center justify-between mb-3.5">
+                <h3 className="text-base font-semibold tracking-tight text-text-primary">Daily steps</h3>
+                <span className="text-xs text-text-secondary">Tracked only</span>
+              </div>
+              <form onSubmit={handleQuickSteps} className="space-y-3">
+                <input
+                  type="number"
+                  min={0}
+                  max={120000}
+                  value={quickSteps}
+                  onChange={(event) => setQuickSteps(Number(event.target.value))}
+                  className="input-field w-full"
+                  placeholder="Steps today"
+                />
+                <button type="submit" disabled={savingSteps} className="btn-secondary w-full inline-flex items-center justify-center gap-2">
+                  {savingSteps ? (
+                    <>
+                      <ButtonSpinner />
+                      Saving steps...
+                    </>
+                  ) : (
+                    'Save steps'
                   )}
                 </button>
               </form>
@@ -575,11 +696,25 @@ function ActionCard({
   );
 }
 
-function SummaryPill({ label, value }: { label: string; value: string }) {
+function EmojiMetric({ emoji, value, tooltip }: { emoji: string; value: string; tooltip: string }) {
   return (
-    <div className="rounded-lg border border-border bg-surface-elevated px-3 py-2">
+    <div
+      className="relative cursor-help rounded-lg border border-border bg-surface-elevated px-2.5 py-2 text-center after:absolute after:right-1.5 after:top-1 after:text-[10px] after:text-text-muted after:content-['?'] after:opacity-0 after:transition-opacity hover:after:opacity-100"
+      title={tooltip}
+      aria-label={tooltip}
+    >
+      <p className="text-sm">{emoji}</p>
+      <p className="text-xs font-semibold text-text-primary truncate mt-1">{value}</p>
+    </div>
+  );
+}
+
+function ScorePill({ label, score }: { label: string; score: number }) {
+  const tone = score >= 75 ? 'text-success-400' : score >= 55 ? 'text-info-400' : 'text-amber-300';
+  return (
+    <div className="rounded-lg border border-border bg-surface-elevated px-3 py-2.5">
       <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted">{label}</p>
-      <p className="text-sm font-semibold text-text-primary mt-1">{value}</p>
+      <p className={`text-lg font-semibold mt-1 ${tone}`}>{score}/100</p>
     </div>
   );
 }

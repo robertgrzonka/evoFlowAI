@@ -1,5 +1,39 @@
 import OpenAI from 'openai';
 import { AnalyzeImageResponse, MealType } from '@evoflowai/shared';
+import {
+  composeEvoSystemPrompt,
+  detectEvoResponseMode,
+  EvoChatMessage,
+  EvoUserContext,
+  resolveToneAndProactivity,
+} from '../ai/evo';
+
+type FoodAnalysisJson = {
+  foodName: string;
+  description: string;
+  confidence: number;
+  nutrition: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    fiber: number;
+    sugar: number;
+    sodium: number;
+  };
+  suggestions?: string[];
+};
+
+type GoalSuggestionJson = {
+  dailyCalorieGoal: number;
+  activityLevel: string;
+  message: string;
+};
+
+type DashboardInsightJson = {
+  summary: string;
+  tips: unknown[];
+};
 
 export class OpenAIService {
   private openai: OpenAI | null = null;
@@ -25,7 +59,10 @@ export class OpenAIService {
     }
   }
 
-  private createCompletionOptions(messages: any[], maxOutputTokens: number): any {
+  private createCompletionOptions(
+    messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    maxOutputTokens: number
+  ): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
     const isGpt5Family = this.model.startsWith('gpt-5');
 
     if (isGpt5Family) {
@@ -33,7 +70,7 @@ export class OpenAIService {
         model: this.model,
         messages,
         max_completion_tokens: maxOutputTokens,
-      };
+      } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
     }
 
     return {
@@ -41,7 +78,7 @@ export class OpenAIService {
       messages,
       max_tokens: maxOutputTokens,
       temperature: this.temperature,
-    };
+    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
   }
 
   async analyzeFood(
@@ -78,7 +115,7 @@ export class OpenAIService {
         throw new Error('No response from OpenAI');
       }
 
-      const analysis = this.parseJsonResponse(content);
+      const analysis = this.parseJsonResponse<FoodAnalysisJson>(content);
       
       return {
         nutrition: {
@@ -144,7 +181,7 @@ export class OpenAIService {
         throw new Error('No response from OpenAI');
       }
 
-      const analysis = this.parseJsonResponse(content);
+      const analysis = this.parseJsonResponse<FoodAnalysisJson>(content);
 
       return {
         nutrition: {
@@ -167,7 +204,10 @@ export class OpenAIService {
     }
   }
 
-  async generateNutritionAdvice(userStats: any, context?: string): Promise<string> {
+  async generateNutritionAdvice(
+    userStats: { dailyCalories: number; protein: number; carbs: number; fat: number; goal: number },
+    context?: string
+  ): Promise<string> {
     this.ensureInitialized();
     
     try {
@@ -216,23 +256,38 @@ export class OpenAIService {
     this.ensureInitialized();
 
     try {
+      const systemPrompt = composeEvoSystemPrompt({
+        mode: 'analysis',
+        tone: 'supportive',
+        proactivity: 'medium',
+        channel: 'summary',
+        includeHumor: false,
+        userContext: {
+          dailyCalorieGoal: userContext.dailyCalorieGoal,
+          activityLevel: userContext.activityLevel,
+        },
+      });
       const aiPrompt = `
-        You are a friendly nutrition coach. Propose updated user goals based on request.
+Current dailyCalorieGoal: ${userContext.dailyCalorieGoal || 2000}
+Current activityLevel: ${userContext.activityLevel || 'moderate'}
+User request: ${prompt}
 
-        Current dailyCalorieGoal: ${userContext.dailyCalorieGoal || 2000}
-        Current activityLevel: ${userContext.activityLevel || 'moderate'}
-        User request: ${prompt}
-
-        Return ONLY valid JSON:
-        {
-          "dailyCalorieGoal": number between 800 and 5000,
-          "activityLevel": one of ["sedentary","light","moderate","active","very_active"],
-          "message": "short friendly explanation in the user's language"
-        }
-      `;
+Return ONLY valid JSON:
+{
+  "dailyCalorieGoal": number between 800 and 5000,
+  "activityLevel": one of ["sedentary","light","moderate","active","very_active"],
+  "message": "short explanation in the user's language with one practical reason"
+}
+      `.trim();
 
       const response = await this.openai!.chat.completions.create(
-        this.createCompletionOptions([{ role: 'user', content: aiPrompt }], 300)
+        this.createCompletionOptions(
+          [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: aiPrompt },
+          ],
+          300
+        )
       );
 
       const content = response.choices[0]?.message?.content;
@@ -240,7 +295,7 @@ export class OpenAIService {
         throw new Error('No response from OpenAI');
       }
 
-      const parsed = this.parseJsonResponse(content);
+      const parsed = this.parseJsonResponse<GoalSuggestionJson>(content);
       const rawGoal = Number(parsed.dailyCalorieGoal);
       const normalizedGoal = Number.isFinite(rawGoal) ? Math.round(rawGoal) : 2000;
       const clampedGoal = Math.max(800, Math.min(5000, normalizedGoal));
@@ -262,41 +317,28 @@ export class OpenAIService {
     }
   }
 
-  async chat(messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, userContext?: any): Promise<string> {
+  async chat(messages: EvoChatMessage[], userContext?: EvoUserContext): Promise<string> {
     this.ensureInitialized();
     
     try {
-      // Add system message with nutrition context if available
+      const mode = detectEvoResponseMode(messages, 'coach');
+      const { tone, proactivity } = resolveToneAndProactivity(userContext);
+      const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content;
       const systemMessage = {
         role: 'system' as const,
-        content: `You are evoFlowAI, an expert nutrition assistant with the tone of a kind personal trainer and dietitian.
-        You help users track meals, understand their habits, and improve health step by step.
-        Your tone is warm, practical, motivating, and never judgmental.
-        Use short, actionable advice and celebrate small wins.
-        Prefer the user's language when possible.
-        
-        ${userContext ? `
-        User Context:
-        - Primary goal: ${userContext.primaryGoal || 'maintenance'}
-        - Daily calorie goal: ${userContext.dailyCalorieGoal || 'Not set'}
-        - Macro goals: protein ${userContext.proteinGoal || 'n/a'}g, carbs ${userContext.carbsGoal || 'n/a'}g, fat ${userContext.fatGoal || 'n/a'}g
-        - Weekly training goals: ${userContext.weeklyWorkoutsGoal || 'n/a'} workouts, ${userContext.weeklyActiveMinutesGoal || 'n/a'} active minutes
-        - Activity level: ${userContext.activityLevel || 'Unknown'}
-        - Dietary restrictions: ${userContext.dietaryRestrictions?.join(', ') || 'None'}
-        ${userContext.todayStats ? `
-        - Today's intake: ${userContext.todayStats.calories} kcal (${userContext.todayStats.protein}g protein, ${userContext.todayStats.carbs}g carbs, ${userContext.todayStats.fat}g fat)
-        ` : ''}
-        ${userContext.todayWorkouts ? `
-        - Today's workouts: ${userContext.todayWorkouts.sessions} sessions, ${userContext.todayWorkouts.minutes} minutes, ${userContext.todayWorkouts.caloriesBurned} kcal burned
-        ` : ''}
-        ` : ''}
-        
-        Keep responses concise (2-3 short paragraphs max) unless the user asks for detailed information.
-        Every answer should include at least one concrete next step.`
+        content: composeEvoSystemPrompt({
+          mode,
+          tone,
+          proactivity,
+          userContext,
+          includeHumor: true,
+          latestUserMessage,
+          channel: 'chat',
+        }),
       };
 
       const response = await this.openai!.chat.completions.create(
-        this.createCompletionOptions([systemMessage, ...messages], 500)
+        this.createCompletionOptions([systemMessage, ...messages], 900)
       );
 
       const content = response.choices[0]?.message?.content;
@@ -317,6 +359,8 @@ export class OpenAIService {
     calorieGoal: number;
     proteinGoal: number;
     primaryGoal?: string;
+    coachingTone?: string;
+    proactivityLevel?: string;
     consumedCalories: number;
     consumedProtein: number;
     caloriesBurned: number;
@@ -325,39 +369,70 @@ export class OpenAIService {
   }): Promise<{ summary: string; tips: string[] }> {
     this.ensureInitialized();
 
+    const { tone, proactivity } = resolveToneAndProactivity({
+      coachingTone: input.coachingTone,
+      proactivityLevel: input.proactivityLevel,
+    });
+    const systemPrompt = composeEvoSystemPrompt({
+      mode: 'insight',
+      tone,
+      proactivity,
+      includeHumor: true,
+      channel: 'insight',
+      userContext: {
+        primaryGoal: input.primaryGoal,
+        dailyCalorieGoal: input.calorieGoal,
+        proteinGoal: input.proteinGoal,
+        todayStats: {
+          calories: input.consumedCalories,
+          protein: input.consumedProtein,
+          carbs: 0,
+          fat: 0,
+        },
+        todayActivity: {
+          steps: 0,
+          stepsCalories: 0,
+          calorieBudget: input.calorieGoal,
+        },
+      },
+    });
     const prompt = `
-      You are evoFlowAI, a supportive nutrition and training coach.
-      Build short dashboard insights for one day.
+Day: ${input.date}
+Primary goal: ${input.primaryGoal || 'maintenance'}
+Calorie goal: ${input.calorieGoal}
+Protein goal: ${input.proteinGoal}g
+Consumed calories: ${input.consumedCalories}
+Consumed protein: ${input.consumedProtein}g
+Burned calories (training only): ${input.caloriesBurned}
+Tracked steps are informational only and must not be counted as burned calories.
+Remaining calories (budget - consumed): ${input.remainingCalories}
+Remaining protein: ${input.remainingProtein}g
 
-      Day: ${input.date}
-      Primary goal: ${input.primaryGoal || 'maintenance'}
-      Calorie goal: ${input.calorieGoal}
-      Protein goal: ${input.proteinGoal}g
-      Consumed calories: ${input.consumedCalories}
-      Consumed protein: ${input.consumedProtein}g
-      Burned calories (training): ${input.caloriesBurned}
-      Remaining calories (net): ${input.remainingCalories}
-      Remaining protein: ${input.remainingProtein}g
+Return JSON only:
+{
+  "summary": "max 2 concise sentences",
+  "tips": ["nutrition tip", "training tip", "recovery tip"]
+}
 
-      Return JSON only:
-      {
-        "summary": "1 short motivating paragraph, max 2 sentences",
-        "tips": ["nutrition tip", "training tip", "recovery tip"]
-      }
-
-      Rules:
-      - return exactly 3 tips
-      - tip[0] must be nutrition focused
-      - tip[1] must be training focused
-      - tip[2] must be recovery focused
-      - each tip max 1 sentence
-      - practical next steps, no generic fluff
-      - mention protein and recovery when relevant
-      - sometimes add one relevant emoji (not always), max one emoji per sentence
-    `;
+Rules:
+- return exactly 3 tips
+- tip[0] must be nutrition focused
+- tip[1] must be training focused
+- tip[2] must be recovery focused
+- each tip max 1 sentence
+- practical next steps, no generic fluff
+- mention protein and recovery when relevant
+- optional subtle emoji, max one emoji per sentence
+    `.trim();
 
     const response = await this.openai!.chat.completions.create(
-      this.createCompletionOptions([{ role: 'user', content: prompt }], 350)
+      this.createCompletionOptions(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+        350
+      )
     );
 
     const content = response.choices[0]?.message?.content;
@@ -365,7 +440,7 @@ export class OpenAIService {
       throw new Error('No response from OpenAI');
     }
 
-    const parsed = this.parseJsonResponse(content);
+    const parsed = this.parseJsonResponse<DashboardInsightJson>(content);
     const summary = String(parsed.summary || '').trim();
     const rawTips = Array.isArray(parsed.tips) ? parsed.tips : [];
     const tips = rawTips.map((tip: unknown) => String(tip || '').trim()).filter(Boolean).slice(0, 3);
@@ -422,13 +497,13 @@ export class OpenAIService {
     `;
   }
 
-  private parseJsonResponse(content: string): any {
+  private parseJsonResponse<T>(content: string): T {
     const cleaned = content
       .replace(/```json/gi, '')
       .replace(/```/g, '')
       .trim();
 
-    return JSON.parse(cleaned);
+    return JSON.parse(cleaned) as T;
   }
 
   private shouldUseDashboardEmoji(date: string): boolean {
