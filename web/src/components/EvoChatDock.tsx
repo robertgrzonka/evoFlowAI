@@ -127,7 +127,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
       container.scrollTop = container.scrollHeight;
     });
     return () => cancelAnimationFrame(frame);
-  }, [isOpen, activeTab, messages.length]);
+  }, [isOpen, activeTab, chatChannel, historyLoading, messages.length]);
 
   if (hidden) return null;
   const insightSignalsCount =

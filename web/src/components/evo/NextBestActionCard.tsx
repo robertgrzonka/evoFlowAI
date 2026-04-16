@@ -18,7 +18,7 @@ export default function NextBestActionCard({
       <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1">One smart next step</p>
       <p className="text-sm font-semibold text-text-primary">{title}</p>
       <p className="text-sm text-text-secondary mt-1">{description}</p>
-      <button type="button" onClick={onAction} className="btn-primary mt-3 w-full">
+      <button type="button" onClick={onAction} className="btn-primary mt-3 h-9 px-4 text-sm inline-flex items-center">
         {actionLabel}
       </button>
     </div>

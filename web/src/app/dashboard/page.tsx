@@ -366,11 +366,11 @@ export default function DashboardPage() {
               >
                 <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
                   <EmojiMetric emoji="🎯" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} tooltip="Goal mode" />
-                  <EmojiMetric emoji="🍽️" value={String(completedMeals)} tooltip="Meals today" />
-                  <EmojiMetric emoji="🏋️" value={`${daySnapshot.derived.workoutCount}`} tooltip={`Training today (${dailyTrainingLabel})`} />
-                  <EmojiMetric emoji="⚖️" value={`${insight.netCalories.toFixed(0)}`} tooltip="Net calories (food - workouts)" />
-                  <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)}`} tooltip="Calories left for today" />
-                  <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)}g`} tooltip="Protein left for today" />
+                  <EmojiMetric emoji="🍽️" value={`${completedMeals} meals`} tooltip="Meals today" />
+                  <EmojiMetric emoji="🏋️" value={`${daySnapshot.derived.workoutCount} • ${totalTrainingMinutes} min`} tooltip={`Training today (${dailyTrainingLabel})`} />
+                  <EmojiMetric emoji="⚖️" value={`${insight.netCalories.toFixed(0)} kcal`} tooltip="Net calories (food - workouts)" />
+                  <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)} kcal`} tooltip="Calories left for today" />
+                  <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)} g`} tooltip="Protein left for today" />
                 </div>
               </HeroInsightCard>
 
@@ -462,6 +462,12 @@ export default function DashboardPage() {
                       progress={goalProgress.calories}
                       unit="kcal"
                       tone="brand"
+                      hoverHint={buildGoalHoverHint({
+                        title: 'Calories',
+                        value: Number(stats?.totalCalories || 0),
+                        goal: Number(stats?.dynamicGoals?.calories || user?.preferences?.dailyCalorieGoal || 2000),
+                        unit: 'kcal',
+                      })}
                     />
                     <StatCard
                       title="Protein"
@@ -470,6 +476,12 @@ export default function DashboardPage() {
                       progress={goalProgress.protein}
                       unit="g"
                       tone="info"
+                      hoverHint={buildGoalHoverHint({
+                        title: 'Protein',
+                        value: Number(stats?.totalProtein || 0),
+                        goal: Number(stats?.dynamicGoals?.protein || user?.preferences?.proteinGoal || 0),
+                        unit: 'g',
+                      })}
                     />
                     <StatCard
                       title="Carbs"
@@ -478,6 +490,12 @@ export default function DashboardPage() {
                       progress={goalProgress.carbs}
                       unit="g"
                       tone="success"
+                      hoverHint={buildGoalHoverHint({
+                        title: 'Carbs',
+                        value: Number(stats?.totalCarbs || 0),
+                        goal: Number(stats?.dynamicGoals?.carbs || user?.preferences?.carbsGoal || 0),
+                        unit: 'g',
+                      })}
                     />
                     <StatCard
                       title="Fat"
@@ -486,6 +504,12 @@ export default function DashboardPage() {
                       progress={goalProgress.fat}
                       unit="g"
                       tone="brandSoft"
+                      hoverHint={buildGoalHoverHint({
+                        title: 'Fat',
+                        value: Number(stats?.totalFat || 0),
+                        goal: Number(stats?.dynamicGoals?.fat || user?.preferences?.fatGoal || 0),
+                        unit: 'g',
+                      })}
                     />
                   </>
                 )}
@@ -705,6 +729,7 @@ function StatCard({
   progress,
   unit,
   tone,
+  hoverHint,
 }: {
   title: string;
   value: string;
@@ -712,28 +737,33 @@ function StatCard({
   progress: number;
   unit: string;
   tone: StatTone;
+  hoverHint?: string;
 }) {
   const percentage = goal ? (parseFloat(value) / goal) * 100 : progress;
   const toneStyles = {
     brand: {
       value: 'text-primary-500',
       bar: 'bg-primary-500',
+      tooltip: 'border-primary-500/45 text-primary-200',
     },
     info: {
       value: 'text-info-500',
       bar: 'bg-info-500',
+      tooltip: 'border-info-500/45 text-info-200',
     },
     success: {
       value: 'text-success-500',
       bar: 'bg-success-500',
+      tooltip: 'border-success-500/45 text-success-200',
     },
     brandSoft: {
       value: 'text-primary-300',
       bar: 'bg-primary-300',
+      tooltip: 'border-primary-300/55 text-primary-100',
     },
-  } satisfies Record<StatTone, { value: string; bar: string }>;
+  } satisfies Record<StatTone, { value: string; bar: string; tooltip: string }>;
   
-  return (
+  const cardContent = (
     <div className="bg-surface rounded-xl border border-border p-5">
       <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-text-muted">{title}</h3>
       <div className="mb-3 flex items-baseline space-x-2">
@@ -751,6 +781,27 @@ function StatCard({
       </div>
       <p className="text-xs text-text-muted mt-1">{percentage.toFixed(0)}% of goal</p>
     </div>
+  );
+
+  if (!hoverHint) {
+    return cardContent;
+  }
+  const cleanHint = hoverHint.replace(/^Evo hint:\s*/i, '');
+
+  return (
+    <Tooltip
+      content={
+        <span className="leading-snug">
+          <span className="font-semibold">Evo hint:</span> {cleanHint}
+        </span>
+      }
+      inline={false}
+      className={toneStyles[tone].tooltip}
+    >
+      <div tabIndex={0} aria-label={hoverHint}>
+        {cardContent}
+      </div>
+    </Tooltip>
   );
 }
 
@@ -795,7 +846,7 @@ function ActionCard({
 
 function EmojiMetric({ emoji, value, tooltip }: { emoji: string; value: string; tooltip: string }) {
   return (
-    <Tooltip content={tooltip}>
+    <Tooltip content={tooltip} inline={false}>
       <div
         tabIndex={0}
         aria-label={tooltip}
@@ -816,5 +867,46 @@ function ScorePill({ label, score }: { label: string; score: number }) {
       <p className={`text-lg font-semibold mt-1 ${tone}`}>{score}/100</p>
     </div>
   );
+}
+
+function buildGoalHoverHint(input: {
+  title: 'Calories' | 'Protein' | 'Carbs' | 'Fat';
+  value: number;
+  goal: number;
+  unit: 'kcal' | 'g';
+}) {
+  const { title, value, goal, unit } = input;
+  if (!goal || goal <= 0) {
+    return 'Add more day data and I will provide a precise recommendation.';
+  }
+
+  const ratio = value / goal;
+  const remaining = Math.max(0, goal - value);
+
+  if (title === 'Calories') {
+    if (ratio > 1.05) return `You are over by ${Math.round(value - goal)} ${unit}. Keep next meal lighter and protein-focused.`;
+    if (ratio < 0.65) return `You still have around ${Math.round(remaining)} ${unit}. Add a balanced meal to avoid underfueling.`;
+    return 'Calorie pace is solid. Keep portions controlled and close the day clean.';
+  }
+
+  if (title === 'Protein') {
+    if (ratio < 0.7) return `Around ${Math.round(remaining)} ${unit} left. Prioritize lean protein now (skyr, chicken, fish).`;
+    if (ratio > 1.15) return 'Protein is already above target. Shift next meal toward vegetables and quality carbs.';
+    return 'Protein pace looks good. One moderate protein portion should close the target.';
+  }
+
+  if (title === 'Carbs') {
+    if (ratio < 0.7) return `About ${Math.round(remaining)} ${unit} left. Use quality carbs around activity (rice, oats, potatoes).`;
+    if (ratio > 1.1) return 'Carbs are running high. Keep next meal lower-carb and higher in protein/fiber.';
+    return 'Carbs are on track. Keep sources mostly whole-food and easy to digest.';
+  }
+
+  if (ratio < 0.7) {
+    return `About ${Math.round(remaining)} ${unit} left. Prefer healthy fats like olive oil, nuts, seeds, or fatty fish.`;
+  }
+  if (ratio > 1.1) {
+    return 'Fat is above target. Keep next meal leaner and watch hidden oils/sauces.';
+  }
+  return 'Fat looks balanced. Keep quality sources and stable portions.';
 }
 
