@@ -10,6 +10,8 @@ export interface User {
 
 export interface UserPreferences {
   dailyCalorieGoal: number;
+  weightKg?: number | null;
+  heightCm?: number | null;
   proteinGoal: number;
   carbsGoal: number;
   fatGoal: number;

@@ -36,6 +36,8 @@ export const userResolvers = {
 
       const {
         dailyCalorieGoal,
+        weightKg,
+        heightCm,
         proteinGoal,
         carbsGoal,
         fatGoal,
@@ -52,6 +54,14 @@ export const userResolvers = {
       // Validation
       if (dailyCalorieGoal && (dailyCalorieGoal < 800 || dailyCalorieGoal > 5000)) {
         throw new UserInputError('Calorie goal must be between 800 and 5000 kcal');
+      }
+
+      if (weightKg !== undefined && weightKg !== null && (weightKg < 30 || weightKg > 300)) {
+        throw new UserInputError('Weight must be between 30 and 300 kg');
+      }
+
+      if (heightCm !== undefined && heightCm !== null && (heightCm < 120 || heightCm > 260)) {
+        throw new UserInputError('Height must be between 120 and 260 cm');
       }
 
       if (
@@ -75,6 +85,8 @@ export const userResolvers = {
       );
 
       if (dailyCalorieGoal !== undefined) updateData['preferences.dailyCalorieGoal'] = dailyCalorieGoal;
+      if (weightKg !== undefined) updateData['preferences.weightKg'] = weightKg;
+      if (heightCm !== undefined) updateData['preferences.heightCm'] = heightCm;
       if (weeklyWorkoutsGoal !== undefined) updateData['preferences.weeklyWorkoutsGoal'] = weeklyWorkoutsGoal;
       if (weeklyActiveMinutesGoal !== undefined) updateData['preferences.weeklyActiveMinutesGoal'] = weeklyActiveMinutesGoal;
       if (primaryGoal !== undefined) {
@@ -91,6 +103,11 @@ export const userResolvers = {
       if (notifications !== undefined) updateData['preferences.notifications'] = notifications;
 
       const autoGoals = calculateMacroGoals(nextDailyGoal, nextActivityLevel);
+      const nextWeightKg = weightKg ?? context.user.preferences.weightKg;
+      const proteinFromBodyWeight =
+        typeof nextWeightKg === 'number' && Number.isFinite(nextWeightKg) && nextWeightKg > 0
+          ? Math.round(nextWeightKg * 2)
+          : undefined;
       const hasManualMacroOverrides = [proteinGoal, carbsGoal, fatGoal].some((value) => value !== undefined);
 
       if (hasManualMacroOverrides) {
@@ -103,7 +120,7 @@ export const userResolvers = {
         }
       }
 
-      updateData['preferences.proteinGoal'] = proteinGoal ?? autoGoals.proteinGoal;
+      updateData['preferences.proteinGoal'] = proteinGoal ?? proteinFromBodyWeight ?? autoGoals.proteinGoal;
       updateData['preferences.carbsGoal'] = carbsGoal ?? autoGoals.carbsGoal;
       updateData['preferences.fatGoal'] = fatGoal ?? autoGoals.fatGoal;
 

@@ -29,6 +29,8 @@ const formatUserContext = (userContext?: EvoUserContext): string => {
   }
 
   const sections = [
+    `User name: ${userContext.userName || 'unknown'}`,
+    `Body metrics: weight ${userContext.weightKg ?? 'n/a'} kg, height ${userContext.heightCm ?? 'n/a'} cm`,
     `Primary goal: ${userContext.primaryGoal || 'maintenance'}`,
     `Coaching tone preference: ${normalizeTone(userContext.coachingTone)}`,
     `Proactivity preference: ${normalizeProactivity(userContext.proactivityLevel)}`,
@@ -38,6 +40,12 @@ const formatUserContext = (userContext?: EvoUserContext): string => {
     `Activity level: ${userContext.activityLevel || 'unknown'}`,
     `Dietary restrictions: ${userContext.dietaryRestrictions?.join(', ') || 'none'}`,
   ];
+
+  if (typeof userContext.suggestedProteinGoal === 'number' && Number.isFinite(userContext.suggestedProteinGoal)) {
+    sections.push(
+      `Body-weight protein suggestion baseline: ${Math.round(userContext.suggestedProteinGoal)} g/day (2.0 g/kg of body weight)`
+    );
+  }
 
   if (userContext.todayStats) {
     sections.push(
@@ -114,6 +122,22 @@ export const composeEvoSystemPrompt = (input: EvoPromptComposeInput): string => 
     : input.includeHumor
       ? 'Humor is allowed, but keep it subtle, warm, and sparse.'
       : 'Do not force humor.';
+  const conversationBehavior =
+    input.channel === 'chat' && input.conversationChannel === 'coach'
+      ? [
+          'Conversation behavior (coach channel):',
+          '- Prioritize today context (calories, macros, workouts, budget).',
+          '- Act like an attentive performance companion who knows current numbers.',
+          '- End with one concrete next move for the next 2-4 hours.',
+        ].join('\n')
+      : input.channel === 'chat' && input.conversationChannel === 'general'
+        ? [
+            'Conversation behavior (general channel):',
+            '- Keep it practical and human; wider topics are allowed.',
+            '- Still provide useful actions, but do not pretend to know missing health data.',
+            '- Keep the same Evo personality and warmth, just less dashboard-heavy.',
+          ].join('\n')
+        : '';
 
   return `
 You are ${evoCoreIdentity.name}, ${evoCoreIdentity.role}.
@@ -145,6 +169,7 @@ Proactivity:
 
 Product channel:
 - ${input.channel || 'chat'}
+${conversationBehavior ? `\n${conversationBehavior}` : ''}
 
 Language policy (mandatory):
 - Response language for this turn: ${turnLanguage}.
@@ -170,6 +195,8 @@ Output quality contract:
   - If both base calorie goal and dynamic daily budget are present, use dynamic daily budget for today's calculations.
   - Do not invent consumed/burned totals not present in context.
   - If you present a projection for a planned meal, clearly label it as a projection.
+- Protein guidance:
+  - If body-weight protein suggestion baseline is available in user context, use it when suggesting protein intake.
   `.trim();
 };
 

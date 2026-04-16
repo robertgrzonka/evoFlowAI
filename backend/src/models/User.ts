@@ -11,6 +11,8 @@ export interface UserDocument extends Omit<IUser, 'id'>, Document {
 
 const userPreferencesSchema = new Schema<UserPreferences>({
   dailyCalorieGoal: { type: Number, default: 2000 },
+  weightKg: { type: Number, default: null },
+  heightCm: { type: Number, default: null },
   proteinGoal: { type: Number, default: 150 },
   carbsGoal: { type: Number, default: 200 },
   fatGoal: { type: Number, default: 67 },
@@ -71,6 +73,8 @@ const userSchema = new Schema<UserDocument>({
     type: userPreferencesSchema,
     default: () => ({
       dailyCalorieGoal: 2000,
+      weightKg: null,
+      heightCm: null,
       proteinGoal: 150,
       carbsGoal: 200,
       fatGoal: 67,

@@ -9,6 +9,8 @@ export const ME_QUERY = gql`
       createdAt
       preferences {
         dailyCalorieGoal
+        weightKg
+        heightCm
         proteinGoal
         carbsGoal
         fatGoal

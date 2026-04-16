@@ -97,6 +97,8 @@ export const UPDATE_PREFERENCES_MUTATION = gql`
       id
       preferences {
         dailyCalorieGoal
+        weightKg
+        heightCm
         proteinGoal
         carbsGoal
         fatGoal
@@ -121,6 +123,8 @@ export const SET_GOALS_WITH_AI_MUTATION = gql`
         id
         preferences {
           dailyCalorieGoal
+          weightKg
+          heightCm
           proteinGoal
           carbsGoal
           fatGoal

@@ -29,21 +29,10 @@ export const buildDynamicTargets = (input: {
   const calorieBudget = Math.max(800, Math.round(base + delta + activityCalories));
 
   const fallbackBaseMacros = calculateMacroGoals(base, input.activityLevel);
-  const ratioProtein =
-    base > 0 ? ((input.manualProtein ?? fallbackBaseMacros.proteinGoal) * 4) / base : 0.3;
-  const ratioCarbs =
-    base > 0 ? ((input.manualCarbs ?? fallbackBaseMacros.carbsGoal) * 4) / base : 0.4;
-  const ratioFat =
-    base > 0 ? ((input.manualFat ?? fallbackBaseMacros.fatGoal) * 9) / base : 0.3;
-
-  const ratioSum = Math.max(0.0001, ratioProtein + ratioCarbs + ratioFat);
-  const normalizedProteinRatio = ratioProtein / ratioSum;
-  const normalizedCarbsRatio = ratioCarbs / ratioSum;
-  const normalizedFatRatio = ratioFat / ratioSum;
-
-  const proteinGoal = Math.round((calorieBudget * normalizedProteinRatio) / 4);
-  const carbsGoal = Math.round((calorieBudget * normalizedCarbsRatio) / 4);
-  const fatGoal = Math.round((calorieBudget * normalizedFatRatio) / 9);
+  // Macro targets stay stable (settings/body-composition driven), not activity-scaled.
+  const proteinGoal = Math.max(1, Math.round(input.manualProtein ?? fallbackBaseMacros.proteinGoal));
+  const carbsGoal = Math.max(1, Math.round(input.manualCarbs ?? fallbackBaseMacros.carbsGoal));
+  const fatGoal = Math.max(1, Math.round(input.manualFat ?? fallbackBaseMacros.fatGoal));
 
   return {
     calorieBudget,

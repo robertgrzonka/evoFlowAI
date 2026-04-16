@@ -5,13 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { Camera, Dumbbell, Flame, Trash2 } from 'lucide-react';
 import {
-  DAILY_ACTIVITY_QUERY,
-  DAILY_STATS_QUERY,
-  DASHBOARD_INSIGHT_QUERY,
   ME_QUERY,
-  MY_WORKOUTS_QUERY,
   WEEKLY_EVO_REVIEW_QUERY,
-  WORKOUT_COACH_SUMMARY_QUERY,
 } from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
@@ -21,6 +16,9 @@ import { ListRowSkeleton, PageLoader, Skeleton, StatCardSkeleton } from '@/compo
 import { DELETE_FOOD_ITEM_MUTATION, DELETE_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
 import { UPSERT_DAILY_ACTIVITY_MUTATION } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
+import { buildDayRefetchQueries } from '@/lib/day-data';
+import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import { formatPrimaryGoal } from '@/lib/formatters';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type AnalysisMode = 'combined' | 'nutrition' | 'training';
@@ -33,21 +31,10 @@ export default function StatsPage() {
   const [stepsInput, setStepsInput] = useState(0);
 
   const { data: userData, loading: userLoading, error: userError } = useQuery(ME_QUERY);
-  const { data: statsData, loading: statsLoading } = useQuery(DAILY_STATS_QUERY, {
-    variables: { date: selectedDate },
-    skip: !userData?.me,
-  });
-  const { data: workoutsData, loading: workoutsLoading } = useQuery(MY_WORKOUTS_QUERY, {
-    variables: { date: selectedDate, limit: 30, offset: 0 },
-    skip: !userData?.me,
-  });
-  const { data: workoutSummaryData, loading: workoutSummaryLoading } = useQuery(WORKOUT_COACH_SUMMARY_QUERY, {
-    variables: { date: selectedDate },
-    skip: !userData?.me,
-  });
-  const { data: activityData, loading: activityLoading } = useQuery(DAILY_ACTIVITY_QUERY, {
-    variables: { date: selectedDate },
-    skip: !userData?.me,
+  const daySnapshot = useDaySnapshot({
+    date: selectedDate,
+    enabled: Boolean(userData?.me),
+    includeInsight: true,
   });
   const { data: weeklyReviewData } = useQuery(WEEKLY_EVO_REVIEW_QUERY, {
     variables: { endDate: selectedDate },
@@ -58,20 +45,14 @@ export default function StatsPage() {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: [
-      { query: DAILY_STATS_QUERY, variables: { date: selectedDate } },
-      { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date: selectedDate } },
-    ],
+    refetchQueries: buildDayRefetchQueries(selectedDate),
   });
 
   const [deleteWorkout, { loading: deletingWorkout }] = useMutation(DELETE_WORKOUT_MUTATION, {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete workout.');
     },
-    refetchQueries: [
-      { query: MY_WORKOUTS_QUERY, variables: { date: selectedDate, limit: 30, offset: 0 } },
-      { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date: selectedDate } },
-    ],
+    refetchQueries: buildDayRefetchQueries(selectedDate),
   });
   const [upsertDailyActivity, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
     onCompleted: () => {
@@ -80,12 +61,7 @@ export default function StatsPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not update steps.');
     },
-    refetchQueries: [
-      { query: DAILY_ACTIVITY_QUERY, variables: { date: selectedDate } },
-      { query: DAILY_STATS_QUERY, variables: { date: selectedDate } },
-      { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date: selectedDate } },
-      { query: DASHBOARD_INSIGHT_QUERY, variables: { date: selectedDate } },
-    ],
+    refetchQueries: buildDayRefetchQueries(selectedDate),
   });
 
   useEffect(() => {
@@ -95,21 +71,21 @@ export default function StatsPage() {
     router.push('/login');
   }, [userError, router]);
 
+  useEffect(() => {
+    setStepsInput(Number(daySnapshot.activity?.steps || 0));
+  }, [daySnapshot.activity?.steps, selectedDate]);
+
   if (userLoading) {
     return <PageLoader />;
   }
 
   const user = userData?.me;
-  const stats = statsData?.dailyStats;
-  const workouts = workoutsData?.myWorkouts || [];
-  const workoutSummary = workoutSummaryData?.workoutCoachSummary;
+  const stats = daySnapshot.stats;
+  const workouts = daySnapshot.workouts || [];
+  const workoutSummary = daySnapshot.summary;
   const weeklyReview = weeklyReviewData?.weeklyEvoReview;
-  const activity = activityData?.dailyActivity;
+  const activity = daySnapshot.activity;
   const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
-
-  useEffect(() => {
-    setStepsInput(Number(activity?.steps || 0));
-  }, [activity?.steps, selectedDate]);
 
   const handleDeleteMeal = async (mealId: string) => {
     const confirmed = window.confirm('Delete this meal entry?');
@@ -200,13 +176,13 @@ export default function StatsPage() {
                 </button>
               </form>
               <p className="text-xs text-text-muted mt-2">
-                {activityLoading ? 'Loading activity...' : `Steps tracked: ${Math.round(activity?.steps || 0)}`}
+                {daySnapshot.loading ? 'Loading activity...' : `Steps tracked: ${Math.round(activity?.steps || 0)}`}
               </p>
             </div>
 
             {(analysisMode === 'combined' || analysisMode === 'nutrition') ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {statsLoading ? (
+              {daySnapshot.loading ? (
                 <>
                   <StatCardSkeleton />
                   <StatCardSkeleton />
@@ -255,7 +231,7 @@ export default function StatsPage() {
             {(analysisMode === 'combined' || analysisMode === 'nutrition') ? (
             <section className="bg-surface rounded-xl border border-border p-5">
               <h3 className="text-xl font-semibold tracking-tight text-text-primary mb-5">Meals for {selectedDate}</h3>
-              {statsLoading ? (
+              {daySnapshot.loading ? (
                 <div className="space-y-3">
                   <ListRowSkeleton />
                   <ListRowSkeleton />
@@ -320,7 +296,7 @@ export default function StatsPage() {
                 </button>
               </div>
 
-              {workoutSummaryLoading ? (
+              {daySnapshot.loading ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
                   <Skeleton className="h-16 w-full rounded-lg" />
                   <Skeleton className="h-16 w-full rounded-lg" />
@@ -346,7 +322,7 @@ export default function StatsPage() {
                 </div>
               )}
 
-              {workoutsLoading ? (
+              {daySnapshot.loading ? (
                 <div className="space-y-3">
                   <ListRowSkeleton />
                   <ListRowSkeleton />
@@ -424,8 +400,8 @@ export default function StatsPage() {
                 quickPrompts={[
                   `Review my nutrition for ${selectedDate}.`,
                   `Combine my meals and workouts for ${selectedDate} and tell me what to do next.`,
-                  'What macro is most off target today?',
-                  'Suggest one dinner idea for better balance.',
+                  `What macro is most off target on ${selectedDate}?`,
+                  `Suggest one dinner idea for ${selectedDate} for better balance.`,
                 ]}
                 statsReference={selectedDate}
               />
@@ -496,20 +472,6 @@ function StatCard({
       <p className="text-xs text-text-muted mt-1">{percentage.toFixed(0)}% of goal</p>
     </div>
   );
-}
-
-function formatPrimaryGoal(value: string) {
-  switch (String(value || '').toUpperCase()) {
-    case 'FAT_LOSS':
-      return 'Fat loss';
-    case 'MUSCLE_GAIN':
-      return 'Muscle gain';
-    case 'STRENGTH':
-      return 'Strength';
-    case 'MAINTENANCE':
-    default:
-      return 'Maintenance';
-  }
 }
 
 function ModeButton({

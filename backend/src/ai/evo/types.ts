@@ -43,6 +43,10 @@ export type EvoTodayActivity = {
 };
 
 export type EvoUserContext = {
+  userName?: string;
+  weightKg?: number;
+  heightCm?: number;
+  suggestedProteinGoal?: number;
   primaryGoal?: string;
   coachingTone?: string;
   proactivityLevel?: string;
@@ -66,5 +70,6 @@ export type EvoPromptComposeInput = {
   userContext?: EvoUserContext;
   includeHumor?: boolean;
   latestUserMessage?: string;
+  conversationChannel?: 'general' | 'coach' | 'log';
   channel?: 'chat' | 'insight' | 'summary' | 'empty_state' | 'onboarding' | 'notification';
 };

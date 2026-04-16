@@ -14,6 +14,8 @@ export const typeDefs = gql`
 
   type UserPreferences {
     dailyCalorieGoal: Int!
+    weightKg: Float
+    heightCm: Float
     proteinGoal: Int!
     carbsGoal: Int!
     fatGoal: Int!
@@ -279,6 +281,8 @@ export const typeDefs = gql`
 
   input UpdatePreferencesInput {
     dailyCalorieGoal: Int
+    weightKg: Float
+    heightCm: Float
     proteinGoal: Int
     carbsGoal: Int
     fatGoal: Int

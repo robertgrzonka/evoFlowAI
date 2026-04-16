@@ -5,11 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useMutation, useQuery } from '@apollo/client';
 import {
-  DAILY_ACTIVITY_QUERY,
-  DAILY_STATS_QUERY,
-  DASHBOARD_INSIGHT_QUERY,
   ME_QUERY,
-  MY_WORKOUTS_QUERY,
   WEEKLY_EVO_REVIEW_QUERY,
 } from '@/lib/graphql/queries';
 import { Camera, ChartColumnIncreasing, Dumbbell, Plus, Quote, Target, Trash2 } from 'lucide-react';
@@ -29,10 +25,71 @@ import {
   UPSERT_DAILY_ACTIVITY_MUTATION,
 } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
+import { buildDayRefetchQueries } from '@/lib/day-data';
+import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import { formatPrimaryGoal } from '@/lib/formatters';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 type ActionTone = 'brand' | 'info' | 'success';
+
+const buildDynamicGuidance = (input: {
+  remainingCalories: number;
+  remainingProtein: number;
+  workoutCount: number;
+  steps: number;
+  tips?: string[];
+}): string => {
+  const { remainingCalories, remainingProtein, workoutCount, steps, tips = [] } = input;
+  const nutritionTip = tips[0];
+  const trainingTip = tips[1];
+  const recoveryTip = tips[2];
+
+  if (remainingCalories < -150) {
+    if (remainingProtein > 20) {
+      return nutritionTip || 'You are over calorie budget, but still short on protein. Keep the next meal small and protein-focused.';
+    }
+    return recoveryTip || 'You are over calorie budget today. Keep the rest of the day light and prioritize hydration plus recovery.';
+  }
+
+  if (remainingProtein > 35) {
+    if (remainingCalories < 250) {
+      return nutritionTip || 'Calories are limited, so use a lean protein meal to close the protein gap without overshooting.';
+    }
+    return nutritionTip || 'Main priority now is protein. Build your next meal around 30-40g protein, then fill with carbs as needed.';
+  }
+
+  if (remainingCalories > 500) {
+    if (workoutCount > 0) {
+      return trainingTip || 'You still have solid room today. A balanced post-training meal with protein and carbs fits well now.';
+    }
+    return nutritionTip || 'You have a lot of budget left. Go for a balanced meal now so you do not under-eat by the end of day.';
+  }
+
+  if (steps > 12000 && remainingCalories > 150) {
+    return recoveryTip || 'Your activity is high today, so a moderate balanced meal is a good next move.';
+  }
+
+  if (remainingCalories > 150) {
+    return nutritionTip || 'A moderate balanced meal fits well now. Keep portions controlled and finish protein target.';
+  }
+
+  return recoveryTip || 'Day is nearly closed. Keep the next intake light, protein-aware, and focus on recovery.';
+};
+
+const buildEvoPresenceLine = (input: {
+  remainingCalories: number;
+  remainingProtein: number;
+  workoutCount: number;
+  steps: number;
+}): string => {
+  const { remainingCalories, remainingProtein, workoutCount, steps } = input;
+  if (remainingCalories < -150) return 'Evo status: Tight control mode.';
+  if (remainingProtein > 30) return 'Evo status: Protein-first mode.';
+  if (workoutCount > 0 && remainingCalories > 250) return 'Evo status: Refuel and recover mode.';
+  if (steps > 12000) return 'Evo status: High-activity day mode.';
+  return 'Evo status: Keep the momentum.';
+};
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -45,21 +102,10 @@ export default function DashboardPage() {
   const [quickSteps, setQuickSteps] = useState(6000);
 
   const { data: userData, loading: userLoading, error: userError } = useQuery(ME_QUERY);
-  const { data: statsData, loading: statsLoading } = useQuery(DAILY_STATS_QUERY, {
-    variables: { date: today },
-    skip: !userData?.me,
-  });
-  const { data: workoutsData, loading: workoutsLoading } = useQuery(MY_WORKOUTS_QUERY, {
-    variables: { date: today, limit: 4, offset: 0 },
-    skip: !userData?.me,
-  });
-  const { data: insightData, loading: insightLoading } = useQuery(DASHBOARD_INSIGHT_QUERY, {
-    variables: { date: today },
-    skip: !userData?.me,
-  });
-  const { data: activityData } = useQuery(DAILY_ACTIVITY_QUERY, {
-    variables: { date: today },
-    skip: !userData?.me,
+  const daySnapshot = useDaySnapshot({
+    date: today,
+    enabled: Boolean(userData?.me),
+    includeInsight: true,
   });
   const { data: weeklyReviewData, loading: weeklyReviewLoading } = useQuery(WEEKLY_EVO_REVIEW_QUERY, {
     variables: { endDate: today },
@@ -70,10 +116,7 @@ export default function DashboardPage() {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: [
-      { query: DAILY_STATS_QUERY, variables: { date: today } },
-      { query: DASHBOARD_INSIGHT_QUERY, variables: { date: today } },
-    ],
+    refetchQueries: buildDayRefetchQueries(today),
   });
   const [logWorkout, { loading: quickWorkoutSaving }] = useMutation(LOG_WORKOUT_MUTATION, {
     onCompleted: () => {
@@ -83,12 +126,7 @@ export default function DashboardPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not add workout.');
     },
-    refetchQueries: [
-      { query: MY_WORKOUTS_QUERY, variables: { date: today, limit: 4, offset: 0 } },
-      { query: DASHBOARD_INSIGHT_QUERY, variables: { date: today } },
-      { query: DAILY_STATS_QUERY, variables: { date: today } },
-      { query: DAILY_ACTIVITY_QUERY, variables: { date: today } },
-    ],
+    refetchQueries: buildDayRefetchQueries(today),
   });
   const [upsertDailyActivity, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
     onCompleted: () => {
@@ -97,11 +135,7 @@ export default function DashboardPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not update daily activity.');
     },
-    refetchQueries: [
-      { query: DAILY_ACTIVITY_QUERY, variables: { date: today } },
-      { query: DASHBOARD_INSIGHT_QUERY, variables: { date: today } },
-      { query: DAILY_STATS_QUERY, variables: { date: today } },
-    ],
+    refetchQueries: buildDayRefetchQueries(today),
   });
 
   useEffect(() => {
@@ -121,38 +155,46 @@ export default function DashboardPage() {
   }, [userError, router]);
 
   useEffect(() => {
-    const steps = activityData?.dailyActivity?.steps;
+    const steps = daySnapshot.activity?.steps;
     if (steps !== undefined && steps !== null) {
       setQuickSteps(Number(steps));
     }
-  }, [activityData?.dailyActivity?.steps]);
+  }, [daySnapshot.activity?.steps]);
 
   if (!mounted || userLoading) {
     return <PageLoader />;
   }
 
   const user = userData?.me;
-  const stats = statsData?.dailyStats;
-  const workouts = workoutsData?.myWorkouts || [];
-  const insight = insightData?.dashboardInsight;
-  const activity = activityData?.dailyActivity;
+  const stats = daySnapshot.stats;
+  const workouts = daySnapshot.workouts || [];
+  const insight = daySnapshot.insight;
+  const activity = daySnapshot.activity;
   const weeklyReview = weeklyReviewData?.weeklyEvoReview;
   const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
   const completedMeals = stats?.meals?.length || 0;
-  const totalTrainingMinutes = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
+  const totalTrainingMinutes = daySnapshot.derived.workoutMinutes;
   const dailyTrainingLabel = workouts.length > 0
     ? `${workouts.length} session${workouts.length > 1 ? 's' : ''} • ${totalTrainingMinutes} min`
     : 'No sessions';
 
   const guidance = insight
-    ? insight.remainingCalories > 450
-      ? 'You can go for a bigger balanced meal now.'
-      : insight.remainingCalories > 150
-        ? 'One moderate meal fits well for today.'
-        : insight.remainingCalories > -100
-          ? 'Keep your next meal light and protein-focused.'
-          : 'You are over your net target, so keep meals small and prioritize protein + veggies.'
+    ? buildDynamicGuidance({
+        remainingCalories: insight.remainingCalories,
+        remainingProtein: insight.remainingProtein,
+        workoutCount: daySnapshot.derived.workoutCount,
+        steps: daySnapshot.derived.steps,
+        tips: insight.tips,
+      })
     : 'Log meals and workouts to unlock daily guidance.';
+  const evoPresence = insight
+    ? buildEvoPresenceLine({
+        remainingCalories: insight.remainingCalories,
+        remainingProtein: insight.remainingProtein,
+        workoutCount: daySnapshot.derived.workoutCount,
+        steps: daySnapshot.derived.steps,
+      })
+    : 'Evo status: Waiting for enough data.';
 
   const progressTone = insight
     ? insight.remainingProtein <= 10 && insight.remainingCalories >= -100
@@ -252,7 +294,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {insightLoading ? (
+          {daySnapshot.loading ? (
             <div className="space-y-2.5">
               <Skeleton className="h-16 w-full rounded-lg" />
               <Skeleton className="h-12 w-full rounded-lg" />
@@ -270,7 +312,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                 <EmojiMetric emoji="🎯" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} tooltip="Goal mode" />
                 <EmojiMetric emoji="🍽️" value={String(completedMeals)} tooltip="Meals today" />
-                <EmojiMetric emoji="🏋️" value={`${workouts.length}`} tooltip={`Training today (${dailyTrainingLabel})`} />
+                <EmojiMetric emoji="🏋️" value={`${daySnapshot.derived.workoutCount}`} tooltip={`Training today (${dailyTrainingLabel})`} />
                 <EmojiMetric emoji="⚖️" value={`${insight.netCalories.toFixed(0)}`} tooltip="Net calories (food - workouts)" />
                 <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)}`} tooltip="Calories left for today" />
                 <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)}g`} tooltip="Protein left for today" />
@@ -279,6 +321,7 @@ export default function DashboardPage() {
               <div className="rounded-lg border border-border bg-surface-elevated p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1.5">What to do now</p>
                 <p className="text-sm text-text-primary">{guidance}</p>
+                <p className="text-xs text-text-secondary mt-2">{evoPresence}</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -342,14 +385,14 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold tracking-tight text-text-primary">Today goals</h3>
-                  <p className="text-sm text-text-secondary">Daily target and progress for {today}</p>
+                  <p className="text-sm text-text-secondary">Dynamic daily target and progress for {today}</p>
                 </div>
                 <button onClick={() => router.push('/goals')} className="btn-secondary">
                   Set Goals
                 </button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-3">
-                {statsLoading ? (
+                {daySnapshot.loading ? (
                   <>
                     <StatCardSkeleton />
                     <StatCardSkeleton />
@@ -431,7 +474,7 @@ export default function DashboardPage() {
                   Open Meals
                 </button>
               </div>
-              {statsLoading ? (
+              {daySnapshot.loading ? (
                 <div className="space-y-3">
                   <ListRowSkeleton />
                   <ListRowSkeleton />
@@ -572,7 +615,7 @@ export default function DashboardPage() {
                   See all
                 </button>
               </div>
-              {workoutsLoading ? (
+              {daySnapshot.loading ? (
                 <div className="space-y-2">
                   <Skeleton className="h-12 w-full rounded-lg" />
                   <Skeleton className="h-12 w-full rounded-lg" />
@@ -717,19 +760,5 @@ function ScorePill({ label, score }: { label: string; score: number }) {
       <p className={`text-lg font-semibold mt-1 ${tone}`}>{score}/100</p>
     </div>
   );
-}
-
-function formatPrimaryGoal(value: string) {
-  switch (String(value || '').toUpperCase()) {
-    case 'FAT_LOSS':
-      return 'Fat loss';
-    case 'MUSCLE_GAIN':
-      return 'Muscle gain';
-    case 'STRENGTH':
-      return 'Strength';
-    case 'MAINTENANCE':
-    default:
-      return 'Maintenance';
-  }
 }
 

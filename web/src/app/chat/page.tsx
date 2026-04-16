@@ -7,11 +7,9 @@ import { useMutation, useQuery, useSubscription } from '@apollo/client';
 import { ChevronDown, ChevronUp, Dumbbell, Utensils } from 'lucide-react';
 import { SEND_MESSAGE_MUTATION } from '@/lib/graphql/mutations';
 import {
-  DAILY_STATS_QUERY,
   ME_QUERY,
   MY_CHAT_HISTORY_QUERY,
   NEW_CHAT_MESSAGE_SUBSCRIPTION,
-  WORKOUT_COACH_SUMMARY_QUERY,
 } from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
@@ -20,27 +18,12 @@ import ChatMarkdown from '@/components/ChatMarkdown';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
+import { CHAT_HISTORY_LIMIT } from '@/lib/day-data';
+import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 
 type ChatChannel = 'GENERAL' | 'COACH';
 type ChatRole = 'USER' | 'ASSISTANT';
 type ChatMessage = { id: string; role: ChatRole; content: string; channel: ChatChannel };
-type CoachSummary = {
-  consumedCalories: number;
-  consumedProtein: number;
-  calorieGoal: number;
-  proteinGoal: number;
-  caloriesBurned: number;
-  steps: number;
-  calorieBudget: number;
-  netCalories: number;
-  remainingCalories: number;
-  remainingProtein: number;
-};
-type DailyStats = {
-  totalCarbs: number;
-  totalFat: number;
-  dynamicGoals?: { carbs?: number; fat?: number } | null;
-};
 
 export default function ChatPage() {
   const router = useRouter();
@@ -52,28 +35,23 @@ export default function ChatPage() {
 
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const goalMode = String(meData?.me?.preferences?.primaryGoal || 'MAINTENANCE').toUpperCase();
+  const daySnapshot = useDaySnapshot({
+    date: today,
+    enabled: Boolean(meData?.me?.id) && conversationChannel === 'COACH',
+    includeInsight: false,
+  });
 
   const { data, loading: historyLoading, error: historyError, refetch } = useQuery(MY_CHAT_HISTORY_QUERY, {
-    variables: { channel: conversationChannel, limit: 40, offset: 0 },
+    variables: { channel: conversationChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 },
     fetchPolicy: 'cache-and-network',
-    pollInterval: 5000,
-  });
-  const { data: coachSummaryData } = useQuery(WORKOUT_COACH_SUMMARY_QUERY, {
-    variables: { date: today },
-    skip: conversationChannel !== 'COACH' || !meData?.me?.id,
-    fetchPolicy: 'cache-and-network',
-  });
-  const { data: dailyStatsData } = useQuery(DAILY_STATS_QUERY, {
-    variables: { date: today },
-    skip: conversationChannel !== 'COACH' || !meData?.me?.id,
-    fetchPolicy: 'cache-and-network',
+    pollInterval: 8000,
   });
 
   useSubscription(NEW_CHAT_MESSAGE_SUBSCRIPTION, {
     variables: { userId: meData?.me?.id, channel: conversationChannel },
     skip: !meData?.me?.id,
     onData: () => {
-      refetch({ channel: conversationChannel, limit: 40, offset: 0 });
+      refetch({ channel: conversationChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
   });
 
@@ -96,7 +74,10 @@ export default function ChatPage() {
   const [sendMessage, { loading: sendingMessage }] = useMutation(SEND_MESSAGE_MUTATION, {
     onCompleted: async () => {
       setPrompt('');
-      await refetch({ channel: conversationChannel, limit: 40, offset: 0 });
+      await refetch({ channel: conversationChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
+      if (conversationChannel === 'COACH') {
+        await daySnapshot.refetchDay();
+      }
     },
     onError: (error) => {
       appToast.error('Message failed', error.message || 'Could not send message.');
@@ -119,15 +100,13 @@ export default function ChatPage() {
           context: conversationChannel === 'COACH' ? { statsReference: today } : undefined,
         },
       },
-      refetchQueries: [{ query: MY_CHAT_HISTORY_QUERY, variables: { channel: conversationChannel, limit: 40, offset: 0 } }],
+      refetchQueries: [{ query: MY_CHAT_HISTORY_QUERY, variables: { channel: conversationChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 } }],
       awaitRefetchQueries: true,
     });
   };
 
-  const messages: ChatMessage[] = [...(data?.myChatHistory || [])].reverse();
+  const messages: ChatMessage[] = data?.myChatHistory || [];
   const quickPrompts = conversationChannel === 'COACH' ? getCoachPrompts(goalMode) : getGeneralPrompts();
-  const coachSummary: CoachSummary | null = coachSummaryData?.workoutCoachSummary || null;
-  const dailyStats: DailyStats | null = dailyStatsData?.dailyStats || null;
 
   return (
     <AppShell>
@@ -138,7 +117,7 @@ export default function ChatPage() {
           <section className="xl:col-span-7 bg-surface border border-border rounded-xl p-4 md:p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold tracking-tight text-text-primary">Conversation</h2>
-              <span className="text-xs text-text-muted">Newest first</span>
+              <span className="text-xs text-text-muted">Latest at bottom</span>
             </div>
             <div className="mb-4 inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
               <ChannelTabButton label="General" active={conversationChannel === 'GENERAL'} onClick={() => setConversationChannel('GENERAL')} />
@@ -257,19 +236,19 @@ export default function ChatPage() {
                 {showCoachDebug ? (
                   <div className="mt-3 rounded-md border border-border bg-background/40 p-2.5 font-mono text-[11px] text-text-secondary space-y-1">
                     <p>date: {today}</p>
-                    <p>budget_dynamic_kcal: {Math.round(coachSummary?.calorieBudget || 0)}</p>
-                    <p>consumed_kcal: {Math.round(coachSummary?.consumedCalories || 0)}</p>
-                    <p>burned_training_kcal: {Math.round(coachSummary?.caloriesBurned || 0)}</p>
-                    <p>remaining_kcal: {Math.round(coachSummary?.remainingCalories || 0)}</p>
-                    <p>net_kcal: {Math.round(coachSummary?.netCalories || 0)}</p>
-                    <p>protein_consumed_g: {Math.round(coachSummary?.consumedProtein || 0)}</p>
-                    <p>protein_target_g: {Math.round(coachSummary?.proteinGoal || 0)}</p>
-                    <p>protein_remaining_g: {Math.round(coachSummary?.remainingProtein || 0)}</p>
-                    <p>carbs_consumed_g: {Math.round(dailyStats?.totalCarbs || 0)}</p>
-                    <p>fat_consumed_g: {Math.round(dailyStats?.totalFat || 0)}</p>
-                    <p>steps_tracked: {Math.round(coachSummary?.steps || 0)}</p>
+                    <p>budget_dynamic_kcal: {Math.round(daySnapshot.derived.calorieBudget || 0)}</p>
+                    <p>consumed_kcal: {Math.round(daySnapshot.derived.consumedCalories || 0)}</p>
+                    <p>burned_training_kcal: {Math.round(daySnapshot.derived.caloriesBurned || 0)}</p>
+                    <p>remaining_kcal: {Math.round(daySnapshot.derived.remainingCalories || 0)}</p>
+                    <p>net_kcal: {Math.round(daySnapshot.derived.netCalories || 0)}</p>
+                    <p>protein_consumed_g: {Math.round(daySnapshot.derived.consumedProtein || 0)}</p>
+                    <p>protein_target_g: {Math.round(daySnapshot.derived.proteinGoal || 0)}</p>
+                    <p>protein_remaining_g: {Math.round(daySnapshot.derived.remainingProtein || 0)}</p>
+                    <p>carbs_consumed_g: {Math.round(daySnapshot.derived.carbsConsumed || 0)}</p>
+                    <p>fat_consumed_g: {Math.round(daySnapshot.derived.fatConsumed || 0)}</p>
+                    <p>steps_tracked: {Math.round(daySnapshot.derived.steps || 0)}</p>
                     <p className="pt-1 text-text-muted">
-                      source: workoutCoachSummary + dailyStats
+                      source: shared day snapshot
                     </p>
                   </div>
                 ) : null}

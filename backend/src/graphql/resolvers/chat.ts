@@ -1,13 +1,11 @@
 import { AuthenticationError } from 'apollo-server-express';
 import { ChatMessage } from '../../models/ChatMessage';
 import { FoodItem } from '../../models/FoodItem';
-import { Workout } from '../../models/Workout';
-import { DailyActivity } from '../../models/DailyActivity';
 import { OpenAIService } from '../../services/openaiService';
 import { Context } from '../context';
 import { withFilter } from 'graphql-subscriptions';
-import { buildDynamicTargets } from '../../utils/activityBudget';
 import { EvoUserContext } from '../../ai/evo';
+import { getDailyMetrics, getTodayDateKey, normalizeDateKey } from '../../utils/dailyMetrics';
 
 const openAIService = new OpenAIService();
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
@@ -18,24 +16,6 @@ type MealType = (typeof MEAL_TYPES)[number];
 const sanitizeBase64 = (value: string): string =>
   value.includes(',') ? value.split(',')[1] : value;
 
-const getDayRange = (statsReference?: string) => {
-  const base = statsReference ? new Date(statsReference) : new Date();
-  if (Number.isNaN(base.getTime())) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return { startDate: today, endDate: tomorrow };
-  }
-
-  const startDate = new Date(base);
-  startDate.setHours(0, 0, 0, 0);
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 1);
-  return { startDate, endDate };
-};
-
-const getTodayDateKey = (): string => new Date().toISOString().split('T')[0];
 const normalizeChannel = (channel?: string): ChatChannel =>
   CHAT_CHANNELS.includes(String(channel || '').toUpperCase() as ChatChannel)
     ? (String(channel || '').toUpperCase() as ChatChannel)
@@ -76,13 +56,15 @@ const extractMealLogRequest = (content: string): { description: string; mealType
   // "Będę jadł ... policz i dodaj jako posiłek ..."
   const normalized = text.toLowerCase();
   const hasMealActionIntent =
-    /(dodaj|zaloguj).*(posi[łl]ek)/i.test(text) || /(add|log).*(meal)/i.test(text);
+    /(dodaj|zaloguj).*(posi[łl](?:ek|k(?:u|ó|o)w?))/i.test(text) ||
+    /(dodaj|zaloguj).*(do\s+(dziennika|logu)\s+posi[łl](?:k(?:u|ó|o)w?))/i.test(text) ||
+    /(add|log).*(meal|meals|meal\s+log)/i.test(text);
   if (!hasMealActionIntent) {
     return null;
   }
 
   const likelyFoodSignal =
-    /\b(jem|zjem|b[eę]d[eę]\s+jad[łl]|meal|eat|food|kurczak|chicken|ry[żz]|rice|ziemniak|potato|owsianka|oatmeal|jajk|egg)\b/i.test(
+    /\b(jem|zjem|jad[łl]em|zjad[łl]em|b[eę]d[eę]\s+jad[łl]|meal|eat|ate|had|food|banana|pomara[ńn]cz|orange|kurczak|chicken|ry[żz]|rice|ziemniak|potato|owsianka|oatmeal|jajk|egg)\b/i.test(
       text
     );
   if (!likelyFoodSignal) {
@@ -94,10 +76,19 @@ const extractMealLogRequest = (content: string): { description: string; mealType
   description = description.replace(/^ok,?\s*/i, '');
   description = description.replace(/^okej,?\s*/i, '');
   description = description.replace(
-    /\b(dodaj|zaloguj)\s+(to|ten|je)?\s*jako\s+posi[łl]ek\b.*$/i,
+    /\b(dodaj|zaloguj)\s+(to|ten|je)?\s*jako\s+posi[łl](?:ek|k(?:u|ó|o)w?)\b.*$/i,
+    ''
+  );
+  description = description.replace(
+    /\b(dodaj|zaloguj)\s+(to|ten|je)?\s*do\s+(dziennika|logu)\s+posi[łl](?:k(?:u|ó|o)w?)\b.*$/i,
+    ''
+  );
+  description = description.replace(
+    /\b(dodaj|zaloguj)\s+(to|ten|je)?\s*do\s+(naszych\s+)?posi[łl]k(?:u|ó|o)w?\b.*$/i,
     ''
   );
   description = description.replace(/\b(add|log)\s+(it|this)?\s+as\s+a?\s*meal\b.*$/i, '');
+  description = description.replace(/\b(add|log)\s+(it|this)?\s+to\s+(the\s+)?meal\s+log\b.*$/i, '');
   description = description.replace(/\b(policz|oblicz|powiedz|tell me|calculate)\b.*$/i, '');
   description = description.trim().replace(/[,.:\-–]+$/, '').trim();
 
@@ -245,6 +236,13 @@ export const chatResolvers = {
 
         // Get user context (preferences and today's stats)
         const userContext: EvoUserContext = {
+          userName: context.user.name,
+          weightKg: context.user.preferences?.weightKg,
+          heightCm: context.user.preferences?.heightCm,
+          suggestedProteinGoal:
+            typeof context.user.preferences?.weightKg === 'number'
+              ? Math.round(context.user.preferences.weightKg * 2)
+              : undefined,
           dailyCalorieGoal: context.user.preferences?.dailyCalorieGoal,
           proteinGoal: context.user.preferences?.proteinGoal,
           carbsGoal: context.user.preferences?.carbsGoal,
@@ -259,65 +257,32 @@ export const chatResolvers = {
         };
 
         // Always enrich chat with daily stats (selected date or today)
-        const statsReference = String(input.context?.statsReference || getTodayDateKey());
-        const { startDate, endDate } = getDayRange(statsReference);
-          const [todaysFoodItems, todaysWorkouts, dayActivity] = await Promise.all([
-            FoodItem.find({
-              userId: context.user.id,
-              createdAt: {
-                $gte: startDate,
-                $lt: endDate
-              }
-            }),
-            Workout.find({
-              userId: context.user.id,
-              performedAt: {
-                $gte: startDate,
-                $lt: endDate
-              }
-            }),
-            DailyActivity.findOne({
-              userId: context.user.id,
-              date: statsReference,
-            }),
-          ]);
-
-          const todayStats = todaysFoodItems.reduce((acc, item) => ({
-            calories: acc.calories + item.nutrition.calories,
-            protein: acc.protein + item.nutrition.protein,
-            carbs: acc.carbs + item.nutrition.carbs,
-            fat: acc.fat + item.nutrition.fat,
-          }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-
-          const todayWorkouts = todaysWorkouts.reduce((acc, item) => ({
-            sessions: acc.sessions + 1,
-            minutes: acc.minutes + (item.durationMinutes || 0),
-            caloriesBurned: acc.caloriesBurned + (item.caloriesBurned || 0),
-          }), { sessions: 0, minutes: 0, caloriesBurned: 0 });
-
-          const steps = Number(dayActivity?.steps || 0);
-          const stepsCalories = 0;
-          const dynamicTargets = buildDynamicTargets({
-            baseCalories: context.user.preferences?.dailyCalorieGoal || 2000,
-            activityLevel: context.user.preferences?.activityLevel,
-            primaryGoal: context.user.preferences?.primaryGoal,
-            workoutCalories: todayWorkouts.caloriesBurned,
-            stepCalories: stepsCalories,
-            manualProtein: context.user.preferences?.proteinGoal,
-            manualCarbs: context.user.preferences?.carbsGoal,
-            manualFat: context.user.preferences?.fatGoal,
+        const statsReference = normalizeDateKey(String(input.context?.statsReference || getTodayDateKey()));
+          const dayMetrics = await getDailyMetrics({
+            userId: context.user.id,
+            dateKey: statsReference,
+            preferences: context.user.preferences,
           });
 
-          userContext.todayStats = todayStats;
-          userContext.todayWorkouts = todayWorkouts;
+          // Ensure chat uses today's dynamic targets as single source of truth.
+          userContext.dailyCalorieGoal = dayMetrics.dynamicTargets.calorieBudget;
+          userContext.proteinGoal = dayMetrics.dynamicTargets.proteinGoal;
+          userContext.carbsGoal = dayMetrics.dynamicTargets.carbsGoal;
+          userContext.fatGoal = dayMetrics.dynamicTargets.fatGoal;
+          userContext.todayStats = dayMetrics.totals;
+          userContext.todayWorkouts = dayMetrics.workoutTotals;
           userContext.todayActivity = {
-            steps,
-            stepsCalories,
-            calorieBudget: dynamicTargets.calorieBudget,
+            steps: dayMetrics.steps,
+            stepsCalories: dayMetrics.stepsCalories,
+            calorieBudget: dayMetrics.dynamicTargets.calorieBudget,
           };
 
         // Generate AI response
-        const aiResponse = await openAIService.chat(conversationHistory, userContext);
+        const aiResponse = await openAIService.chat(
+          conversationHistory,
+          userContext,
+          channel === 'COACH' ? 'coach' : channel === 'GENERAL' ? 'general' : 'log'
+        );
 
         // Save AI message
         const assistantMessage = new ChatMessage({

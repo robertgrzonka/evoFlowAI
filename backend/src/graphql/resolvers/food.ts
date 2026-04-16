@@ -1,11 +1,9 @@
 import { AuthenticationError, UserInputError } from 'apollo-server-express';
 import { FoodItem } from '../../models/FoodItem';
-import { Workout } from '../../models/Workout';
-import { DailyActivity } from '../../models/DailyActivity';
 import { Context } from '../context';
 import { OpenAIService } from '../../services/openaiService';
 import { withFilter } from 'graphql-subscriptions';
-import { buildDynamicTargets } from '../../utils/activityBudget';
+import { getDailyMetrics } from '../../utils/dailyMetrics';
 
 const openAIService = new OpenAIService();
 
@@ -43,80 +41,30 @@ export const foodResolvers = {
         throw new AuthenticationError('You must be logged in');
       }
 
-      const startDate = new Date(date);
-      const endDate = new Date(date);
-      endDate.setDate(endDate.getDate() + 1);
-
-      const meals = await FoodItem.find({
+      const dayMetrics = await getDailyMetrics({
         userId: context.user.id,
-        createdAt: {
-          $gte: startDate,
-          $lt: endDate
-        }
-      }).sort({ createdAt: 1 });
-
-      const workouts = await Workout.find({
-        userId: context.user.id,
-        performedAt: {
-          $gte: startDate,
-          $lt: endDate
-        }
+        dateKey: date,
+        preferences: context.user.preferences,
       });
-
-      const dayActivity = await DailyActivity.findOne({
-        userId: context.user.id,
-        date,
-      });
-
-      // Calculate total values
-      const totals = meals.reduce((acc, meal) => ({
-        calories: acc.calories + meal.nutrition.calories,
-        protein: acc.protein + meal.nutrition.protein,
-        carbs: acc.carbs + meal.nutrition.carbs,
-        fat: acc.fat + meal.nutrition.fat
-      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-
-      const workoutCalories = workouts.reduce((acc, workout) => acc + (workout.caloriesBurned || 0), 0);
-      const steps = Math.max(0, Number(dayActivity?.steps || 0));
-      const stepsCalories = 0;
-
-      // Calculate progress towards dynamic goals
-      const dynamicTargets = buildDynamicTargets({
-        baseCalories: context.user.preferences.dailyCalorieGoal || 2000,
-        activityLevel: context.user.preferences.activityLevel,
-        primaryGoal: context.user.preferences.primaryGoal,
-        workoutCalories,
-        stepCalories: stepsCalories,
-        manualProtein: context.user.preferences.proteinGoal,
-        manualCarbs: context.user.preferences.carbsGoal,
-        manualFat: context.user.preferences.fatGoal,
-      });
-
-      const goalProgress = {
-        calories: dynamicTargets.calorieBudget > 0 ? (totals.calories / dynamicTargets.calorieBudget) * 100 : 0,
-        protein: dynamicTargets.proteinGoal > 0 ? (totals.protein / dynamicTargets.proteinGoal) * 100 : 0,
-        carbs: dynamicTargets.carbsGoal > 0 ? (totals.carbs / dynamicTargets.carbsGoal) * 100 : 0,
-        fat: dynamicTargets.fatGoal > 0 ? (totals.fat / dynamicTargets.fatGoal) * 100 : 0
-      };
 
       return {
-        date,
-        totalCalories: totals.calories,
-        totalProtein: totals.protein,
-        totalCarbs: totals.carbs,
-        totalFat: totals.fat,
+        date: dayMetrics.dateKey,
+        totalCalories: dayMetrics.totals.calories,
+        totalProtein: dayMetrics.totals.protein,
+        totalCarbs: dayMetrics.totals.carbs,
+        totalFat: dayMetrics.totals.fat,
         dynamicGoals: {
-          calories: dynamicTargets.calorieBudget,
-          protein: dynamicTargets.proteinGoal,
-          carbs: dynamicTargets.carbsGoal,
-          fat: dynamicTargets.fatGoal,
+          calories: dayMetrics.dynamicTargets.calorieBudget,
+          protein: dayMetrics.dynamicTargets.proteinGoal,
+          carbs: dayMetrics.dynamicTargets.carbsGoal,
+          fat: dayMetrics.dynamicTargets.fatGoal,
         },
-        steps,
-        stepsCalories,
-        workoutCalories,
-        calorieBudget: dynamicTargets.calorieBudget,
-        meals,
-        goalProgress
+        steps: dayMetrics.steps,
+        stepsCalories: dayMetrics.stepsCalories,
+        workoutCalories: dayMetrics.workoutTotals.caloriesBurned,
+        calorieBudget: dayMetrics.dynamicTargets.calorieBudget,
+        meals: dayMetrics.meals,
+        goalProgress: dayMetrics.goalProgress,
       };
     },
   },

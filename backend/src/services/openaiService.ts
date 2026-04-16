@@ -317,11 +317,16 @@ Return ONLY valid JSON:
     }
   }
 
-  async chat(messages: EvoChatMessage[], userContext?: EvoUserContext): Promise<string> {
+  async chat(
+    messages: EvoChatMessage[],
+    userContext?: EvoUserContext,
+    conversationChannel: 'general' | 'coach' | 'log' = 'coach'
+  ): Promise<string> {
     this.ensureInitialized();
     
     try {
-      const mode = detectEvoResponseMode(messages, 'coach');
+      const fallbackMode = conversationChannel === 'general' ? 'education' : 'coach';
+      const mode = detectEvoResponseMode(messages, fallbackMode);
       const { tone, proactivity } = resolveToneAndProactivity(userContext);
       const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content;
       const systemMessage = {
@@ -333,6 +338,7 @@ Return ONLY valid JSON:
           userContext,
           includeHumor: true,
           latestUserMessage,
+          conversationChannel,
           channel: 'chat',
         }),
       };
@@ -359,13 +365,19 @@ Return ONLY valid JSON:
     calorieGoal: number;
     proteinGoal: number;
     primaryGoal?: string;
+    userName?: string;
     coachingTone?: string;
     proactivityLevel?: string;
     consumedCalories: number;
     consumedProtein: number;
+    consumedCarbs?: number;
+    consumedFat?: number;
     caloriesBurned: number;
     remainingCalories: number;
     remainingProtein: number;
+    mealsCount?: number;
+    workoutSessions?: number;
+    steps?: number;
   }): Promise<{ summary: string; tips: string[] }> {
     this.ensureInitialized();
 
@@ -386,11 +398,11 @@ Return ONLY valid JSON:
         todayStats: {
           calories: input.consumedCalories,
           protein: input.consumedProtein,
-          carbs: 0,
-          fat: 0,
+          carbs: input.consumedCarbs || 0,
+          fat: input.consumedFat || 0,
         },
         todayActivity: {
-          steps: 0,
+          steps: input.steps || 0,
           stepsCalories: 0,
           calorieBudget: input.calorieGoal,
         },
@@ -398,12 +410,16 @@ Return ONLY valid JSON:
     });
     const prompt = `
 Day: ${input.date}
+User: ${input.userName || 'User'}
 Primary goal: ${input.primaryGoal || 'maintenance'}
 Calorie goal: ${input.calorieGoal}
 Protein goal: ${input.proteinGoal}g
 Consumed calories: ${input.consumedCalories}
 Consumed protein: ${input.consumedProtein}g
 Burned calories (training only): ${input.caloriesBurned}
+Meals logged: ${input.mealsCount ?? 0}
+Workout sessions: ${input.workoutSessions ?? 0}
+Steps tracked: ${input.steps ?? 0}
 Tracked steps are informational only and must not be counted as burned calories.
 Remaining calories (budget - consumed): ${input.remainingCalories}
 Remaining protein: ${input.remainingProtein}g
@@ -423,6 +439,9 @@ Rules:
 - practical next steps, no generic fluff
 - mention protein and recovery when relevant
 - optional subtle emoji, max one emoji per sentence
+- in summary, reference at least two concrete numbers from context
+- avoid generic praise and stale templates; sound like a present, intelligent companion
+- if data quality is weak, say it directly instead of guessing
     `.trim();
 
     const response = await this.openai!.chat.completions.create(

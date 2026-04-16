@@ -7,14 +7,10 @@ import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, Skeleton } from '@/components/ui/loading';
 import { DELETE_WORKOUT_MUTATION, LOG_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
-import {
-  DAILY_STATS_QUERY,
-  ME_QUERY,
-  MY_WORKOUTS_QUERY,
-  NEW_WORKOUT_SUBSCRIPTION,
-  WORKOUT_COACH_SUMMARY_QUERY,
-} from '@/lib/graphql/queries';
+import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION } from '@/lib/graphql/queries';
 import { appToast } from '@/lib/app-toast';
+import { buildDayRefetchQueries } from '@/lib/day-data';
+import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 
@@ -29,21 +25,13 @@ export default function WorkoutsPage() {
   const [intensity, setIntensity] = useState<WorkoutIntensity>('MEDIUM');
 
   const { data: meData } = useQuery(ME_QUERY);
-  const { data: workoutsData, loading: workoutsLoading, refetch: refetchWorkouts } = useQuery(MY_WORKOUTS_QUERY, {
-    variables: { date: today, limit: 20, offset: 0 },
-    fetchPolicy: 'cache-and-network',
-  });
-  const { data: summaryData, loading: summaryLoading, refetch: refetchSummary } = useQuery(WORKOUT_COACH_SUMMARY_QUERY, {
-    variables: { date: today },
-    fetchPolicy: 'cache-and-network',
-  });
+  const daySnapshot = useDaySnapshot({ date: today, enabled: true, includeInsight: false });
 
   useSubscription(NEW_WORKOUT_SUBSCRIPTION, {
     variables: { userId: meData?.me?.id },
     skip: !meData?.me?.id,
     onData: () => {
-      refetchWorkouts({ date: today, limit: 20, offset: 0 });
-      refetchSummary({ date: today });
+      daySnapshot.refetchDay();
     },
   });
 
@@ -56,22 +44,14 @@ export default function WorkoutsPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save workout.');
     },
-    refetchQueries: [
-      { query: MY_WORKOUTS_QUERY, variables: { date: today, limit: 20, offset: 0 } },
-      { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date: today } },
-      { query: DAILY_STATS_QUERY, variables: { date: today } },
-    ],
+    refetchQueries: buildDayRefetchQueries(today),
   });
 
   const [deleteWorkout, { loading: deletingWorkout }] = useMutation(DELETE_WORKOUT_MUTATION, {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete workout.');
     },
-    refetchQueries: [
-      { query: MY_WORKOUTS_QUERY, variables: { date: today, limit: 20, offset: 0 } },
-      { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date: today } },
-      { query: DAILY_STATS_QUERY, variables: { date: today } },
-    ],
+    refetchQueries: buildDayRefetchQueries(today),
   });
 
   const handleSubmit = async (event: FormEvent) => {
@@ -96,8 +76,8 @@ export default function WorkoutsPage() {
     });
   };
 
-  const summary = summaryData?.workoutCoachSummary;
-  const workouts = workoutsData?.myWorkouts || [];
+  const summary = daySnapshot.summary;
+  const workouts = daySnapshot.workouts || [];
   const weeklyWorkoutsGoal = Number(meData?.me?.preferences?.weeklyWorkoutsGoal || 4);
   const weeklyActiveMinutesGoal = Number(meData?.me?.preferences?.weeklyActiveMinutesGoal || 180);
   const minutesToday = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
@@ -244,7 +224,7 @@ export default function WorkoutsPage() {
           <section className="xl:col-span-7 space-y-4">
             <div className="bg-surface border border-border rounded-xl p-4 md:p-5">
               <h2 className="text-lg font-semibold tracking-tight text-text-primary mb-4">Today summary (food + training)</h2>
-              {summaryLoading ? (
+              {daySnapshot.loading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-16 w-full rounded-lg" />
                   <Skeleton className="h-16 w-full rounded-lg" />
@@ -269,7 +249,7 @@ export default function WorkoutsPage() {
 
             <div className="bg-surface border border-border rounded-xl p-4 md:p-5">
               <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">Today workouts</h3>
-              {workoutsLoading ? (
+              {daySnapshot.loading ? (
                 <div className="space-y-2">
                   <Skeleton className="h-14 w-full rounded-lg" />
                   <Skeleton className="h-14 w-full rounded-lg" />

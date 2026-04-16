@@ -10,9 +10,12 @@ import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
+import { buildDayRefetchQueries } from '@/lib/day-data';
+import { formatPrimaryGoal } from '@/lib/formatters';
 
 export default function GoalsPage() {
   const router = useRouter();
+  const today = new Date().toISOString().split('T')[0];
   const [dailyCalorieGoal, setDailyCalorieGoal] = useState('2000');
   const [weeklyWorkoutsGoal, setWeeklyWorkoutsGoal] = useState('4');
   const [weeklyActiveMinutesGoal, setWeeklyActiveMinutesGoal] = useState('180');
@@ -24,12 +27,12 @@ export default function GoalsPage() {
   const { data, loading, error } = useQuery(ME_QUERY);
 
   const [updatePreferences, { loading: savingGoals }] = useMutation(UPDATE_PREFERENCES_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }],
+    refetchQueries: [{ query: ME_QUERY }, ...buildDayRefetchQueries(today)],
     awaitRefetchQueries: true,
   });
 
   const [setGoalsWithAI, { loading: applyingAiGoals }] = useMutation(SET_GOALS_WITH_AI_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }],
+    refetchQueries: [{ query: ME_QUERY }, ...buildDayRefetchQueries(today)],
     awaitRefetchQueries: true,
   });
 
@@ -341,20 +344,6 @@ function MacroGoalCard({ label, value, unit = 'g' }: { label: string; value: num
       </p>
     </div>
   );
-}
-
-function formatPrimaryGoal(value: string) {
-  switch (String(value || '').toUpperCase()) {
-    case 'FAT_LOSS':
-      return 'Fat loss';
-    case 'MUSCLE_GAIN':
-      return 'Muscle gain';
-    case 'STRENGTH':
-      return 'Strength';
-    case 'MAINTENANCE':
-    default:
-      return 'Maintenance';
-  }
 }
 
 function getGoalMicrocopy(goal: string) {

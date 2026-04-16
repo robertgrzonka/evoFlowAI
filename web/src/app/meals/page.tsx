@@ -11,6 +11,7 @@ import { DAILY_STATS_QUERY } from '@/lib/graphql/queries';
 import { DELETE_FOOD_ITEM_MUTATION, LOG_MEAL_WITH_AI_MUTATION } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
 import ChatMarkdown from '@/components/ChatMarkdown';
+import { buildDayRefetchQueries } from '@/lib/day-data';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 type MealEntry = {
@@ -58,7 +59,7 @@ export default function MealsPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save meal.');
     },
-    refetchQueries: [{ query: DAILY_STATS_QUERY, variables: { date: today } }],
+    refetchQueries: buildDayRefetchQueries(today),
     awaitRefetchQueries: true,
   });
 
@@ -66,7 +67,7 @@ export default function MealsPage() {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: [{ query: DAILY_STATS_QUERY, variables: { date: today } }],
+    refetchQueries: buildDayRefetchQueries(today),
   });
 
   const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {

@@ -21,23 +21,30 @@ import { UPDATE_PREFERENCES_MUTATION } from '@/lib/graphql/mutations';
 import { clearAuthToken } from '@/lib/auth-token';
 import { ButtonSpinner, PageLoader } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
+import { buildDayRefetchQueries } from '@/lib/day-data';
+import { formatPrimaryGoal } from '@/lib/formatters';
 
 export default function SettingsPage() {
   const router = useRouter();
+  const today = new Date().toISOString().split('T')[0];
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [evoDockEnabled, setEvoDockEnabled] = useState(true);
+  const [weightKg, setWeightKg] = useState('');
+  const [heightCm, setHeightCm] = useState('');
   const [coachingTone, setCoachingTone] = useState<'SUPPORTIVE' | 'DIRECT'>('SUPPORTIVE');
   const [proactivityLevel, setProactivityLevel] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
 
   const { data, loading, error } = useQuery(ME_QUERY);
   const [updatePreferences, { loading: saving }] = useMutation(UPDATE_PREFERENCES_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }],
+    refetchQueries: [{ query: ME_QUERY }, ...buildDayRefetchQueries(today)],
     awaitRefetchQueries: true,
   });
 
   useEffect(() => {
     if (!data?.me?.preferences) return;
     setNotificationsEnabled(Boolean(data.me.preferences.notifications));
+    setWeightKg(data.me.preferences.weightKg ? String(data.me.preferences.weightKg) : '');
+    setHeightCm(data.me.preferences.heightCm ? String(data.me.preferences.heightCm) : '');
     setCoachingTone(String(data.me.preferences.coachingTone || 'SUPPORTIVE').toUpperCase() as 'SUPPORTIVE' | 'DIRECT');
     setProactivityLevel(String(data.me.preferences.proactivityLevel || 'MEDIUM').toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH');
   }, [data]);
@@ -56,11 +63,26 @@ export default function SettingsPage() {
   }, [error, router]);
 
   const handleSaveSettings = async () => {
+    const parsedWeight = weightKg.trim() === '' ? null : Number(weightKg);
+    const parsedHeight = heightCm.trim() === '' ? null : Number(heightCm);
+
+    if (parsedWeight !== null && (!Number.isFinite(parsedWeight) || parsedWeight < 30 || parsedWeight > 300)) {
+      appToast.warning('Invalid weight', 'Weight must be between 30 and 300 kg.');
+      return;
+    }
+
+    if (parsedHeight !== null && (!Number.isFinite(parsedHeight) || parsedHeight < 120 || parsedHeight > 260)) {
+      appToast.warning('Invalid height', 'Height must be between 120 and 260 cm.');
+      return;
+    }
+
     try {
       await updatePreferences({
         variables: {
           input: {
             notifications: notificationsEnabled,
+            weightKg: parsedWeight,
+            heightCm: parsedHeight,
             coachingTone,
             proactivityLevel,
           },
@@ -86,6 +108,8 @@ export default function SettingsPage() {
   }
 
   const user = data?.me;
+  const proteinSuggestionByWeight =
+    typeof user?.preferences?.weightKg === 'number' ? Math.round(user.preferences.weightKg * 2) : null;
 
   return (
     <AppShell>
@@ -188,6 +212,42 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 </div>
+                <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                  <p className="text-sm font-semibold text-text-primary mb-1.5">Body metrics for AI guidance</p>
+                  <p className="text-xs text-text-secondary mb-3">
+                    Evo uses this to suggest protein intake (default: about 2.0 g per kg body weight).
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label htmlFor="weight-kg" className="block text-xs text-text-secondary mb-1">Weight (kg)</label>
+                      <input
+                        id="weight-kg"
+                        type="number"
+                        min={30}
+                        max={300}
+                        step={0.1}
+                        value={weightKg}
+                        onChange={(event) => setWeightKg(event.target.value)}
+                        className="input-field w-full"
+                        placeholder="e.g. 78"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="height-cm" className="block text-xs text-text-secondary mb-1">Height (cm)</label>
+                      <input
+                        id="height-cm"
+                        type="number"
+                        min={120}
+                        max={260}
+                        step={1}
+                        value={heightCm}
+                        onChange={(event) => setHeightCm(event.target.value)}
+                        className="input-field w-full"
+                        placeholder="e.g. 180"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -198,7 +258,13 @@ export default function SettingsPage() {
                 <PlanPill label="Coaching tone" value={formatCoachingTone(String(user?.preferences?.coachingTone || 'SUPPORTIVE'))} />
                 <PlanPill label="Proactivity" value={formatProactivity(String(user?.preferences?.proactivityLevel || 'MEDIUM'))} />
                 <PlanPill label="Resting calories (base)" value={`${user?.preferences?.dailyCalorieGoal || 0} kcal`} />
+                <PlanPill label="Body weight" value={user?.preferences?.weightKg ? `${user.preferences.weightKg} kg` : 'Not set'} />
+                <PlanPill label="Height" value={user?.preferences?.heightCm ? `${user.preferences.heightCm} cm` : 'Not set'} />
                 <PlanPill label="Protein / day" value={`${user?.preferences?.proteinGoal || 0} g`} />
+                <PlanPill
+                  label="Protein suggestion (2g/kg)"
+                  value={proteinSuggestionByWeight ? `${proteinSuggestionByWeight} g` : 'Add weight to calculate'}
+                />
                 <PlanPill label="Carbs / day" value={`${user?.preferences?.carbsGoal || 0} g`} />
                 <PlanPill label="Fat / day" value={`${user?.preferences?.fatGoal || 0} g`} />
                 <PlanPill label="Workouts / week" value={`${user?.preferences?.weeklyWorkoutsGoal || 0}`} />
@@ -347,20 +413,6 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
       <p className="text-sm font-semibold text-text-primary mt-1 break-all">{value}</p>
     </div>
   );
-}
-
-function formatPrimaryGoal(value: string) {
-  switch (String(value || '').toUpperCase()) {
-    case 'FAT_LOSS':
-      return 'Fat loss';
-    case 'MUSCLE_GAIN':
-      return 'Muscle gain';
-    case 'STRENGTH':
-      return 'Strength';
-    case 'MAINTENANCE':
-    default:
-      return 'Maintenance';
-  }
 }
 
 function formatCoachingTone(value: string) {

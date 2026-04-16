@@ -18,6 +18,7 @@ import {
   SEND_MESSAGE_MUTATION,
 } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
+import { buildDayRefetchQueries, CHAT_HISTORY_LIMIT } from '@/lib/day-data';
 
 type DockTab = 'chat' | 'meal' | 'workout';
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -49,7 +50,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const { data: historyData, loading: historyLoading, refetch } = useQuery(MY_CHAT_HISTORY_QUERY, {
-    variables: { channel: chatChannel, limit: 20, offset: 0 },
+    variables: { channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 },
     fetchPolicy: 'cache-and-network',
     pollInterval: 8000,
     skip: hidden,
@@ -60,7 +61,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
     variables: { userId: meData?.me?.id, channel: chatChannel },
     skip: !meData?.me?.id || hidden,
     onData: () => {
-      refetch({ channel: chatChannel, limit: 20, offset: 0 });
+      refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
       if (!isOpen) setUnreadCount((prev) => prev + 1);
     },
   });
@@ -71,7 +72,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
     },
     onCompleted: async () => {
       setMessageInput('');
-      await refetch({ channel: chatChannel, limit: 20, offset: 0 });
+      await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
     awaitRefetchQueries: true,
   });
@@ -86,8 +87,9 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
       setMealImageMimeType('image/jpeg');
       setActiveTab('chat');
       appToast.success('Meal added', 'Evo logged your meal to today.');
-      await refetch({ channel: chatChannel, limit: 20, offset: 0 });
+      await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
+    refetchQueries: buildDayRefetchQueries(today),
     awaitRefetchQueries: true,
   });
 
@@ -99,8 +101,9 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
       setWorkoutTitle('');
       setActiveTab('chat');
       appToast.success('Workout added', 'Evo logged your training session.');
-      await refetch({ channel: chatChannel, limit: 20, offset: 0 });
+      await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
+    refetchQueries: buildDayRefetchQueries(today),
     awaitRefetchQueries: true,
   });
 
@@ -178,7 +181,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
         },
       },
     });
-    await refetch({ channel: chatChannel, limit: 20, offset: 0 });
+    await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
   };
 
   const handleWorkoutSubmit = async (event: React.FormEvent) => {
@@ -199,7 +202,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
         },
       },
     });
-    await refetch({ channel: chatChannel, limit: 20, offset: 0 });
+    await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
   };
 
   return (
