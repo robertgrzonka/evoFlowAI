@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
 import { ImagePlus, MessageCircle, Minus, Send, X } from 'lucide-react';
-import toast from 'react-hot-toast';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import { ButtonSpinner } from '@/components/ui/loading';
 import {
@@ -16,6 +15,7 @@ import {
   LOG_WORKOUT_MUTATION,
   SEND_MESSAGE_MUTATION,
 } from '@/lib/graphql/mutations';
+import { appToast } from '@/lib/app-toast';
 
 type DockTab = 'chat' | 'meal' | 'workout';
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -61,7 +61,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
   const [sendMessage, { loading: sendingMessage }] = useMutation(SEND_MESSAGE_MUTATION, {
     onError: (error) => {
-      toast.error(error.message || 'Could not send message');
+      appToast.error('Message failed', error.message || 'Could not send message.');
     },
     onCompleted: () => {
       setMessageInput('');
@@ -71,26 +71,26 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
   const [logMealWithAI, { loading: loggingMeal }] = useMutation(LOG_MEAL_WITH_AI_MUTATION, {
     onError: (error) => {
-      toast.error(error.message || 'Could not add meal');
+      appToast.error('Meal save failed', error.message || 'Could not add meal.');
     },
     onCompleted: () => {
       setMealDescription('');
       setMealImageBase64('');
       setMealImageMimeType('image/jpeg');
       setActiveTab('chat');
-      toast.success('Meal added via Evo');
+      appToast.success('Meal added', 'Evo logged your meal to today.');
       refetch({ limit: 20, offset: 0 });
     },
   });
 
   const [logWorkout, { loading: loggingWorkout }] = useMutation(LOG_WORKOUT_MUTATION, {
     onError: (error) => {
-      toast.error(error.message || 'Could not add workout');
+      appToast.error('Workout save failed', error.message || 'Could not add workout.');
     },
     onCompleted: () => {
       setWorkoutTitle('');
       setActiveTab('chat');
-      toast.success('Workout added via Evo');
+      appToast.success('Workout added', 'Evo logged your training session.');
     },
   });
 
@@ -131,7 +131,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image');
+      appToast.info('Invalid file', 'Please upload an image.');
       return;
     }
 
@@ -144,7 +144,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
     const [meta, payload] = base64.split(',');
     if (!payload) {
-      toast.error('Could not read image');
+      appToast.error('Image read failed', 'Could not read image.');
       return;
     }
     const mime = meta.match(/data:(.*);base64/)?.[1] || 'image/jpeg';
@@ -155,7 +155,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   const handleMealSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!mealDescription.trim() && !mealImageBase64) {
-      toast.error('Add meal description or image');
+      appToast.info('Missing meal input', 'Add meal description or image.');
       return;
     }
 
@@ -174,7 +174,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   const handleWorkoutSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!workoutTitle.trim()) {
-      toast.error('Add workout title');
+      appToast.info('Missing workout title', 'Add workout title before saving.');
       return;
     }
 

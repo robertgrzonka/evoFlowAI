@@ -141,6 +141,7 @@ export default function SettingsPage() {
             <div className="bg-surface rounded-xl border border-border p-5">
               <h2 className="text-base font-semibold tracking-tight text-text-primary mb-4">Current plan snapshot</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <PlanPill label="Primary goal" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} />
                 <PlanPill label="Calories / day" value={`${user?.preferences?.dailyCalorieGoal || 0} kcal`} />
                 <PlanPill label="Protein / day" value={`${user?.preferences?.proteinGoal || 0} g`} />
                 <PlanPill label="Carbs / day" value={`${user?.preferences?.carbsGoal || 0} g`} />
@@ -291,4 +292,18 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
       <p className="text-sm font-semibold text-text-primary mt-1 break-all">{value}</p>
     </div>
   );
+}
+
+function formatPrimaryGoal(value: string) {
+  switch (String(value || '').toUpperCase()) {
+    case 'FAT_LOSS':
+      return 'Fat loss';
+    case 'MUSCLE_GAIN':
+      return 'Muscle gain';
+    case 'STRENGTH':
+      return 'Strength';
+    case 'MAINTENANCE':
+    default:
+      return 'Maintenance';
+  }
 }

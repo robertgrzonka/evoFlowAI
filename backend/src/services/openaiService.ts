@@ -277,6 +277,7 @@ export class OpenAIService {
         
         ${userContext ? `
         User Context:
+        - Primary goal: ${userContext.primaryGoal || 'maintenance'}
         - Daily calorie goal: ${userContext.dailyCalorieGoal || 'Not set'}
         - Macro goals: protein ${userContext.proteinGoal || 'n/a'}g, carbs ${userContext.carbsGoal || 'n/a'}g, fat ${userContext.fatGoal || 'n/a'}g
         - Weekly training goals: ${userContext.weeklyWorkoutsGoal || 'n/a'} workouts, ${userContext.weeklyActiveMinutesGoal || 'n/a'} active minutes
@@ -315,6 +316,7 @@ export class OpenAIService {
     date: string;
     calorieGoal: number;
     proteinGoal: number;
+    primaryGoal?: string;
     consumedCalories: number;
     consumedProtein: number;
     caloriesBurned: number;
@@ -328,6 +330,7 @@ export class OpenAIService {
       Build short dashboard insights for one day.
 
       Day: ${input.date}
+      Primary goal: ${input.primaryGoal || 'maintenance'}
       Calorie goal: ${input.calorieGoal}
       Protein goal: ${input.proteinGoal}g
       Consumed calories: ${input.consumedCalories}

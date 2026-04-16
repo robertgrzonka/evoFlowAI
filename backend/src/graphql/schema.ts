@@ -19,6 +19,7 @@ export const typeDefs = gql`
     fatGoal: Int!
     weeklyWorkoutsGoal: Int!
     weeklyActiveMinutesGoal: Int!
+    primaryGoal: PrimaryGoal!
     dietaryRestrictions: [String!]!
     activityLevel: ActivityLevel!
     notifications: Boolean!
@@ -30,6 +31,13 @@ export const typeDefs = gql`
     MODERATE
     ACTIVE
     VERY_ACTIVE
+  }
+
+  enum PrimaryGoal {
+    FAT_LOSS
+    MAINTENANCE
+    MUSCLE_GAIN
+    STRENGTH
   }
 
   type NutritionInfo {
@@ -220,6 +228,7 @@ export const typeDefs = gql`
     fatGoal: Int
     weeklyWorkoutsGoal: Int
     weeklyActiveMinutesGoal: Int
+    primaryGoal: PrimaryGoal
     dietaryRestrictions: [String!]
     activityLevel: ActivityLevel
     notifications: Boolean

@@ -15,6 +15,7 @@ export interface UserPreferences {
   fatGoal: number;
   weeklyWorkoutsGoal: number;
   weeklyActiveMinutesGoal: number;
+  primaryGoal: 'fat_loss' | 'maintenance' | 'muscle_gain' | 'strength';
   dietaryRestrictions: string[];
   activityLevel: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
   notifications: boolean;

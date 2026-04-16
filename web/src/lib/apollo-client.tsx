@@ -8,8 +8,8 @@ import { getMainDefinition } from '@apollo/client/utilities';
 import { createClient } from 'graphql-ws';
 import { ApolloProvider as Provider } from '@apollo/client';
 import { ReactNode } from 'react';
-import toast from 'react-hot-toast';
 import { clearAuthToken, getAuthToken } from '@/lib/auth-token';
+import { appToast } from '@/lib/app-toast';
 
 // HTTP Link
 const httpLink = createHttpLink({
@@ -49,21 +49,21 @@ const errorLink = onError(({ graphQLErrors, networkError, operation, forward }) 
       
       // Show user-friendly error messages
       if (message.includes('You must be logged in')) {
-        toast.error('Session expired. Please log in again.');
+        appToast.error('Session expired', 'Please log in again.');
         // Redirect to login
         if (typeof window !== 'undefined') {
           clearAuthToken();
           window.location.href = '/login';
         }
       } else {
-        toast.error(message || 'An error occurred');
+        appToast.error('Request failed', message || 'An error occurred.');
       }
     });
   }
 
   if (networkError) {
     console.error(`Network error: ${networkError}`);
-    toast.error('Server connection error');
+    appToast.error('Network error', 'Server connection error.');
   }
 });
 

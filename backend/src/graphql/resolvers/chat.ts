@@ -89,6 +89,7 @@ export const chatResolvers = {
           fatGoal: context.user.preferences?.fatGoal,
           weeklyWorkoutsGoal: context.user.preferences?.weeklyWorkoutsGoal,
           weeklyActiveMinutesGoal: context.user.preferences?.weeklyActiveMinutesGoal,
+          primaryGoal: context.user.preferences?.primaryGoal,
           activityLevel: context.user.preferences?.activityLevel,
           dietaryRestrictions: context.user.preferences?.dietaryRestrictions,
         };

@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { ArrowLeft, Camera, Dumbbell, Flame, Trash2 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import {
   DAILY_STATS_QUERY,
   ME_QUERY,
@@ -17,6 +16,7 @@ import AppShell from '@/components/AppShell';
 import ContextAICoach from '@/components/ContextAICoach';
 import { ListRowSkeleton, PageLoader, Skeleton, StatCardSkeleton } from '@/components/ui/loading';
 import { DELETE_FOOD_ITEM_MUTATION, DELETE_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
+import { appToast } from '@/lib/app-toast';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 
@@ -41,7 +41,7 @@ export default function StatsPage() {
 
   const [deleteFoodItem, { loading: deletingMeal }] = useMutation(DELETE_FOOD_ITEM_MUTATION, {
     onError: (error) => {
-      toast.error(error.message || 'Could not delete meal');
+      appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
     refetchQueries: [
       { query: DAILY_STATS_QUERY, variables: { date: selectedDate } },
@@ -51,7 +51,7 @@ export default function StatsPage() {
 
   const [deleteWorkout, { loading: deletingWorkout }] = useMutation(DELETE_WORKOUT_MUTATION, {
     onError: (error) => {
-      toast.error(error.message || 'Could not delete workout');
+      appToast.error('Delete failed', error.message || 'Could not delete workout.');
     },
     refetchQueries: [
       { query: MY_WORKOUTS_QUERY, variables: { date: selectedDate, limit: 30, offset: 0 } },
@@ -61,7 +61,7 @@ export default function StatsPage() {
 
   useEffect(() => {
     if (!userError) return;
-    toast.error('Session expired. Please login again.');
+    appToast.error('Session expired', 'Please login again.');
     clearAuthToken();
     router.push('/login');
   }, [userError, router]);
@@ -82,9 +82,9 @@ export default function StatsPage() {
 
     const result = await deleteFoodItem({ variables: { id: mealId } });
     if (result.data?.deleteFoodItem) {
-      toast.success('Meal deleted');
+      appToast.success('Meal deleted', 'Entry removed for selected day.');
     } else {
-      toast.error('Could not delete meal');
+      appToast.error('Delete failed', 'Could not delete meal.');
     }
   };
 
@@ -94,9 +94,9 @@ export default function StatsPage() {
 
     const result = await deleteWorkout({ variables: { id: workoutId } });
     if (result.data?.deleteWorkout) {
-      toast.success('Workout deleted');
+      appToast.success('Workout deleted', 'Workout removed for selected day.');
     } else {
-      toast.error('Could not delete workout');
+      appToast.error('Delete failed', 'Could not delete workout.');
     }
   };
 
@@ -107,7 +107,9 @@ export default function StatsPage() {
             <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
             Back to dashboard
           </Link>
-          <span className="text-sm text-text-secondary">View stats by date</span>
+          <span className="text-sm text-text-secondary">
+            Goal mode: {formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))}
+          </span>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
@@ -147,6 +149,7 @@ export default function StatsPage() {
                   <StatCard
                     title="Protein"
                     value={stats?.totalProtein?.toFixed(1) || '0'}
+                    goal={user?.preferences?.proteinGoal || undefined}
                     progress={goalProgress.protein}
                     unit="g"
                     tone="info"
@@ -154,6 +157,7 @@ export default function StatsPage() {
                   <StatCard
                     title="Carbs"
                     value={stats?.totalCarbs?.toFixed(1) || '0'}
+                    goal={user?.preferences?.carbsGoal || undefined}
                     progress={goalProgress.carbs}
                     unit="g"
                     tone="success"
@@ -161,6 +165,7 @@ export default function StatsPage() {
                   <StatCard
                     title="Fat"
                     value={stats?.totalFat?.toFixed(1) || '0'}
+                    goal={user?.preferences?.fatGoal || undefined}
                     progress={goalProgress.fat}
                     unit="g"
                     tone="brandSoft"
@@ -387,4 +392,18 @@ function StatCard({
       <p className="text-xs text-text-muted mt-1">{percentage.toFixed(0)}% of goal</p>
     </div>
   );
+}
+
+function formatPrimaryGoal(value: string) {
+  switch (String(value || '').toUpperCase()) {
+    case 'FAT_LOSS':
+      return 'Fat loss';
+    case 'MUSCLE_GAIN':
+      return 'Muscle gain';
+    case 'STRENGTH':
+      return 'Strength';
+    case 'MAINTENANCE':
+    default:
+      return 'Maintenance';
+  }
 }

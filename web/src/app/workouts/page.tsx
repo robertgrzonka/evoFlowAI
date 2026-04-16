@@ -4,7 +4,6 @@ import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
 import Link from 'next/link';
 import { ArrowLeft, Dumbbell, Flame, Timer, Trash2 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import AppShell from '@/components/AppShell';
 import { ButtonSpinner, Skeleton } from '@/components/ui/loading';
 import { DELETE_WORKOUT_MUTATION, LOG_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
@@ -15,6 +14,7 @@ import {
   NEW_WORKOUT_SUBSCRIPTION,
   WORKOUT_COACH_SUMMARY_QUERY,
 } from '@/lib/graphql/queries';
+import { appToast } from '@/lib/app-toast';
 
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 
@@ -51,10 +51,10 @@ export default function WorkoutsPage() {
     onCompleted: () => {
       setTitle('');
       setNotes('');
-      toast.success('Workout saved');
+      appToast.success('Workout saved', 'Session was added to today.');
     },
     onError: (error) => {
-      toast.error(error.message || 'Could not save workout');
+      appToast.error('Save failed', error.message || 'Could not save workout.');
     },
     refetchQueries: [
       { query: MY_WORKOUTS_QUERY, variables: { date: today, limit: 20, offset: 0 } },
@@ -65,7 +65,7 @@ export default function WorkoutsPage() {
 
   const [deleteWorkout, { loading: deletingWorkout }] = useMutation(DELETE_WORKOUT_MUTATION, {
     onError: (error) => {
-      toast.error(error.message || 'Could not delete workout');
+      appToast.error('Delete failed', error.message || 'Could not delete workout.');
     },
     refetchQueries: [
       { query: MY_WORKOUTS_QUERY, variables: { date: today, limit: 20, offset: 0 } },
@@ -78,7 +78,7 @@ export default function WorkoutsPage() {
     event.preventDefault();
 
     if (!title.trim()) {
-      toast.error('Add workout name');
+      appToast.info('Workout title missing', 'Add workout name before saving.');
       return;
     }
 
@@ -105,9 +105,9 @@ export default function WorkoutsPage() {
 
     const result = await deleteWorkout({ variables: { id: workoutId } });
     if (result.data?.deleteWorkout) {
-      toast.success('Workout deleted');
+      appToast.success('Workout deleted', 'Entry was removed from your timeline.');
     } else {
-      toast.error('Could not delete workout');
+      appToast.error('Delete failed', 'Could not delete workout.');
     }
   };
 

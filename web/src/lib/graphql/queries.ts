@@ -14,6 +14,7 @@ export const ME_QUERY = gql`
         fatGoal
         weeklyWorkoutsGoal
         weeklyActiveMinutesGoal
+        primaryGoal
         dietaryRestrictions
         activityLevel
         notifications

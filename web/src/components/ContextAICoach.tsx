@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation } from '@apollo/client';
-import toast from 'react-hot-toast';
 import { SEND_MESSAGE_MUTATION } from '@/lib/graphql/mutations';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import { ButtonSpinner } from '@/components/ui/loading';
+import { appToast } from '@/lib/app-toast';
 
 type ContextAICoachProps = {
   title: string;
@@ -32,7 +32,7 @@ export default function ContextAICoach({
 
   const [sendMessage, { loading }] = useMutation<SendMessageResponse>(SEND_MESSAGE_MUTATION, {
     onError: (error) => {
-      toast.error(error.message || 'AI coach is temporarily unavailable');
+      appToast.error('Coach unavailable', error.message || 'AI coach is temporarily unavailable.');
     },
   });
 

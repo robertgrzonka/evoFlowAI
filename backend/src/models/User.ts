@@ -16,6 +16,11 @@ const userPreferencesSchema = new Schema<UserPreferences>({
   fatGoal: { type: Number, default: 67 },
   weeklyWorkoutsGoal: { type: Number, default: 4 },
   weeklyActiveMinutesGoal: { type: Number, default: 180 },
+  primaryGoal: {
+    type: String,
+    enum: ['fat_loss', 'maintenance', 'muscle_gain', 'strength'],
+    default: 'maintenance'
+  },
   dietaryRestrictions: [{ type: String }],
   activityLevel: {
     type: String,
@@ -61,6 +66,7 @@ const userSchema = new Schema<UserDocument>({
       fatGoal: 67,
       weeklyWorkoutsGoal: 4,
       weeklyActiveMinutesGoal: 180,
+      primaryGoal: 'maintenance',
       dietaryRestrictions: [],
       activityLevel: 'moderate',
       notifications: true

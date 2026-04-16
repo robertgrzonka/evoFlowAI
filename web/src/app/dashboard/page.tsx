@@ -11,7 +11,6 @@ import {
   MY_WORKOUTS_QUERY,
 } from '@/lib/graphql/queries';
 import { Camera, ChartColumnIncreasing, Dumbbell, Plus, Quote, Target, Trash2 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { clearAuthToken, hasAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
 import AICoachAvatar from '@/components/AICoachAvatar';
@@ -26,6 +25,7 @@ import {
   DELETE_FOOD_ITEM_MUTATION,
   LOG_WORKOUT_MUTATION,
 } from '@/lib/graphql/mutations';
+import { appToast } from '@/lib/app-toast';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -56,7 +56,7 @@ export default function DashboardPage() {
 
   const [deleteFoodItem, { loading: deletingMeal }] = useMutation(DELETE_FOOD_ITEM_MUTATION, {
     onError: (error) => {
-      toast.error(error.message || 'Could not delete meal');
+      appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
     refetchQueries: [
       { query: DAILY_STATS_QUERY, variables: { date: today } },
@@ -66,10 +66,10 @@ export default function DashboardPage() {
   const [logWorkout, { loading: quickWorkoutSaving }] = useMutation(LOG_WORKOUT_MUTATION, {
     onCompleted: () => {
       setQuickWorkoutTitle('');
-      toast.success('Workout added');
+      appToast.success('Workout added', 'New session was saved to your day.');
     },
     onError: (error) => {
-      toast.error(error.message || 'Could not add workout');
+      appToast.error('Save failed', error.message || 'Could not add workout.');
     },
     refetchQueries: [
       { query: MY_WORKOUTS_QUERY, variables: { date: today, limit: 4, offset: 0 } },
@@ -88,7 +88,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (userError) {
-      toast.error('Session expired. Please login again.');
+      appToast.error('Session expired', 'Please login again.');
       clearAuthToken();
       router.push('/login');
     }
@@ -139,16 +139,16 @@ export default function DashboardPage() {
 
     const result = await deleteFoodItem({ variables: { id: mealId } });
     if (result.data?.deleteFoodItem) {
-      toast.success('Meal deleted');
+      appToast.success('Meal deleted', 'Entry was removed from your day.');
     } else {
-      toast.error('Could not delete meal');
+      appToast.error('Delete failed', 'Could not delete meal.');
     }
   };
 
   const handleQuickWorkout = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!quickWorkoutTitle.trim()) {
-      toast.error('Enter workout name');
+      appToast.info('Workout title missing', 'Enter workout name before saving.');
       return;
     }
 
@@ -215,7 +215,8 @@ export default function DashboardPage() {
                 </div>
               </blockquote>
 
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-2.5">
+                <SummaryPill label="Goal mode" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} />
                 <SummaryPill label="Meals today" value={String(completedMeals)} />
                 <SummaryPill label="Training today" value={dailyTrainingLabel} />
                 <SummaryPill label="Net kcal" value={`${insight.netCalories.toFixed(0)}`} />
@@ -581,5 +582,19 @@ function SummaryPill({ label, value }: { label: string; value: string }) {
       <p className="text-sm font-semibold text-text-primary mt-1">{value}</p>
     </div>
   );
+}
+
+function formatPrimaryGoal(value: string) {
+  switch (String(value || '').toUpperCase()) {
+    case 'FAT_LOSS':
+      return 'Fat loss';
+    case 'MUSCLE_GAIN':
+      return 'Muscle gain';
+    case 'STRENGTH':
+      return 'Strength';
+    case 'MAINTENANCE':
+    default:
+      return 'Maintenance';
+  }
 }
 

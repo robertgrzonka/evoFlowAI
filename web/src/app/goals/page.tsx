@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { ArrowLeft } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { ME_QUERY } from '@/lib/graphql/queries';
 import { SET_GOALS_WITH_AI_MUTATION, UPDATE_PREFERENCES_MUTATION } from '@/lib/graphql/mutations';
 import { clearAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
+import { appToast } from '@/lib/app-toast';
 
 export default function GoalsPage() {
   const router = useRouter();
@@ -18,6 +18,7 @@ export default function GoalsPage() {
   const [weeklyWorkoutsGoal, setWeeklyWorkoutsGoal] = useState('4');
   const [weeklyActiveMinutesGoal, setWeeklyActiveMinutesGoal] = useState('180');
   const [activityLevel, setActivityLevel] = useState('MODERATE');
+  const [primaryGoal, setPrimaryGoal] = useState('MAINTENANCE');
   const [aiGoalPrompt, setAiGoalPrompt] = useState('');
   const [lastAiMessage, setLastAiMessage] = useState('');
 
@@ -39,11 +40,12 @@ export default function GoalsPage() {
     setWeeklyWorkoutsGoal(String(data.me.preferences.weeklyWorkoutsGoal ?? 4));
     setWeeklyActiveMinutesGoal(String(data.me.preferences.weeklyActiveMinutesGoal ?? 180));
     setActivityLevel(String(data.me.preferences.activityLevel || 'MODERATE').toUpperCase());
+    setPrimaryGoal(String(data.me.preferences.primaryGoal || 'MAINTENANCE').toUpperCase());
   }, [data]);
 
   useEffect(() => {
     if (!error) return;
-    toast.error('Session expired. Please login again.');
+    appToast.error('Session expired', 'Please login again.');
     clearAuthToken();
     router.push('/login');
   }, [error, router]);
@@ -53,15 +55,15 @@ export default function GoalsPage() {
     const parsedWeeklyWorkouts = Number(weeklyWorkoutsGoal);
     const parsedWeeklyMinutes = Number(weeklyActiveMinutesGoal);
     if (!Number.isFinite(parsedGoal) || parsedGoal < 800 || parsedGoal > 5000) {
-      toast.error('Daily calorie goal must be between 800 and 5000');
+      appToast.warning('Invalid calorie target', 'Daily calorie goal must be between 800 and 5000.');
       return;
     }
     if (!Number.isFinite(parsedWeeklyWorkouts) || parsedWeeklyWorkouts < 0 || parsedWeeklyWorkouts > 14) {
-      toast.error('Weekly workouts goal must be between 0 and 14');
+      appToast.warning('Invalid workouts target', 'Weekly workouts goal must be between 0 and 14.');
       return;
     }
     if (!Number.isFinite(parsedWeeklyMinutes) || parsedWeeklyMinutes < 0 || parsedWeeklyMinutes > 2000) {
-      toast.error('Weekly active minutes goal must be between 0 and 2000');
+      appToast.warning('Invalid active minutes', 'Weekly active minutes goal must be between 0 and 2000.');
       return;
     }
 
@@ -73,19 +75,20 @@ export default function GoalsPage() {
             weeklyWorkoutsGoal: Math.round(parsedWeeklyWorkouts),
             weeklyActiveMinutesGoal: Math.round(parsedWeeklyMinutes),
             activityLevel,
+            primaryGoal,
           },
         },
       });
-      toast.success('Goals updated');
+      appToast.success('Goals updated', 'Your target strategy and limits are saved.');
     } catch (mutationError: any) {
-      toast.error(mutationError.message || 'Failed to update goals');
+      appToast.error('Update failed', mutationError.message || 'Failed to update goals.');
     }
   };
 
   const handleSetGoalsWithAI = async () => {
     const prompt = aiGoalPrompt.trim();
     if (!prompt) {
-      toast.error('Describe your goal first');
+      appToast.info('Add some context', 'Describe your routine so Evo can suggest better goals.');
       return;
     }
 
@@ -96,9 +99,9 @@ export default function GoalsPage() {
       const message = result.data?.setGoalsWithAI?.message;
       setAiGoalPrompt('');
       setLastAiMessage(message || 'AI updated your goals');
-      toast.success(message || 'AI updated your goals');
+      appToast.success('AI goals updated', message || 'Evo adjusted your goals based on your prompt.');
     } catch (mutationError: any) {
-      toast.error(mutationError.message || 'AI could not update goals');
+      appToast.error('AI update failed', mutationError.message || 'AI could not update goals.');
     }
   };
 
@@ -123,7 +126,7 @@ export default function GoalsPage() {
               Macro goals are set automatically to stay consistent with your plan.
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
                 <label htmlFor="daily-goal" className="block text-sm text-text-secondary mb-2">
                   Daily calories
@@ -183,6 +186,22 @@ export default function GoalsPage() {
                   <option value="VERY_ACTIVE">Very Active</option>
                 </select>
               </div>
+              <div>
+                <label htmlFor="primary-goal" className="block text-sm text-text-secondary mb-2">
+                  Primary goal
+                </label>
+                <select
+                  id="primary-goal"
+                  value={primaryGoal}
+                  onChange={(event) => setPrimaryGoal(event.target.value)}
+                  className="input-field w-full"
+                >
+                  <option value="FAT_LOSS">Fat loss</option>
+                  <option value="MAINTENANCE">Maintenance</option>
+                  <option value="MUSCLE_GAIN">Muscle gain</option>
+                  <option value="STRENGTH">Strength</option>
+                </select>
+              </div>
             </div>
 
             <button
@@ -214,6 +233,11 @@ export default function GoalsPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <MacroGoalCard
+                label="Primary Goal"
+                value={formatPrimaryGoal(String(data?.me?.preferences?.primaryGoal || primaryGoal))}
+                unit=""
+              />
               <MacroGoalCard
                 label="Workouts / Week"
                 value={data?.me?.preferences?.weeklyWorkoutsGoal || 0}
@@ -290,7 +314,7 @@ export default function GoalsPage() {
   );
 }
 
-function MacroGoalCard({ label, value, unit = 'g' }: { label: string; value: number; unit?: string }) {
+function MacroGoalCard({ label, value, unit = 'g' }: { label: string; value: number | string; unit?: string }) {
   return (
     <div className="bg-surface-elevated border border-border rounded-lg p-3.5">
       <p className="text-[11px] uppercase tracking-[0.14em] text-text-muted">{label}</p>
@@ -299,4 +323,18 @@ function MacroGoalCard({ label, value, unit = 'g' }: { label: string; value: num
       </p>
     </div>
   );
+}
+
+function formatPrimaryGoal(value: string) {
+  switch (String(value || '').toUpperCase()) {
+    case 'FAT_LOSS':
+      return 'Fat loss';
+    case 'MUSCLE_GAIN':
+      return 'Muscle gain';
+    case 'STRENGTH':
+      return 'Strength';
+    case 'MAINTENANCE':
+    default:
+      return 'Maintenance';
+  }
 }

@@ -122,6 +122,7 @@ export const workoutResolvers = {
 
       const calorieGoal = context.user.preferences?.dailyCalorieGoal || 2000;
       const proteinGoal = context.user.preferences?.proteinGoal || 150;
+      const primaryGoal = context.user.preferences?.primaryGoal || 'maintenance';
       const netCalories = consumedCalories - caloriesBurned;
       const remainingCalories = calorieGoal - netCalories;
       const remainingProtein = Math.max(0, proteinGoal - consumedProtein);
@@ -163,6 +164,7 @@ export const workoutResolvers = {
 
       const calorieGoal = context.user.preferences?.dailyCalorieGoal || 2000;
       const proteinGoal = context.user.preferences?.proteinGoal || 150;
+      const primaryGoal = context.user.preferences?.primaryGoal || 'maintenance';
       const netCalories = consumedCalories - caloriesBurned;
       const remainingCalories = calorieGoal - netCalories;
       const remainingProtein = Math.max(0, proteinGoal - consumedProtein);
@@ -172,6 +174,7 @@ export const workoutResolvers = {
           date,
           calorieGoal,
           proteinGoal,
+          primaryGoal,
           consumedCalories,
           consumedProtein,
           caloriesBurned,

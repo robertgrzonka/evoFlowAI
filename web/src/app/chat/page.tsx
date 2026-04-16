@@ -5,13 +5,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
 import { ArrowLeft, ImagePlus } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { LOG_MEAL_WITH_AI_MUTATION } from '@/lib/graphql/mutations';
 import { DAILY_STATS_QUERY, ME_QUERY, MY_CHAT_HISTORY_QUERY, NEW_CHAT_MESSAGE_SUBSCRIPTION } from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import { ButtonSpinner } from '@/components/ui/loading';
+import { appToast } from '@/lib/app-toast';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -28,6 +28,7 @@ export default function ChatPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [readingImage, setReadingImage] = useState(false);
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
+  const goalMode = String(meData?.me?.preferences?.primaryGoal || 'MAINTENANCE').toUpperCase();
 
   const { data, loading: historyLoading, error: historyError, refetch } = useQuery(MY_CHAT_HISTORY_QUERY, {
     variables: { limit: 30, offset: 0 },
@@ -46,7 +47,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!historyError) return;
 
-    toast.error('Session expired. Please log in again.');
+    appToast.error('Session expired', 'Please log in again.');
     clearAuthToken();
     router.push('/login');
   }, [historyError, router]);
@@ -56,10 +57,10 @@ export default function ChatPage() {
       setContent('');
       setImageBase64('');
       setImagePreview(null);
-      toast.success('Meal analyzed and saved');
+      appToast.success('Meal saved', 'Evo analyzed your meal and updated your diary.');
     },
     onError: (error) => {
-      toast.error(error.message || 'Unable to analyze meal');
+      appToast.error('Analysis failed', error.message || 'Unable to analyze meal.');
     },
     refetchQueries: [
       { query: DAILY_STATS_QUERY, variables: { date: today } },
@@ -72,7 +73,7 @@ export default function ChatPage() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
+      appToast.info('Invalid file', 'Please select an image file.');
       return;
     }
 
@@ -87,7 +88,7 @@ export default function ChatPage() {
 
       const [meta, payload] = base64.split(',');
       if (!payload) {
-        toast.error('Failed to read image');
+        appToast.error('Image read failed', 'Failed to read image.');
         return;
       }
 
@@ -104,7 +105,7 @@ export default function ChatPage() {
     event.preventDefault();
 
     if (!content.trim() && !imageBase64) {
-      toast.error('Add a meal description or upload an image');
+      appToast.info('Missing meal input', 'Add a meal description or upload an image.');
       return;
     }
 
@@ -121,6 +122,7 @@ export default function ChatPage() {
   };
 
   const messages = [...(data?.myChatHistory || [])].reverse();
+  const quickPrompts = getQuickPrompts(goalMode);
 
   return (
     <AppShell>
@@ -216,6 +218,22 @@ export default function ChatPage() {
               </div>
 
               <div>
+                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-text-muted">Coach shortcuts</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {quickPrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => setContent(prompt)}
+                      className="text-left rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:border-primary-500/30 transition-colors"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <label htmlFor="imageUpload" className="block text-sm font-medium text-text-primary mb-2">
                   Upload meal image
                 </label>
@@ -269,4 +287,36 @@ function ConversationSkeleton() {
       </div>
     </div>
   );
+}
+
+function getQuickPrompts(goalMode: string) {
+  if (goalMode === 'FAT_LOSS') {
+    return [
+      'I need a low-calorie high-protein dinner idea for tonight.',
+      'Based on today, what should I avoid eating late evening?',
+      'How can I keep deficit but not feel hungry after training?',
+    ];
+  }
+
+  if (goalMode === 'MUSCLE_GAIN') {
+    return [
+      'Suggest a calorie-dense but clean post-workout meal.',
+      'How much protein should I still eat this evening?',
+      'Give me one snack idea to support lean bulk.',
+    ];
+  }
+
+  if (goalMode === 'STRENGTH') {
+    return [
+      'What should I eat before heavy lifting for better performance?',
+      'Give me a recovery meal with enough carbs and protein.',
+      'How do I fuel on hard training days vs rest days?',
+    ];
+  }
+
+  return [
+    'Review my day and suggest one balanced next meal.',
+    'What macro is most off target right now?',
+    'Give me one simple nutrition tweak for tomorrow.',
+  ];
 }

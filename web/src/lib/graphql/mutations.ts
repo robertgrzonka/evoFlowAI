@@ -101,6 +101,7 @@ export const UPDATE_PREFERENCES_MUTATION = gql`
         fatGoal
         weeklyWorkoutsGoal
         weeklyActiveMinutesGoal
+        primaryGoal
         activityLevel
         dietaryRestrictions
         notifications
@@ -122,6 +123,7 @@ export const SET_GOALS_WITH_AI_MUTATION = gql`
           fatGoal
           weeklyWorkoutsGoal
           weeklyActiveMinutesGoal
+          primaryGoal
           activityLevel
           dietaryRestrictions
           notifications

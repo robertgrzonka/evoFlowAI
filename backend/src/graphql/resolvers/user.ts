@@ -12,6 +12,10 @@ export const userResolvers = {
       const value = String(preferences?.activityLevel || 'moderate');
       return value.toUpperCase();
     },
+    primaryGoal: (preferences: any) => {
+      const value = String(preferences?.primaryGoal || 'maintenance');
+      return value.toUpperCase();
+    },
   },
 
   Query: {},
@@ -29,6 +33,7 @@ export const userResolvers = {
         fatGoal,
         weeklyWorkoutsGoal,
         weeklyActiveMinutesGoal,
+        primaryGoal,
         dietaryRestrictions,
         activityLevel,
         notifications,
@@ -62,6 +67,9 @@ export const userResolvers = {
       if (dailyCalorieGoal !== undefined) updateData['preferences.dailyCalorieGoal'] = dailyCalorieGoal;
       if (weeklyWorkoutsGoal !== undefined) updateData['preferences.weeklyWorkoutsGoal'] = weeklyWorkoutsGoal;
       if (weeklyActiveMinutesGoal !== undefined) updateData['preferences.weeklyActiveMinutesGoal'] = weeklyActiveMinutesGoal;
+      if (primaryGoal !== undefined) {
+        updateData['preferences.primaryGoal'] = String(primaryGoal || 'MAINTENANCE').toLowerCase();
+      }
       if (dietaryRestrictions !== undefined) updateData['preferences.dietaryRestrictions'] = dietaryRestrictions;
       if (activityLevel !== undefined) updateData['preferences.activityLevel'] = nextActivityLevel;
       if (notifications !== undefined) updateData['preferences.notifications'] = notifications;
