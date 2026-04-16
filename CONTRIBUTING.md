@@ -1,147 +1,138 @@
 # Contributing to evoFlowAI
 
-Thank you for your interest in contributing to evoFlowAI! This document provides guidelines and instructions for contributing to the project.
+Thanks for helping improve evoFlowAI.
+This guide explains how to contribute safely and consistently across the monorepo.
 
-## 🚀 Getting Started
+## Scope
 
-1. Fork the repository
-2. Clone your fork: `git clone https://github.com/your-username/evoflowai.git`
-3. Install dependencies: `npm run install:all`
-4. Create a new branch: `git checkout -b feature/your-feature-name`
+Repository workspaces:
+- `backend` - GraphQL API and AI/business logic
+- `web` - Next.js app
+- `shared` - shared TypeScript types
+- `ios` - SwiftUI app (early stage)
 
-## 📋 Development Workflow
+## Getting Started
 
-### Code Style
+1. Create a branch from the default branch:
 
-- **TypeScript**: Use TypeScript for all new code
-- **Formatting**: Follow the existing code style
-- **Naming**: Use descriptive names for variables, functions, and components
-- **Comments**: Add comments for complex logic
-
-### Commit Messages
-
-Follow conventional commit format:
-```
-feat: add new feature
-fix: fix bug
-docs: update documentation
-style: format code
-refactor: refactor code
-test: add tests
-chore: update dependencies
+```bash
+git checkout -b feature/short-description
 ```
 
-### Branch Naming
+2. Install dependencies from root:
 
-Use descriptive branch names:
-- `feature/` - for new features
-- `fix/` - for bug fixes
-- `docs/` - for documentation updates
-- `refactor/` - for code refactoring
-
-## 🧪 Testing
-
-Before submitting a PR:
-1. Test your changes locally
-2. Run type checking: `npm run type-check` (in web/)
-3. Build the project: `npm run build`
-4. Ensure no console errors
-
-## 📝 Pull Request Process
-
-1. Update documentation if needed
-2. Add/update tests if applicable
-3. Ensure your code follows the project's style
-4. Write a clear PR description:
-   - What changes were made
-   - Why the changes were necessary
-   - How to test the changes
-
-## 🏗️ Project Structure
-
-```
-evoflowai/
-├── backend/          # Node.js GraphQL API
-├── web/              # Next.js web application
-├── shared/           # Shared TypeScript types
-├── ios/              # iOS SwiftUI application
-└── docs/             # Documentation
+```bash
+npm install
 ```
 
-## 🎨 Design Guidelines
+3. Configure local env files:
 
-### Dark Theme Colors
-- Background: `#0a0a0a`
-- Surface: `#1a1a1a`
-- Primary Accent: `#8B4B6B` (dark pink)
-- Text Primary: `#ffffff`
-- Text Secondary: `#d1d5db`
+```bash
+cp backend/.env.example backend/.env
+cp web/.env.local.example web/.env.local
+```
 
-### UI Components
-- Use Tailwind CSS for web styling
-- Follow SwiftUI best practices for iOS
-- Maintain consistency with existing components
-- Ensure responsive design for web
+4. Build shared package (required after type changes):
 
-## 🐛 Bug Reports
+```bash
+npm run build:shared
+```
 
-When reporting bugs, include:
-1. Description of the bug
-2. Steps to reproduce
-3. Expected behavior
-4. Actual behavior
-5. Screenshots (if applicable)
-6. Environment details (OS, browser, etc.)
+5. Start development:
 
-## 💡 Feature Requests
+```bash
+npm run dev
+```
 
-For feature requests, provide:
-1. Clear description of the feature
-2. Use case and motivation
-3. Proposed implementation (optional)
-4. Any relevant examples or mockups
+## Branch Naming
 
-## 📚 Documentation
+Use clear prefixes:
+- `feature/<name>`
+- `fix/<name>`
+- `docs/<name>`
+- `refactor/<name>`
 
-- Update README.md for user-facing changes
-- Update SETUP.md for installation/configuration changes
-- Add inline comments for complex code
-- Update API documentation for GraphQL changes
+## Commit Messages
 
-## 🔒 Security
+Prefer concise, imperative messages.
 
-If you discover a security vulnerability:
-1. **Do not** open a public issue
-2. Email the maintainers directly
-3. Provide detailed information about the vulnerability
+Examples:
+- `feat: add workout weekly goals to preferences`
+- `fix: filter chat subscription by user id`
+- `docs: rewrite onboarding and contribution guide`
 
-## ✅ Code Review
+## Definition of Done
 
-All submissions require review. We will:
-- Review code quality and style
-- Test functionality
-- Provide constructive feedback
-- Merge once approved
+Before opening a PR, run relevant checks:
 
-## 📄 License
+```bash
+# from root (full build)
+npm run build
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+# workspace checks (as needed)
+cd web && npm run type-check && npm run lint
+cd backend && npm run build
+```
 
-## 🤝 Community
+Also verify:
+- no runtime errors in browser console for changed flows,
+- no obvious UI regressions on desktop and mobile breakpoints,
+- changed GraphQL fields are wired in schema + resolver + frontend queries/mutations.
 
-- Be respectful and inclusive
-- Help others learn and grow
-- Share knowledge and best practices
-- Collaborate and communicate openly
+## Working With Shared Types
 
-## 📞 Contact
+If you change `shared/src/types.ts`:
+1. Build shared: `npm run build:shared`
+2. Rebuild backend and type-check web
+3. Ensure all workspace imports still compile
 
-For questions or discussions:
-- Open an issue for bugs or features
-- Use discussions for general questions
-- Contact maintainers for sensitive matters
+## Pull Request Checklist
 
----
+Include in PR description:
+- **What changed** (short summary)
+- **Why it changed** (problem/user value)
+- **How it was tested** (commands + manual steps)
+- **Screenshots/GIFs** for UI changes
+- **Breaking changes** (if any)
 
-Thank you for contributing to evoFlowAI! 🌟
+## Security Requirements
+
+Never commit:
+- `.env`, `.env.local`, secret tokens, private keys, credentials
+- real API keys in docs/examples
+
+If a secret is exposed by mistake:
+1. Rotate/revoke it immediately
+2. Remove it from tracked files
+3. Note remediation steps in the PR
+
+For vulnerabilities, avoid public disclosure until maintainers are informed.
+
+## Documentation Standards
+
+Update docs whenever behavior changes:
+- `README.md` for setup/product overview
+- `CONTRIBUTING.md` for workflow/tooling changes
+- relevant docs in `docs/` for deeper implementation details
+
+Keep docs practical and command-oriented.
+
+## Coding Guidelines (Project-Specific)
+
+- Use TypeScript consistently.
+- Keep solutions simple and reusable.
+- Reuse existing components/patterns before creating new abstractions.
+- Prefer explicit naming and small, testable units.
+- Add comments only where logic is non-obvious.
+
+## Review Expectations
+
+Reviewers focus on:
+- correctness and regressions,
+- security and secret handling,
+- API/schema consistency,
+- UX clarity for changed screens,
+- maintainability.
+
+Thanks again for contributing.
 
