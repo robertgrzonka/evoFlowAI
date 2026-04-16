@@ -4,14 +4,19 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
-import { ArrowLeft, Camera, Trash2 } from 'lucide-react';
+import { ArrowLeft, Camera, Dumbbell, Flame, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { DAILY_STATS_QUERY, ME_QUERY } from '@/lib/graphql/queries';
+import {
+  DAILY_STATS_QUERY,
+  ME_QUERY,
+  MY_WORKOUTS_QUERY,
+  WORKOUT_COACH_SUMMARY_QUERY,
+} from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
 import ContextAICoach from '@/components/ContextAICoach';
-import { ListRowSkeleton, PageLoader, StatCardSkeleton } from '@/components/ui/loading';
-import { DELETE_FOOD_ITEM_MUTATION } from '@/lib/graphql/mutations';
+import { ListRowSkeleton, PageLoader, Skeleton, StatCardSkeleton } from '@/components/ui/loading';
+import { DELETE_FOOD_ITEM_MUTATION, DELETE_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 
@@ -25,12 +30,33 @@ export default function StatsPage() {
     variables: { date: selectedDate },
     skip: !userData?.me,
   });
+  const { data: workoutsData, loading: workoutsLoading } = useQuery(MY_WORKOUTS_QUERY, {
+    variables: { date: selectedDate, limit: 30, offset: 0 },
+    skip: !userData?.me,
+  });
+  const { data: workoutSummaryData, loading: workoutSummaryLoading } = useQuery(WORKOUT_COACH_SUMMARY_QUERY, {
+    variables: { date: selectedDate },
+    skip: !userData?.me,
+  });
 
   const [deleteFoodItem, { loading: deletingMeal }] = useMutation(DELETE_FOOD_ITEM_MUTATION, {
     onError: (error) => {
       toast.error(error.message || 'Could not delete meal');
     },
-    refetchQueries: [{ query: DAILY_STATS_QUERY, variables: { date: selectedDate } }],
+    refetchQueries: [
+      { query: DAILY_STATS_QUERY, variables: { date: selectedDate } },
+      { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date: selectedDate } },
+    ],
+  });
+
+  const [deleteWorkout, { loading: deletingWorkout }] = useMutation(DELETE_WORKOUT_MUTATION, {
+    onError: (error) => {
+      toast.error(error.message || 'Could not delete workout');
+    },
+    refetchQueries: [
+      { query: MY_WORKOUTS_QUERY, variables: { date: selectedDate, limit: 30, offset: 0 } },
+      { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date: selectedDate } },
+    ],
   });
 
   useEffect(() => {
@@ -46,6 +72,8 @@ export default function StatsPage() {
 
   const user = userData?.me;
   const stats = statsData?.dailyStats;
+  const workouts = workoutsData?.myWorkouts || [];
+  const workoutSummary = workoutSummaryData?.workoutCoachSummary;
   const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
   const handleDeleteMeal = async (mealId: string) => {
@@ -57,6 +85,18 @@ export default function StatsPage() {
       toast.success('Meal deleted');
     } else {
       toast.error('Could not delete meal');
+    }
+  };
+
+  const handleDeleteWorkout = async (workoutId: string) => {
+    const confirmed = window.confirm('Delete this workout entry?');
+    if (!confirmed) return;
+
+    const result = await deleteWorkout({ variables: { id: workoutId } });
+    if (result.data?.deleteWorkout) {
+      toast.success('Workout deleted');
+    } else {
+      toast.error('Could not delete workout');
     }
   };
 
@@ -182,6 +222,89 @@ export default function StatsPage() {
                 </div>
               )}
             </section>
+
+            <section className="bg-surface rounded-xl border border-border p-5 mt-4">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-xl font-semibold tracking-tight text-text-primary">Workouts for {selectedDate}</h3>
+                <button
+                  onClick={() => router.push('/workouts')}
+                  className="btn-secondary"
+                >
+                  Open Workout Coach
+                </button>
+              </div>
+
+              {workoutSummaryLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                  <WorkoutSummaryCard
+                    icon={<Dumbbell className="h-4 w-4 text-amber-400" />}
+                    label="Sessions"
+                    value={`${workouts.length}`}
+                  />
+                  <WorkoutSummaryCard
+                    icon={<Flame className="h-4 w-4 text-info-500" />}
+                    label="Burned"
+                    value={`${workoutSummary?.caloriesBurned?.toFixed(0) || '0'} kcal`}
+                  />
+                  <WorkoutSummaryCard
+                    icon={<Camera className="h-4 w-4 text-primary-400" />}
+                    label="Net calories"
+                    value={`${workoutSummary?.netCalories?.toFixed(0) || '0'} kcal`}
+                  />
+                </div>
+              )}
+
+              {workoutsLoading ? (
+                <div className="space-y-3">
+                  <ListRowSkeleton />
+                  <ListRowSkeleton />
+                </div>
+              ) : workouts.length > 0 ? (
+                <div className="space-y-3">
+                  {workouts.map((workout: any) => (
+                    <div
+                      key={workout.id}
+                      className="relative flex items-center justify-between p-3.5 pr-12 bg-surface-elevated rounded-lg border border-border"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteWorkout(workout.id)}
+                        disabled={deletingWorkout}
+                        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
+                        title="Delete workout"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                      <div>
+                        <h4 className="font-semibold text-text-primary">{workout.title}</h4>
+                        <p className="text-sm text-text-secondary">
+                          {workout.durationMinutes} min • {workout.caloriesBurned} kcal • {String(workout.intensity || '').toLowerCase()}
+                        </p>
+                        {workout.notes ? <p className="text-sm text-text-secondary mt-1">{workout.notes}</p> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Dumbbell className="h-16 w-16 text-text-muted mx-auto mb-4" />
+                  <p className="text-text-secondary mb-4">No workouts logged for {selectedDate}</p>
+                  <button
+                    onClick={() => router.push('/workouts')}
+                    className="btn-primary inline-flex items-center space-x-2 px-4"
+                  >
+                    <Dumbbell className="h-4 w-4 stroke-[1.9]" />
+                    <span>Log workout</span>
+                  </button>
+                </div>
+              )}
+            </section>
           </div>
 
           <div className="xl:col-span-4">
@@ -191,6 +314,7 @@ export default function StatsPage() {
                 description="Get suggestions for this selected day and improve your next meal."
                 quickPrompts={[
                   `Review my nutrition for ${selectedDate}.`,
+                  `Combine my meals and workouts for ${selectedDate} and tell me what to do next.`,
                   'What macro is most off target today?',
                   'Suggest one dinner idea for better balance.',
                 ]}
@@ -200,6 +324,26 @@ export default function StatsPage() {
           </div>
         </div>
     </AppShell>
+  );
+}
+
+function WorkoutSummaryCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-surface-elevated p-3">
+      <div className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+        {icon}
+        {label}
+      </div>
+      <p className="text-sm font-semibold text-text-primary mt-1">{value}</p>
+    </div>
   );
 }
 
@@ -218,7 +362,7 @@ function StatCard({
   unit: string;
   tone: StatTone;
 }) {
-  const percentage = goal ? (parseFloat(value) / goal) * 100 : progress * 100;
+  const percentage = goal ? (parseFloat(value) / goal) * 100 : progress;
   const toneStyles = {
     brand: { value: 'text-primary-500', bar: 'bg-primary-500' },
     info: { value: 'text-info-500', bar: 'bg-info-500' },

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { ApolloProvider } from '@/lib/apollo-client';
-import { Toaster } from 'react-hot-toast';
+import GlobalToaster from '@/components/GlobalToaster';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -35,29 +35,7 @@ export default function RootLayout({
           <div className="min-h-screen bg-background">
             {children}
           </div>
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: '#1a1a1a',
-                color: '#ffffff',
-                border: '1px solid #374151',
-              },
-              success: {
-                iconTheme: {
-                  primary: '#8B4B6B',
-                  secondary: '#ffffff',
-                },
-              },
-              error: {
-                iconTheme: {
-                  primary: '#ef4444',
-                  secondary: '#ffffff',
-                },
-              },
-            }}
-          />
+          <GlobalToaster />
         </ApolloProvider>
       </body>
     </html>

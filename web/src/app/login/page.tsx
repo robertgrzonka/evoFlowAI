@@ -4,28 +4,30 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { useMutation } from '@apollo/client';
 import { LOGIN_MUTATION } from '@/lib/graphql/mutations';
-import toast from 'react-hot-toast';
 import { setAuthToken } from '@/lib/auth-token';
 import { ButtonSpinner } from '@/components/ui/loading';
+import EvoMark from '@/components/EvoMark';
+import { appToast } from '@/lib/app-toast';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   
   const [login, { loading }] = useMutation(LOGIN_MUTATION, {
     onCompleted: (data) => {
       setAuthToken(data.login.token, rememberMe);
-      toast.success('Logged in successfully!');
+      appToast.success('Welcome back!', 'You are now logged in to evoFlowAI.');
       // Redirect to dashboard
       router.push('/dashboard');
     },
     onError: (error) => {
-      toast.error(error.message || 'Login failed');
+      appToast.error('Login failed', error.message || 'Please check email and password.');
     },
   });
 
@@ -63,7 +65,7 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div className="flex items-center justify-center space-x-2 mb-7">
-          <Sparkles className="h-6 w-6 text-primary-500 stroke-[1.9]" />
+          <EvoMark className="h-6 w-6 text-primary-500" />
           <span className="text-xl font-semibold tracking-tight text-gradient">evoFlowAI</span>
         </div>
 
@@ -79,30 +81,46 @@ export default function LoginPage() {
               <label htmlFor="email" className="block text-sm font-medium text-text-primary mb-2">
                 Email
               </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-field w-full"
-                placeholder="your@email.com"
-              />
+              <div className="auth-input-wrap">
+                <Mail className="auth-input-icon" />
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="auth-input-control"
+                  placeholder="your@email.com"
+                />
+              </div>
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-text-primary mb-2">
                 Password
               </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field w-full"
-                placeholder="••••••••"
-              />
+              <div className="auth-input-wrap">
+                <Lock className="auth-input-icon" />
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="auth-input-control"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  className="auth-input-action"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-between">

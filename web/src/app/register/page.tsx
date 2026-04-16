@@ -4,12 +4,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Lock, Mail, User } from 'lucide-react';
 import { useMutation } from '@apollo/client';
 import { REGISTER_MUTATION } from '@/lib/graphql/mutations';
-import toast from 'react-hot-toast';
 import { setAuthToken } from '@/lib/auth-token';
 import { ButtonSpinner } from '@/components/ui/loading';
+import EvoMark from '@/components/EvoMark';
+import { appToast } from '@/lib/app-toast';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -17,16 +18,18 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const [register, { loading }] = useMutation(REGISTER_MUTATION, {
     onCompleted: (data) => {
       setAuthToken(data.register.token, true);
-      toast.success('Account created successfully!');
+      appToast.success('Account created', 'Welcome to evoFlowAI. Let us build your momentum.');
       // Redirect to dashboard
       router.push('/dashboard');
     },
     onError: (error) => {
-      toast.error(error.message || 'Registration failed');
+      appToast.error('Registration failed', error.message || 'Could not create account.');
     },
   });
 
@@ -34,12 +37,12 @@ export default function RegisterPage() {
     e.preventDefault();
     
     if (password !== confirmPassword) {
-      toast.error('Passwords do not match');
+      appToast.warning('Password mismatch', 'Please make sure both password fields are identical.');
       return;
     }
 
     if (password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+      appToast.warning('Password too short', 'Use at least 6 characters.');
       return;
     }
 
@@ -75,7 +78,7 @@ export default function RegisterPage() {
 
         {/* Logo */}
         <div className="flex items-center justify-center space-x-2 mb-7">
-          <Sparkles className="h-6 w-6 text-primary-500 stroke-[1.9]" />
+          <EvoMark className="h-6 w-6 text-primary-500" />
           <span className="text-xl font-semibold tracking-tight text-gradient">evoFlowAI</span>
         </div>
 
@@ -91,46 +94,66 @@ export default function RegisterPage() {
               <label htmlFor="name" className="block text-sm font-medium text-text-primary mb-2">
                 Full Name
               </label>
-              <input
-                id="name"
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="input-field w-full"
-                placeholder="John Doe"
-              />
+              <div className="auth-input-wrap">
+                <User className="auth-input-icon" />
+                <input
+                  id="name"
+                  type="text"
+                  required
+                  autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="auth-input-control"
+                  placeholder="John Doe"
+                />
+              </div>
             </div>
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-text-primary mb-2">
                 Email
               </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-field w-full"
-                placeholder="your@email.com"
-              />
+              <div className="auth-input-wrap">
+                <Mail className="auth-input-icon" />
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="auth-input-control"
+                  placeholder="your@email.com"
+                />
+              </div>
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-text-primary mb-2">
                 Password
               </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field w-full"
-                placeholder="••••••••"
-                minLength={6}
-              />
+              <div className="auth-input-wrap">
+                <Lock className="auth-input-icon" />
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="auth-input-control"
+                  placeholder="••••••••"
+                  minLength={6}
+                />
+                <button
+                  type="button"
+                  className="auth-input-action"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               <p className="mt-1 text-xs text-text-muted">At least 6 characters</p>
             </div>
 
@@ -138,15 +161,27 @@ export default function RegisterPage() {
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-text-primary mb-2">
                 Confirm Password
               </label>
-              <input
-                id="confirmPassword"
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="input-field w-full"
-                placeholder="••••••••"
-              />
+              <div className="auth-input-wrap">
+                <Lock className="auth-input-icon" />
+                <input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="auth-input-control"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  className="auth-input-action"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             <button

@@ -104,8 +104,10 @@ export default function DashboardPage() {
   const insight = insightData?.dashboardInsight;
   const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
   const completedMeals = stats?.meals?.length || 0;
-  const weeklyWorkoutGoal = user?.preferences?.weeklyWorkoutsGoal || 4;
-  const trainingProgressLabel = `${workouts.length}/${weeklyWorkoutGoal} workouts`;
+  const totalTrainingMinutes = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
+  const dailyTrainingLabel = workouts.length > 0
+    ? `${workouts.length} session${workouts.length > 1 ? 's' : ''} • ${totalTrainingMinutes} min`
+    : 'No sessions';
 
   const guidance = insight
     ? insight.remainingCalories > 450
@@ -124,6 +126,12 @@ export default function DashboardPage() {
         ? 'Watch intake'
         : 'In progress'
     : 'In progress';
+
+  const categorizedTips = [
+    { label: '🌱 Nutrition', tip: insight?.tips?.[0] || 'Prioritize protein and balanced carbs in your next meal.' },
+    { label: '🏋🏼‍♀️ Training', tip: insight?.tips?.[1] || 'Keep training quality high and avoid overdoing volume late in the day.' },
+    { label: '💧 Recovery', tip: insight?.tips?.[2] || 'Hydrate and support recovery with micronutrient-dense foods.' },
+  ];
 
   const handleDeleteMeal = async (mealId: string) => {
     const confirmed = window.confirm('Delete this meal entry?');
@@ -209,7 +217,7 @@ export default function DashboardPage() {
 
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
                 <SummaryPill label="Meals today" value={String(completedMeals)} />
-                <SummaryPill label="Training" value={trainingProgressLabel} />
+                <SummaryPill label="Training today" value={dailyTrainingLabel} />
                 <SummaryPill label="Net kcal" value={`${insight.netCalories.toFixed(0)}`} />
                 <SummaryPill label="Kcal left" value={`${insight.remainingCalories.toFixed(0)}`} />
                 <SummaryPill label="Protein left" value={`${Math.max(0, insight.remainingProtein).toFixed(0)} g`} />
@@ -221,9 +229,10 @@ export default function DashboardPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                {insight.tips.slice(0, 3).map((tip: string, index: number) => (
-                  <div key={`${tip}-${index}`} className="rounded-lg border border-border bg-surface-elevated px-3 py-2">
-                    <p className="text-sm text-text-secondary">{tip}</p>
+                {categorizedTips.map((item) => (
+                  <div key={item.label} className="rounded-lg border border-border bg-surface-elevated px-3 py-2.5">
+                    <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1">{item.label}</p>
+                    <p className="text-sm text-text-secondary">{item.tip}</p>
                   </div>
                 ))}
               </div>
@@ -485,7 +494,7 @@ function StatCard({
   unit: string;
   tone: StatTone;
 }) {
-  const percentage = goal ? (parseFloat(value) / goal) * 100 : progress * 100;
+  const percentage = goal ? (parseFloat(value) / goal) * 100 : progress;
   const toneStyles = {
     brand: {
       value: 'text-primary-500',

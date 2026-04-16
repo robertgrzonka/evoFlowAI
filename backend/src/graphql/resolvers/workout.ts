@@ -51,27 +51,24 @@ const buildCoachMessage = ({
 };
 
 const buildFallbackTips = (remainingProtein: number, remainingCalories: number, netCalories: number) => {
-  const tips: string[] = [];
+  const nutritionTip =
+    remainingProtein > 0
+      ? `Aim for about ${Math.ceil(remainingProtein)}g protein in your next meal to stay on target.`
+      : 'Protein goal is done. Keep meals lighter and focus on quality carbs and vegetables.';
 
-  if (remainingProtein > 0) {
-    tips.push(`Aim for about ${Math.ceil(remainingProtein)}g protein in your next meal to stay on target.`);
-  } else {
-    tips.push('Protein goal is done. Keep meals lighter and focus on quality carbs and vegetables.');
-  }
+  const trainingTip =
+    remainingCalories < -150
+      ? 'You are above net calories, so skip extra training volume and keep movement light today.'
+      : netCalories < 0
+        ? 'Training output is high today, so keep the next session moderate and prioritize technique.'
+        : 'If energy feels good, a short easy session or walk can support consistency.';
 
-  if (remainingCalories < -150) {
-    tips.push('You are above net calories, so keep your next meal small and protein-focused.');
-  } else if (remainingCalories <= 250) {
-    tips.push('You are close to calorie target. Keep portions measured in the evening.');
-  } else {
-    tips.push(`You still have around ${Math.ceil(remainingCalories)} kcal left, so plan one balanced meal.`);
-  }
+  const recoveryTip =
+    remainingCalories > 250
+      ? `You still have around ${Math.ceil(remainingCalories)} kcal left, so use part of it for a recovery meal and hydration.`
+      : 'Focus on hydration, sleep, and a balanced final meal to recover well.';
 
-  if (netCalories < 0) {
-    tips.push('Training output is high today, prioritize hydration and post-workout recovery.');
-  }
-
-  return tips.slice(0, 3);
+  return [nutritionTip, trainingTip, recoveryTip];
 };
 
 export const workoutResolvers = {

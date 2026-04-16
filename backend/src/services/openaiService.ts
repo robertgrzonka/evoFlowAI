@@ -278,10 +278,15 @@ export class OpenAIService {
         ${userContext ? `
         User Context:
         - Daily calorie goal: ${userContext.dailyCalorieGoal || 'Not set'}
+        - Macro goals: protein ${userContext.proteinGoal || 'n/a'}g, carbs ${userContext.carbsGoal || 'n/a'}g, fat ${userContext.fatGoal || 'n/a'}g
+        - Weekly training goals: ${userContext.weeklyWorkoutsGoal || 'n/a'} workouts, ${userContext.weeklyActiveMinutesGoal || 'n/a'} active minutes
         - Activity level: ${userContext.activityLevel || 'Unknown'}
         - Dietary restrictions: ${userContext.dietaryRestrictions?.join(', ') || 'None'}
         ${userContext.todayStats ? `
         - Today's intake: ${userContext.todayStats.calories} kcal (${userContext.todayStats.protein}g protein, ${userContext.todayStats.carbs}g carbs, ${userContext.todayStats.fat}g fat)
+        ` : ''}
+        ${userContext.todayWorkouts ? `
+        - Today's workouts: ${userContext.todayWorkouts.sessions} sessions, ${userContext.todayWorkouts.minutes} minutes, ${userContext.todayWorkouts.caloriesBurned} kcal burned
         ` : ''}
         ` : ''}
         
@@ -334,11 +339,14 @@ export class OpenAIService {
       Return JSON only:
       {
         "summary": "1 short motivating paragraph, max 2 sentences",
-        "tips": ["tip 1", "tip 2", "tip 3"]
+        "tips": ["nutrition tip", "training tip", "recovery tip"]
       }
 
       Rules:
-      - 2 to 3 tips only
+      - return exactly 3 tips
+      - tip[0] must be nutrition focused
+      - tip[1] must be training focused
+      - tip[2] must be recovery focused
       - each tip max 1 sentence
       - practical next steps, no generic fluff
       - mention protein and recovery when relevant
@@ -361,6 +369,12 @@ export class OpenAIService {
 
     if (!summary || tips.length === 0) {
       throw new Error('Invalid AI insight response');
+    }
+
+    while (tips.length < 3) {
+      if (tips.length === 0) tips.push('Plan a protein-rich meal to support your nutrition target.');
+      else if (tips.length === 1) tips.push('Keep your training focused on quality movement and controlled effort.');
+      else tips.push('Prioritize hydration and recovery to stay consistent tomorrow.');
     }
 
     const shouldDecorateWithEmoji = this.shouldUseDashboardEmoji(input.date);

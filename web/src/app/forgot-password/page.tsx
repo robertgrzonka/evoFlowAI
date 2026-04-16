@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft, Mail } from 'lucide-react';
 import { useMutation } from '@apollo/client';
-import toast from 'react-hot-toast';
 import { REQUEST_PASSWORD_RESET_MUTATION } from '@/lib/graphql/mutations';
 import { ButtonSpinner } from '@/components/ui/loading';
+import EvoMark from '@/components/EvoMark';
+import { appToast } from '@/lib/app-toast';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -19,10 +20,10 @@ export default function ForgotPasswordPage() {
       const payload = data.requestPasswordReset;
       setSubmittedEmail(email);
       setResetUrl(payload.resetUrl ?? null);
-      toast.success(payload.message);
+      appToast.success('Reset link ready', payload.message);
     },
     onError: (error) => {
-      toast.error(error.message || 'Unable to start password reset');
+      appToast.error('Reset request failed', error.message || 'Unable to start password reset.');
     },
   });
 
@@ -49,9 +50,9 @@ export default function ForgotPasswordPage() {
 
     try {
       await navigator.clipboard.writeText(resetUrl);
-      toast.success('Reset link copied');
+      appToast.success('Copied', 'Reset link copied to clipboard.');
     } catch (error) {
-      toast.error('Unable to copy reset link');
+      appToast.error('Copy failed', 'Unable to copy reset link.');
       console.error('Copy reset link error:', error);
     }
   };
@@ -70,7 +71,7 @@ export default function ForgotPasswordPage() {
         </Link>
 
         <div className="flex items-center justify-center space-x-2 mb-7">
-          <Sparkles className="h-6 w-6 text-primary-500 stroke-[1.9]" />
+          <EvoMark className="h-6 w-6 text-primary-500" />
           <span className="text-xl font-semibold tracking-tight text-gradient">evoFlowAI</span>
         </div>
 
@@ -85,15 +86,19 @@ export default function ForgotPasswordPage() {
               <label htmlFor="email" className="block text-sm font-medium text-text-primary mb-2">
                 Email
               </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="input-field w-full"
-                placeholder="your@email.com"
-              />
+              <div className="auth-input-wrap">
+                <Mail className="auth-input-icon" />
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="auth-input-control"
+                  placeholder="your@email.com"
+                />
+              </div>
             </div>
 
             <button

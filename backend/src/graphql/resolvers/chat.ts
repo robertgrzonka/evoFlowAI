@@ -1,6 +1,7 @@
 import { AuthenticationError } from 'apollo-server-express';
 import { ChatMessage } from '../../models/ChatMessage';
 import { FoodItem } from '../../models/FoodItem';
+import { Workout } from '../../models/Workout';
 import { OpenAIService } from '../../services/openaiService';
 import { Context } from '../context';
 import { withFilter } from 'graphql-subscriptions';
@@ -10,6 +11,23 @@ const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 
 const sanitizeBase64 = (value: string): string =>
   value.includes(',') ? value.split(',')[1] : value;
+
+const getDayRange = (statsReference?: string) => {
+  const base = statsReference ? new Date(statsReference) : new Date();
+  if (Number.isNaN(base.getTime())) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return { startDate: today, endDate: tomorrow };
+  }
+
+  const startDate = new Date(base);
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 1);
+  return { startDate, endDate };
+};
 
 export const chatResolvers = {
   Query: {
@@ -66,20 +84,34 @@ export const chatResolvers = {
         // Get user context (preferences and today's stats)
         const userContext = {
           dailyCalorieGoal: context.user.preferences?.dailyCalorieGoal,
+          proteinGoal: context.user.preferences?.proteinGoal,
+          carbsGoal: context.user.preferences?.carbsGoal,
+          fatGoal: context.user.preferences?.fatGoal,
+          weeklyWorkoutsGoal: context.user.preferences?.weeklyWorkoutsGoal,
+          weeklyActiveMinutesGoal: context.user.preferences?.weeklyActiveMinutesGoal,
           activityLevel: context.user.preferences?.activityLevel,
           dietaryRestrictions: context.user.preferences?.dietaryRestrictions,
         };
 
         // Get today's stats if requested
         if (input.context?.statsReference) {
-          const today = new Date().toISOString().split('T')[0];
-          const todaysFoodItems = await FoodItem.find({
-            userId: context.user.id,
-            createdAt: {
-              $gte: new Date(today),
-              $lt: new Date(new Date(today).getTime() + 24 * 60 * 60 * 1000)
-            }
-          });
+          const { startDate, endDate } = getDayRange(input.context?.statsReference);
+          const [todaysFoodItems, todaysWorkouts] = await Promise.all([
+            FoodItem.find({
+              userId: context.user.id,
+              createdAt: {
+                $gte: startDate,
+                $lt: endDate
+              }
+            }),
+            Workout.find({
+              userId: context.user.id,
+              performedAt: {
+                $gte: startDate,
+                $lt: endDate
+              }
+            }),
+          ]);
 
           const todayStats = todaysFoodItems.reduce((acc, item) => ({
             calories: acc.calories + item.nutrition.calories,
@@ -88,7 +120,14 @@ export const chatResolvers = {
             fat: acc.fat + item.nutrition.fat,
           }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
+          const todayWorkouts = todaysWorkouts.reduce((acc, item) => ({
+            sessions: acc.sessions + 1,
+            minutes: acc.minutes + (item.durationMinutes || 0),
+            caloriesBurned: acc.caloriesBurned + (item.caloriesBurned || 0),
+          }), { sessions: 0, minutes: 0, caloriesBurned: 0 });
+
           (userContext as any).todayStats = todayStats;
+          (userContext as any).todayWorkouts = todayWorkouts;
         }
 
         // Generate AI response

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@apollo/client';
@@ -15,6 +16,7 @@ import {
 import { ME_QUERY } from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
 import EvoMark from '@/components/EvoMark';
+import EvoChatDock from '@/components/EvoChatDock';
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -34,6 +36,28 @@ export default function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const { data } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const user = data?.me;
+  const [evoDockEnabled, setEvoDockEnabled] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const readPreference = () => {
+      const raw = localStorage.getItem('evoflowai_evo_dock_enabled');
+      if (raw === null) {
+        setEvoDockEnabled(true);
+        return;
+      }
+      setEvoDockEnabled(raw !== 'false');
+    };
+
+    readPreference();
+    window.addEventListener('storage', readPreference);
+    window.addEventListener('evo-settings-updated', readPreference);
+
+    return () => {
+      window.removeEventListener('storage', readPreference);
+      window.removeEventListener('evo-settings-updated', readPreference);
+    };
+  }, []);
 
   const handleLogout = () => {
     clearAuthToken();
@@ -118,6 +142,7 @@ export default function AppShell({ children }: AppShellProps) {
           <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">{children}</main>
         </div>
       </div>
+      <EvoChatDock hidden={pathname === '/chat' || !evoDockEnabled} />
     </div>
   );
 }
