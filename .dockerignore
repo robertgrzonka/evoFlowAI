@@ -1,0 +1,45 @@
+# Node modules
+node_modules
+*/node_modules
+**/node_modules
+
+# Build outputs
+dist
+.next
+build
+out
+*.log
+
+# Environment files
+.env
+.env*.local
+!.env.example
+!.env*.example
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+*.md
+!README.md
+.cache
+temp
+tmp
+uploads/*
+!uploads/.gitkeep
+

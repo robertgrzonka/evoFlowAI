@@ -1,0 +1,154 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Dark theme by default */
+:root {
+  color-scheme: dark;
+}
+
+html {
+  @apply bg-background;
+}
+
+body {
+  @apply bg-background text-text-primary font-sans antialiased min-h-screen;
+  background-image:
+    radial-gradient(circle at top, rgba(32, 164, 243, 0.05), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(255, 51, 102, 0.03), transparent 24%);
+}
+
+h1,
+h2,
+h3 {
+  @apply tracking-tight;
+}
+
+/* Custom scrollbar for the dark palette */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-surface;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-border-light;
+}
+
+/* Custom components */
+@layer components {
+  .glass-effect {
+    @apply bg-background/80 backdrop-blur-md border border-border;
+  }
+  
+  .card {
+    @apply bg-surface rounded-lg border border-border p-5;
+  }
+  
+  .card-elevated {
+    @apply bg-surface-elevated rounded-lg border border-border-light p-5 shadow-sm;
+  }
+  
+  .btn-primary {
+    @apply h-9 px-3.5 bg-primary-500 hover:bg-primary-600 text-text-primary text-sm font-medium rounded-md shadow-sm shadow-primary-900/20 transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .btn-secondary {
+    @apply h-9 px-3.5 bg-surface hover:bg-surface-elevated text-text-primary text-sm border border-border hover:border-info-500/30 font-medium rounded-md transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out;
+  }
+  
+  .btn-ghost {
+    @apply h-9 px-3 text-text-secondary hover:text-text-primary hover:bg-surface-elevated text-sm font-medium rounded-md transition-[background-color,color] duration-150 ease-out;
+  }
+  
+  .input-field {
+    @apply bg-surface border border-border text-text-primary text-sm placeholder-text-muted rounded-md px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary-500/70 focus:border-transparent transition-[background-color,border-color,color,box-shadow] duration-150 ease-out;
+  }
+  
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-400 via-primary-500 to-info-500 bg-clip-text text-transparent;
+  }
+  
+  .nutrition-card {
+    @apply card hover:border-success-500/30 transition-[border-color,box-shadow,transform] duration-200 ease-out cursor-pointer;
+  }
+  
+  .nutrition-card:hover {
+    @apply shadow-md shadow-success-500/10;
+  }
+  
+  .stat-card {
+    @apply card-elevated text-center;
+  }
+  
+  .chat-message-user {
+    @apply bg-primary-500 text-text-primary rounded-xl rounded-br-sm px-4 py-2 ml-auto max-w-xs;
+  }
+  
+  .chat-message-ai {
+    @apply bg-surface-elevated text-text-primary rounded-xl rounded-bl-sm px-4 py-2 mr-auto max-w-xs border border-border;
+  }
+}
+
+/* Loading animations */
+@layer utilities {
+  .loading-skeleton {
+    @apply rounded-md animate-pulse;
+    background: linear-gradient(
+      to right,
+      rgba(135, 151, 176, 0.22) 0%,
+      rgba(189, 199, 217, 0.34) 68%,
+      rgba(135, 151, 176, 0.22) 100%
+    );
+    border: 1px solid rgba(135, 151, 176, 0.12);
+  }
+
+  .ai-avatar {
+    background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.16), transparent 45%),
+      linear-gradient(145deg, rgba(12, 19, 32, 0.95), rgba(18, 27, 43, 0.96));
+    border: 1px solid rgba(255, 51, 102, 0.32);
+    box-shadow: 0 8px 24px rgba(10, 14, 23, 0.35), inset 0 0 0 1px rgba(32, 164, 243, 0.12);
+    animation: avatarFloat 2.8s ease-in-out infinite;
+  }
+
+  @keyframes avatarFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-3px); }
+  }
+}
+
+/* Focus styles for accessibility */
+*:focus-visible {
+  @apply outline-none ring-2 ring-primary-500 ring-offset-1 ring-offset-background;
+}
+
+/* Selection styles */
+::selection {
+  @apply bg-primary-500/25 text-text-primary;
+}
+
+/* Smooth transitions for all interactive elements */
+button, input, textarea, select {
+  @apply transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out;
+}
+
+/* Custom chart styles for dark theme */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  @apply stroke-border;
+}
+
+.recharts-text {
+  @apply fill-text-secondary;
+}
+
+.recharts-legend-item-text {
+  @apply text-text-secondary;
+}
