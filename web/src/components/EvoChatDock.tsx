@@ -19,6 +19,9 @@ import {
 } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries, CHAT_HISTORY_LIMIT } from '@/lib/day-data';
+import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import EvoStatusBadge from '@/components/evo/EvoStatusBadge';
+import Tooltip from '@/components/ui/atoms/Tooltip';
 
 type DockTab = 'chat' | 'meal' | 'workout';
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -47,6 +50,11 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   const [workoutCalories, setWorkoutCalories] = useState(220);
   const [workoutIntensity, setWorkoutIntensity] = useState<WorkoutIntensity>('MEDIUM');
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const daySnapshot = useDaySnapshot({
+    date: today,
+    enabled: !hidden && chatChannel === 'COACH',
+    includeInsight: true,
+  });
 
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const { data: historyData, loading: historyLoading, refetch } = useQuery(MY_CHAT_HISTORY_QUERY, {
@@ -122,6 +130,14 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   }, [isOpen, activeTab, messages.length]);
 
   if (hidden) return null;
+  const insightSignalsCount =
+    (daySnapshot.derived.remainingProtein > 30 ? 1 : 0) +
+    (daySnapshot.derived.remainingCalories < -100 ? 1 : 0) +
+    (daySnapshot.insight ? 1 : 0);
+  const launcherHint =
+    insightSignalsCount > 0
+      ? `I have ${insightSignalsCount} insight${insightSignalsCount > 1 ? 's' : ''} for today.`
+      : 'All calm. I can still help optimize your day.';
 
   const handleSendMessage = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -228,7 +244,11 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
               </button>
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setIsOpen(false);
+                  setActiveTab('chat');
+                  setChatChannel('GENERAL');
+                }}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-text-primary"
                 title="Close"
               >
@@ -245,6 +265,23 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
           {activeTab === 'chat' ? (
             <div className="p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <EvoStatusBadge
+                  label={
+                    chatChannel === 'COACH'
+                      ? daySnapshot.loading
+                        ? 'analyzing'
+                        : 'coach mode'
+                      : 'general mode'
+                  }
+                  tone={chatChannel === 'COACH' ? 'focus' : 'neutral'}
+                />
+                {chatChannel === 'COACH' ? (
+                  <span className="text-[11px] text-text-muted">
+                    {Math.round(daySnapshot.derived.remainingProtein)}g protein left
+                  </span>
+                ) : null}
+              </div>
               <div className="inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
                 <TabButton active={chatChannel === 'GENERAL'} onClick={() => setChatChannel('GENERAL')} label="General" />
                 <TabButton active={chatChannel === 'COACH'} onClick={() => setChatChannel('COACH')} label="Coach" />
@@ -386,20 +423,27 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
           ) : null}
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="relative inline-flex items-center gap-2 rounded-full border border-primary-500/35 bg-surface px-3 py-2 text-sm text-text-primary shadow-lg hover:bg-surface-elevated"
-        >
-          <AICoachAvatar size="sm" />
-          <span className="pr-1">Evo</span>
-          <MessageCircle className="h-4 w-4 text-primary-400" />
-          {unreadCount > 0 ? (
-            <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-primary-500 text-white text-[11px] inline-flex items-center justify-center">
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
-          ) : null}
-        </button>
+        <Tooltip content={launcherHint}>
+          <button
+            type="button"
+            onClick={() => setIsOpen(true)}
+            className="relative inline-flex items-center gap-2 rounded-full border border-primary-500/35 bg-surface px-3 py-2 text-sm text-text-primary shadow-lg hover:bg-surface-elevated"
+          >
+            <AICoachAvatar size="sm" />
+            <span className="pr-1">Evo</span>
+            <MessageCircle className="h-4 w-4 text-primary-400" />
+            {insightSignalsCount > 0 ? (
+              <span className="absolute -bottom-1 left-7 rounded-full border border-primary-500/45 bg-primary-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em] text-primary-200">
+                {insightSignalsCount} insight{insightSignalsCount > 1 ? 's' : ''}
+              </span>
+            ) : null}
+            {unreadCount > 0 ? (
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-primary-500 text-white text-[11px] inline-flex items-center justify-center">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            ) : null}
+          </button>
+        </Tooltip>
       )}
     </div>
   );

@@ -11,6 +11,12 @@ import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION } from '@/lib/graphql/queries';
 import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries } from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import {
+  AISectionHeader,
+  EvoHintCard,
+  InsightEmptyState,
+  SmartSuggestionChips,
+} from '@/components/evo';
 
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 
@@ -93,6 +99,12 @@ export default function WorkoutsPage() {
       appToast.error('Delete failed', 'Could not delete workout.');
     }
   };
+  const lastWorkout = workouts[0];
+  const workoutTemplates = [
+    { id: 'tpl-upper', label: 'Upper body strength · 45 min · medium' },
+    { id: 'tpl-lower', label: 'Lower body strength · 50 min · high' },
+    { id: 'tpl-cardio', label: 'Cardio intervals · 30 min · high' },
+  ];
 
   return (
     <AppShell>
@@ -107,15 +119,38 @@ export default function WorkoutsPage() {
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-5 bg-surface border border-border rounded-xl p-4 md:p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-10 w-10 rounded-full bg-amber-400/10 border border-amber-400/30 flex items-center justify-center">
-                <Dumbbell className="h-5 w-5 text-amber-400 stroke-[1.9]" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold tracking-tight text-text-primary">Log your training</h2>
-                <p className="text-xs text-text-muted">Add session details and keep energy balance in sync</p>
-              </div>
-            </div>
+            <AISectionHeader
+              eyebrow="Workout flow"
+              title="Log your training"
+              subtitle="Track the session, then let Evo evaluate what to do with nutrition and recovery."
+              rightAction={
+                <div className="h-10 w-10 rounded-full bg-amber-400/10 border border-amber-400/30 flex items-center justify-center">
+                  <Dumbbell className="h-5 w-5 text-amber-400 stroke-[1.9]" />
+                </div>
+              }
+            />
+
+            {lastWorkout ? (
+              <EvoHintCard
+                title="Repeat last workout"
+                tone="notice"
+                content={`Last session: ${lastWorkout.title} · ${lastWorkout.durationMinutes} min · ${lastWorkout.caloriesBurned} kcal.`}
+                action={
+                  <button
+                    type="button"
+                    className="btn-secondary w-full"
+                    onClick={() => {
+                      setTitle(String(lastWorkout.title || ''));
+                      setDurationMinutes(Number(lastWorkout.durationMinutes || 45));
+                      setCaloriesBurned(Number(lastWorkout.caloriesBurned || 300));
+                      setIntensity((String(lastWorkout.intensity || 'MEDIUM').toUpperCase() as WorkoutIntensity));
+                    }}
+                  >
+                    Use as template
+                  </button>
+                }
+              />
+            ) : null}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -130,23 +165,19 @@ export default function WorkoutsPage() {
                   placeholder="e.g. Upper body strength + core"
                 />
               </div>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  'Upper body strength',
-                  'Lower body strength',
-                  'HIIT cardio',
-                  'Recovery walk',
-                ].map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setTitle(preset)}
-                    className="rounded-full border border-border bg-surface-elevated px-2.5 py-1 text-xs text-text-secondary hover:text-text-primary"
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
+              <SmartSuggestionChips
+                title="Smart workout templates"
+                suggestions={workoutTemplates}
+                onSelect={(value) => {
+                  const [name, durationPart, intensityPart] = value.split('·').map((chunk) => chunk.trim());
+                  setTitle(name);
+                  const parsedDuration = Number(durationPart?.replace(/[^\d]/g, '') || 45);
+                  setDurationMinutes(parsedDuration);
+                  if (intensityPart?.toLowerCase().includes('high')) setIntensity('HIGH');
+                  if (intensityPart?.toLowerCase().includes('medium')) setIntensity('MEDIUM');
+                  if (intensityPart?.toLowerCase().includes('low')) setIntensity('LOW');
+                }}
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -212,10 +243,10 @@ export default function WorkoutsPage() {
                 {loggingWorkout ? (
                   <>
                     <ButtonSpinner />
-                    Saving workout...
+                    Evo is evaluating the session...
                   </>
                 ) : (
-                  'Save workout'
+                  'Save workout and sync with Evo'
                 )}
               </button>
             </form>
@@ -240,10 +271,21 @@ export default function WorkoutsPage() {
                   <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
                     <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Coach suggestion</p>
                     <p className="text-sm text-text-primary whitespace-pre-wrap">{summary.message}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button type="button" className="btn-secondary" onClick={() => window.location.assign('/chat?channel=COACH')}>
+                        Explain this score
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => window.location.assign('/chat?channel=COACH')}>
+                        Suggest post-workout meal
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-text-secondary">No summary yet for today.</p>
+                <InsightEmptyState
+                  title="No workout insight yet"
+                  description="Log one training session and Evo will generate an instant post-workout read."
+                />
               )}
             </div>
 

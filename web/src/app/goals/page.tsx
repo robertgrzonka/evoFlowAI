@@ -12,6 +12,7 @@ import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries } from '@/lib/day-data';
 import { formatPrimaryGoal } from '@/lib/formatters';
+import { AISectionHeader, EvoHintCard, SmartSuggestionChips } from '@/components/evo';
 
 export default function GoalsPage() {
   const router = useRouter();
@@ -223,6 +224,9 @@ export default function GoalsPage() {
               >
                 Apply suggested base calories
               </button>
+              <p className="text-xs text-text-muted mt-2">
+                Evo note: calories can be dynamic by day, but your macro goals below stay stable.
+              </p>
             </div>
 
             <button
@@ -273,26 +277,21 @@ export default function GoalsPage() {
           </section>
 
           <aside className="xl:col-span-4 bg-surface rounded-xl border border-border p-5 space-y-4 h-fit">
-            <h2 className="text-lg font-semibold tracking-tight text-text-primary">AI Goal Coach</h2>
-            <p className="text-sm text-text-secondary">
-              Ask AI to suggest goals based on your lifestyle, training routine and daily habits.
-            </p>
+            <AISectionHeader
+              eyebrow="Evo guidance"
+              title="Evo Goal Coach"
+              subtitle="Set direction manually, then let Evo shape details around your routine."
+            />
 
-            <div className="space-y-2">
-              {[
-                'I work at a desk and walk around 6k steps daily. I want gradual fat loss.',
-                'I train strength 4 times per week and want to build muscle with minimal fat gain.',
-                'I do cardio 5x weekly and need goals that keep energy high.',
-              ].map((prompt) => (
-                <button
-                  key={prompt}
-                  onClick={() => setAiGoalPrompt(prompt)}
-                  className="w-full text-left bg-surface-elevated border border-border rounded-lg px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:border-primary-500/30 transition-colors duration-150 ease-out"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
+            <SmartSuggestionChips
+              title="Try one of these contexts"
+              suggestions={[
+                { id: 'goal-1', label: 'I work at a desk and walk around 6k steps daily. I want gradual fat loss.' },
+                { id: 'goal-2', label: 'I train strength 4 times per week and want to build muscle with minimal fat gain.' },
+                { id: 'goal-3', label: 'I do cardio 5x weekly and need goals that keep energy high.' },
+              ]}
+              onSelect={(value) => setAiGoalPrompt(value)}
+            />
 
             <label htmlFor="ai-goal-prompt" className="block text-sm text-text-secondary">
               Your context
@@ -318,10 +317,11 @@ export default function GoalsPage() {
             </button>
 
             {lastAiMessage ? (
-              <div className="bg-surface-elevated border border-border rounded-lg p-3">
-                <p className="text-xs uppercase tracking-[0.14em] text-text-muted mb-2">Latest AI update</p>
-                <p className="text-sm text-text-primary whitespace-pre-wrap">{lastAiMessage}</p>
-              </div>
+              <EvoHintCard
+                title="Latest Evo update"
+                tone="notice"
+                content={lastAiMessage}
+              />
             ) : applyingAiGoals ? (
               <div className="bg-surface-elevated border border-border rounded-lg p-3 space-y-2">
                 <Skeleton className="h-3 w-28" />

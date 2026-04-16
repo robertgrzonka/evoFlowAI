@@ -12,6 +12,12 @@ import { DELETE_FOOD_ITEM_MUTATION, LOG_MEAL_WITH_AI_MUTATION } from '@/lib/grap
 import { appToast } from '@/lib/app-toast';
 import ChatMarkdown from '@/components/ChatMarkdown';
 import { buildDayRefetchQueries } from '@/lib/day-data';
+import {
+  AISectionHeader,
+  EvoHintCard,
+  InsightEmptyState,
+  SmartSuggestionChips,
+} from '@/components/evo';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 type MealEntry = {
@@ -38,6 +44,7 @@ export default function MealsPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [readingImage, setReadingImage] = useState(false);
   const [lastInsight, setLastInsight] = useState('');
+  const [pendingReview, setPendingReview] = useState(false);
 
   const { data, loading, refetch } = useQuery(DAILY_STATS_QUERY, {
     variables: { date: today },
@@ -49,6 +56,7 @@ export default function MealsPage() {
       setContent('');
       setImageBase64('');
       setImagePreview(null);
+      setPendingReview(false);
       const message = String(result?.logMealWithAI?.message?.content || '').trim();
       if (message) {
         setLastInsight(message);
@@ -111,6 +119,11 @@ export default function MealsPage() {
       return;
     }
 
+    if (!pendingReview) {
+      setPendingReview(true);
+      return;
+    }
+
     await logMealWithAI({
       variables: {
         input: {
@@ -137,6 +150,11 @@ export default function MealsPage() {
   }
 
   const meals: MealEntry[] = data?.dailyStats?.meals || [];
+  const mealSuggestionChips = [
+    { id: 'meal-chip-1', label: 'Chicken + rice + vegetables (post-workout meal)' },
+    { id: 'meal-chip-2', label: 'Skyr + berries + oats (quick high-protein snack)' },
+    { id: 'meal-chip-3', label: 'Egg omelette + toast + salad (balanced breakfast)' },
+  ];
 
   return (
     <AppShell>
@@ -153,7 +171,11 @@ export default function MealsPage() {
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-5 bg-surface border border-border rounded-xl p-4 md:p-5">
-            <h2 className="text-lg font-semibold tracking-tight text-text-primary mb-4">Log meal</h2>
+            <AISectionHeader
+              eyebrow="Meal flow"
+              title="Log meal"
+              subtitle="Describe or upload. Evo will analyze, then you can save with confidence."
+            />
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label htmlFor="mealType" className="block text-sm font-medium text-text-primary mb-2">
@@ -186,6 +208,12 @@ export default function MealsPage() {
                 />
               </div>
 
+              <SmartSuggestionChips
+                title="Quick input ideas"
+                suggestions={mealSuggestionChips}
+                onSelect={(value) => setContent(value)}
+              />
+
               <div>
                 <label htmlFor="imageUpload" className="block text-sm font-medium text-text-primary mb-2">
                   Upload meal image
@@ -207,14 +235,40 @@ export default function MealsPage() {
                 )}
               </div>
 
+              {pendingReview ? (
+                <EvoHintCard
+                  title="Ready to analyze?"
+                  tone="notice"
+                  content="Quick review: if description and meal type look right, save. If not, edit before sending."
+                  action={
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setPendingReview(false)}
+                      >
+                        Edit details
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingMeal}
+                        className="btn-primary"
+                      >
+                        Confirm & analyze
+                      </button>
+                    </div>
+                  }
+                />
+              ) : null}
+
               <button type="submit" disabled={savingMeal} className="btn-primary w-full inline-flex items-center justify-center gap-2">
                 {savingMeal ? (
                   <>
                     <ButtonSpinner />
-                    Analyzing and saving...
+                    Evo is analyzing your meal...
                   </>
                 ) : (
-                  'Analyze meal and save'
+                  pendingReview ? 'Analyze now' : 'Review before save'
                 )}
               </button>
             </form>
@@ -230,7 +284,7 @@ export default function MealsPage() {
               </div>
             ) : null}
 
-            {loading ? (
+            {loading && !data ? (
               <div className="space-y-3">
                 <ListRowSkeleton />
                 <ListRowSkeleton />
@@ -262,10 +316,12 @@ export default function MealsPage() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-10">
-                <Camera className="h-12 w-12 text-text-muted mx-auto mb-3" />
-                <p className="text-text-secondary">No meals logged today</p>
-              </div>
+              <InsightEmptyState
+                title="No meals logged yet"
+                description="Start with one meal entry. Evo will begin spotting patterns and giving smarter suggestions."
+                actionLabel="Open coach chat"
+                onAction={() => router.push('/chat?channel=COACH')}
+              />
             )}
           </section>
         </div>

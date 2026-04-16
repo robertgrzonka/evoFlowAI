@@ -25,7 +25,7 @@ type AppShellProps = {
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/chat', label: 'Chat', icon: MessageSquareMore },
+  { href: '/chat', label: 'Evo Chat', icon: MessageSquareMore },
   { href: '/meals', label: 'Meals', icon: NotebookPen },
   { href: '/stats', label: 'Stats', icon: BarChart3 },
   { href: '/workouts', label: 'Workouts', icon: Dumbbell },

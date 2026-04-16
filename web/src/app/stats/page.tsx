@@ -19,6 +19,11 @@ import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries } from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import { formatPrimaryGoal } from '@/lib/formatters';
+import {
+  AISectionHeader,
+  EvoHintCard,
+  InsightEmptyState,
+} from '@/components/evo';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type AnalysisMode = 'combined' | 'nutrition' | 'training';
@@ -143,8 +148,12 @@ export default function StatsPage() {
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <div className="xl:col-span-8">
             <div className="bg-surface rounded-xl border border-border p-5 mb-6">
+              <AISectionHeader
+                eyebrow="Day analyzer"
+                title="Pick day"
+                subtitle="Use a single day view to see what drifts, what works, and what to do next."
+              />
               <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-                <h1 className="text-xl font-semibold tracking-tight text-text-primary">Pick Day</h1>
                 <div className="inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
                   <ModeButton label="Combined" active={analysisMode === 'combined'} onClick={() => setAnalysisMode('combined')} />
                   <ModeButton label="Nutrition" active={analysisMode === 'nutrition'} onClick={() => setAnalysisMode('nutrition')} />
@@ -179,6 +188,16 @@ export default function StatsPage() {
                 {daySnapshot.loading ? 'Loading activity...' : `Steps tracked: ${Math.round(activity?.steps || 0)}`}
               </p>
             </div>
+
+            {analysisMode === 'combined' && daySnapshot.insight ? (
+              <div className="mb-6">
+                <EvoHintCard
+                  title="Main insight for selected day"
+                  tone="notice"
+                  content={daySnapshot.insight.summary}
+                />
+              </div>
+            ) : null}
 
             {(analysisMode === 'combined' || analysisMode === 'nutrition') ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -393,7 +412,14 @@ export default function StatsPage() {
                     </>
                   )}
                 </section>
-              ) : null}
+              ) : (
+                <section className="bg-surface rounded-xl border border-border p-4">
+                  <InsightEmptyState
+                    title="Weekly trend is not ready yet"
+                    description="Evo needs more day snapshots to build a reliable weekly pattern."
+                  />
+                </section>
+              )}
               <ContextAICoach
                 title="AI Coach"
                 description={`Mode: ${analysisMode}. Ask Evo for focused suggestions based on selected date.`}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
@@ -20,6 +20,13 @@ import { ButtonSpinner } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
 import { CHAT_HISTORY_LIMIT } from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import {
+  AISectionHeader,
+  EvoHintCard,
+  EvoStatusBadge,
+  InsightEmptyState,
+  SmartSuggestionChips,
+} from '@/components/evo';
 
 type ChatChannel = 'GENERAL' | 'COACH';
 type ChatRole = 'USER' | 'ASSISTANT';
@@ -32,6 +39,8 @@ export default function ChatPage() {
   const [conversationChannel, setConversationChannel] = useState<ChatChannel>('GENERAL');
   const [prompt, setPrompt] = useState('');
   const [showCoachDebug, setShowCoachDebug] = useState(false);
+  const [waitingForEvo, setWaitingForEvo] = useState(false);
+  const conversationScrollRef = useRef<HTMLDivElement | null>(null);
 
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const goalMode = String(meData?.me?.preferences?.primaryGoal || 'MAINTENANCE').toUpperCase();
@@ -46,6 +55,7 @@ export default function ChatPage() {
     fetchPolicy: 'cache-and-network',
     pollInterval: 8000,
   });
+  const messages: ChatMessage[] = data?.myChatHistory || [];
 
   useSubscription(NEW_CHAT_MESSAGE_SUBSCRIPTION, {
     variables: { userId: meData?.me?.id, channel: conversationChannel },
@@ -71,6 +81,16 @@ export default function ChatPage() {
     router.push('/login');
   }, [historyError, router]);
 
+  useEffect(() => {
+    if (historyLoading) return;
+    const frame = requestAnimationFrame(() => {
+      const container = conversationScrollRef.current;
+      if (!container) return;
+      container.scrollTop = container.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [conversationChannel, historyLoading, messages.length, waitingForEvo]);
+
   const [sendMessage, { loading: sendingMessage }] = useMutation(SEND_MESSAGE_MUTATION, {
     onCompleted: async () => {
       setPrompt('');
@@ -78,8 +98,10 @@ export default function ChatPage() {
       if (conversationChannel === 'COACH') {
         await daySnapshot.refetchDay();
       }
+      setWaitingForEvo(false);
     },
     onError: (error) => {
+      setWaitingForEvo(false);
       appToast.error('Message failed', error.message || 'Could not send message.');
     },
   });
@@ -92,6 +114,7 @@ export default function ChatPage() {
       return;
     }
 
+    setWaitingForEvo(true);
     await sendMessage({
       variables: {
         input: {
@@ -105,8 +128,22 @@ export default function ChatPage() {
     });
   };
 
-  const messages: ChatMessage[] = data?.myChatHistory || [];
-  const quickPrompts = conversationChannel === 'COACH' ? getCoachPrompts(goalMode) : getGeneralPrompts();
+  const quickPrompts = conversationChannel === 'COACH'
+    ? getCoachPrompts(goalMode, daySnapshot.derived.remainingProtein, daySnapshot.derived.remainingCalories)
+    : getGeneralPrompts();
+  const suggestionChips = quickPrompts.map((label, index) => ({
+    id: `${conversationChannel}-${index}`,
+    label,
+  }));
+  const evoStatusLabel = conversationChannel === 'COACH'
+    ? daySnapshot.loading
+      ? 'Analyzing your day'
+      : daySnapshot.derived.remainingProtein > 30
+        ? 'Protein gap detected'
+        : daySnapshot.derived.remainingCalories < -100
+          ? 'Intake correction mode'
+          : 'Coach mode active'
+    : 'General mode active';
 
   return (
     <AppShell>
@@ -115,19 +152,35 @@ export default function ChatPage() {
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-7 bg-surface border border-border rounded-xl p-4 md:p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold tracking-tight text-text-primary">Conversation</h2>
-              <span className="text-xs text-text-muted">Latest at bottom</span>
-            </div>
+            <AISectionHeader
+              eyebrow="Evo conversation"
+              title="Conversation"
+              subtitle={conversationChannel === 'COACH' ? 'Evo reads your day context before replying.' : 'Talk strategy, habits, and planning.'}
+              status={<EvoStatusBadge label={evoStatusLabel} tone={conversationChannel === 'COACH' ? 'focus' : 'neutral'} />}
+            />
             <div className="mb-4 inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
-              <ChannelTabButton label="General" active={conversationChannel === 'GENERAL'} onClick={() => setConversationChannel('GENERAL')} />
-              <ChannelTabButton label="Coach" active={conversationChannel === 'COACH'} onClick={() => setConversationChannel('COACH')} />
+              <ChannelTabButton
+                label="General"
+                active={conversationChannel === 'GENERAL'}
+                onClick={() => {
+                  setConversationChannel('GENERAL');
+                  router.replace('/chat?channel=GENERAL');
+                }}
+              />
+              <ChannelTabButton
+                label="Coach"
+                active={conversationChannel === 'COACH'}
+                onClick={() => {
+                  setConversationChannel('COACH');
+                  router.replace('/chat?channel=COACH');
+                }}
+              />
             </div>
 
             {historyLoading ? (
               <ConversationSkeleton />
             ) : messages.length > 0 ? (
-              <div className="max-h-[620px] overflow-y-auto pr-1 space-y-3">
+              <div ref={conversationScrollRef} className="max-h-[620px] overflow-y-auto pr-1 space-y-3">
                 {messages.map((message) => {
                   const isUser = message.role === 'USER';
                   return (
@@ -146,51 +199,58 @@ export default function ChatPage() {
                     </div>
                   );
                 })}
+                {waitingForEvo ? (
+                  <div className="flex justify-start">
+                    <div className="max-w-[75%] rounded-2xl border border-primary-500/25 bg-primary-500/8 px-3 py-2 rounded-bl-md">
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted mb-1">Evo</p>
+                      <p className="text-sm text-text-secondary">Analyzing your day and preparing a focused response...</p>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
-              <div className="rounded-lg border border-border bg-surface-elevated p-4">
-                <p className="text-text-secondary text-sm">
-                  {conversationChannel === 'COACH'
-                    ? 'No coach messages yet. Ask Evo about your current day stats and next action.'
-                    : 'No general chat messages yet. Start a conversation with Evo.'}
-                </p>
-              </div>
+              <InsightEmptyState
+                title={conversationChannel === 'COACH' ? 'Coach thread is empty' : 'General thread is empty'}
+                description={
+                  conversationChannel === 'COACH'
+                    ? 'Ask Evo what is drifting today and it will propose one concrete next step.'
+                    : 'Start with a routine, planning, or recovery question.'
+                }
+              />
             )}
           </section>
 
           <section className="xl:col-span-5 bg-surface border border-border rounded-xl p-4 md:p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <AICoachAvatar size="md" />
-              <div>
-                <h2 className="text-lg font-semibold tracking-tight text-text-primary">
-                  {conversationChannel === 'COACH' ? 'Ask Nutrition Coach' : 'Ask General Evo'}
-                </h2>
-                <p className="text-xs text-text-muted">
-                  {conversationChannel === 'COACH'
-                    ? 'Context-aware answers based on your daily intake, training and goals'
-                    : 'General conversation, planning, and practical lifestyle support'}
-                </p>
-              </div>
-            </div>
+            <AISectionHeader
+              title={conversationChannel === 'COACH' ? 'Evo coach mode' : 'Evo general mode'}
+              subtitle={
+                conversationChannel === 'COACH'
+                  ? `Today snapshot: ${Math.round(daySnapshot.derived.remainingCalories)} kcal left, ${Math.round(daySnapshot.derived.remainingProtein)}g protein left.`
+                  : 'Use this space for decisions, planning, and consistency strategy.'
+              }
+              rightAction={<AICoachAvatar size="md" />}
+            />
 
-            <form onSubmit={handleSend} className="space-y-4">
-              <div>
-                <p className="mb-2 text-xs uppercase tracking-[0.12em] text-text-muted">
-                  {conversationChannel === 'COACH' ? 'Coach shortcuts' : 'General shortcuts'}
-                </p>
-                <div className="grid grid-cols-1 gap-2">
-                  {quickPrompts.map((quickPrompt) => (
-                    <button
-                      key={quickPrompt}
-                      type="button"
-                      onClick={() => setPrompt(quickPrompt)}
-                      className="text-left rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:border-primary-500/30 transition-colors"
-                    >
-                      {quickPrompt}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {conversationChannel === 'COACH' ? (
+              <EvoHintCard
+                title="Quick read from Evo"
+                tone="notice"
+                content={
+                  daySnapshot.derived.remainingProtein > 30
+                    ? 'Protein is your biggest gap today. Solve this first and the day gets easier.'
+                    : daySnapshot.derived.remainingCalories < -100
+                      ? 'You are above budget. A calm correction plan now beats random restriction later.'
+                      : 'You are relatively stable. Close the day with one clean, balanced move.'
+                }
+              />
+            ) : null}
+
+            <form onSubmit={handleSend} className="space-y-4 mt-4">
+              <SmartSuggestionChips
+                title={conversationChannel === 'COACH' ? 'Smart coach suggestions' : 'Smart suggestions'}
+                suggestions={suggestionChips}
+                onSelect={(value) => setPrompt(value)}
+              />
 
               <div>
                 <label htmlFor="chatPrompt" className="block text-sm font-medium text-text-primary mb-2">
@@ -223,7 +283,7 @@ export default function ChatPage() {
               </button>
             </form>
 
-            {conversationChannel === 'COACH' ? (
+            {conversationChannel === 'COACH' && process.env.NODE_ENV === 'development' ? (
               <div className="mt-4 rounded-lg border border-border bg-surface-elevated p-3">
                 <button
                   type="button"
@@ -311,7 +371,23 @@ function ConversationSkeleton() {
   );
 }
 
-function getCoachPrompts(goalMode: string) {
+function getCoachPrompts(goalMode: string, remainingProtein?: number, remainingCalories?: number) {
+  if (typeof remainingProtein === 'number' && remainingProtein > 35) {
+    return [
+      `I still need around ${Math.round(remainingProtein)}g protein. Build one realistic dinner for this day.`,
+      'Explain why protein is the bottleneck today and what should change tomorrow morning.',
+      'Give me one high-protein correction meal and one backup option.',
+    ];
+  }
+
+  if (typeof remainingCalories === 'number' && remainingCalories < -100) {
+    return [
+      `I am over calories by around ${Math.abs(Math.round(remainingCalories))}. Give me a calm correction plan.`,
+      'Compare strict vs moderate correction and pick the smarter option for consistency.',
+      'What is the one mistake to avoid tonight so tomorrow starts clean?',
+    ];
+  }
+
   if (goalMode === 'FAT_LOSS') {
     return [
       'Review my day and suggest one low-calorie high-protein next meal.',

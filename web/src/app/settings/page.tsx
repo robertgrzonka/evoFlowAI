@@ -23,6 +23,7 @@ import { ButtonSpinner, PageLoader } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries } from '@/lib/day-data';
 import { formatPrimaryGoal } from '@/lib/formatters';
+import { AISectionHeader, EvoHintCard } from '@/components/evo';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -148,7 +149,10 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-8 space-y-4">
             <div className="bg-surface rounded-xl border border-border p-5">
-              <h2 className="text-base font-semibold tracking-tight text-text-primary mb-4">Experience settings</h2>
+              <AISectionHeader
+                title="Experience settings"
+                subtitle="Control how Evo sounds and how visible it is across the product."
+              />
               <div className="space-y-3">
                 <ToggleRow
                   icon={<Bell className="h-4 w-4 text-info-500" />}
@@ -166,7 +170,7 @@ export default function SettingsPage() {
                 />
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
                   <p className="text-sm font-semibold text-text-primary mb-1.5">Evo coaching tone</p>
-                  <p className="text-xs text-text-secondary mb-3">Choose how Evo speaks to you.</p>
+                  <p className="text-xs text-text-secondary mb-3">This changes communication style, not Evo personality.</p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
@@ -194,7 +198,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
                   <p className="text-sm font-semibold text-text-primary mb-1.5">Evo proactivity</p>
-                  <p className="text-xs text-text-secondary mb-3">How many proactive suggestions Evo should give.</p>
+                  <p className="text-xs text-text-secondary mb-3">How often Evo should interrupt with next-step suggestions.</p>
                   <div className="grid grid-cols-3 gap-2">
                     {(['LOW', 'MEDIUM', 'HIGH'] as const).map((level) => (
                       <button
@@ -212,6 +216,15 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 </div>
+                <EvoHintCard
+                  title="Preview tone"
+                  tone="notice"
+                  content={
+                    coachingTone === 'DIRECT'
+                      ? 'Direct: Evo keeps feedback tight and task-focused.'
+                      : 'Supportive: Evo stays warm, but still practical and concrete.'
+                  }
+                />
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
                   <p className="text-sm font-semibold text-text-primary mb-1.5">Body metrics for AI guidance</p>
                   <p className="text-xs text-text-secondary mb-3">

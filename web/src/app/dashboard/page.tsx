@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useMutation, useQuery } from '@apollo/client';
@@ -8,7 +8,7 @@ import {
   ME_QUERY,
   WEEKLY_EVO_REVIEW_QUERY,
 } from '@/lib/graphql/queries';
-import { Camera, ChartColumnIncreasing, Dumbbell, Plus, Quote, Target, Trash2 } from 'lucide-react';
+import { Camera, ChartColumnIncreasing, Dumbbell, Plus, Target, Trash2 } from 'lucide-react';
 import { clearAuthToken, hasAuthToken } from '@/lib/auth-token';
 import AppShell from '@/components/AppShell';
 import AICoachAvatar from '@/components/AICoachAvatar';
@@ -28,6 +28,15 @@ import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries } from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import { formatPrimaryGoal } from '@/lib/formatters';
+import {
+  AISectionHeader,
+  EvoHintCard,
+  EvoStatusBadge,
+  HeroInsightCard,
+  InsightEmptyState,
+  NextBestActionCard,
+} from '@/components/evo';
+import Tooltip from '@/components/ui/atoms/Tooltip';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -91,10 +100,49 @@ const buildEvoPresenceLine = (input: {
   return 'Evo status: Keep the momentum.';
 };
 
+const buildNextAction = (input: {
+  remainingCalories: number;
+  remainingProtein: number;
+  mealsCount: number;
+  workoutCount: number;
+}): { title: string; description: string; targetPath: string; actionLabel: string } => {
+  const { remainingCalories, remainingProtein, mealsCount, workoutCount } = input;
+  if (remainingProtein > 35) {
+    return {
+      title: 'Close your protein gap first',
+      description: `You still have around ${Math.round(remainingProtein)}g protein to hit. Build one protein-first meal now.`,
+      targetPath: '/meals',
+      actionLabel: 'Log protein-focused meal',
+    };
+  }
+  if (remainingCalories < -150) {
+    return {
+      title: 'Stabilize intake for the rest of today',
+      description: 'You are above today budget. Keep the next meal light and avoid random snacking.',
+      targetPath: '/chat?channel=COACH',
+      actionLabel: 'Ask Evo for correction plan',
+    };
+  }
+  if (workoutCount === 0 && mealsCount >= 2 && remainingCalories > 350) {
+    return {
+      title: 'You still have room for useful movement',
+      description: 'A short workout can improve energy balance and recovery quality for tomorrow.',
+      targetPath: '/workouts',
+      actionLabel: 'Log quick workout',
+    };
+  }
+  return {
+    title: 'Keep your current rhythm',
+    description: 'You are in a decent place. One balanced meal and clean recovery will close the day well.',
+    targetPath: '/chat?channel=COACH',
+    actionLabel: 'Get Evo end-of-day plan',
+  };
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const today = new Date().toISOString().split('T')[0];
+  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [quickWorkoutTitle, setQuickWorkoutTitle] = useState('');
   const [quickWorkoutDuration, setQuickWorkoutDuration] = useState(35);
   const [quickWorkoutBurned, setQuickWorkoutBurned] = useState(250);
@@ -205,10 +253,16 @@ export default function DashboardPage() {
     : 'In progress';
 
   const categorizedTips = [
-    { label: '🌱 Nutrition', tip: insight?.tips?.[0] || 'Prioritize protein and balanced carbs in your next meal.' },
-    { label: '🏋🏼‍♀️ Training', tip: insight?.tips?.[1] || 'Keep training quality high and avoid overdoing volume late in the day.' },
-    { label: '💧 Recovery', tip: insight?.tips?.[2] || 'Hydrate and support recovery with micronutrient-dense foods.' },
+    { label: 'Nutrition notice', tip: insight?.tips?.[0] || 'Prioritize protein and balanced carbs in your next meal.' },
+    { label: 'Training notice', tip: insight?.tips?.[1] || 'Keep training quality high and avoid overdoing volume late in the day.' },
+    { label: 'Recovery notice', tip: insight?.tips?.[2] || 'Hydrate and support recovery with micronutrient-dense foods.' },
   ];
+  const nextAction = buildNextAction({
+    remainingCalories: Number(insight?.remainingCalories || 0),
+    remainingProtein: Number(insight?.remainingProtein || 0),
+    mealsCount: completedMeals,
+    workoutCount: daySnapshot.derived.workoutCount,
+  });
 
   const handleDeleteMeal = async (mealId: string) => {
     const confirmed = window.confirm('Delete this meal entry?');
@@ -281,18 +335,13 @@ export default function DashboardPage() {
           transition={{ duration: 0.35, delay: 0.03, ease: 'easeOut' }}
           className="bg-surface rounded-xl border border-border p-4 md:p-5"
         >
-          <div className="flex items-start gap-3 mb-4">
-            <AICoachAvatar size="md" />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h3 className="text-lg font-semibold tracking-tight text-text-primary">Evo daily brief</h3>
-                <span className="rounded-full border border-border bg-surface-elevated px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] text-text-muted">
-                  {progressTone}
-                </span>
-              </div>
-              <p className="text-sm text-text-secondary">Your day in one glance: food, goals, training, and next best move.</p>
-            </div>
-          </div>
+          <AISectionHeader
+            eyebrow="Mission control"
+            title="Evo daily brief"
+            subtitle="How you are doing, what is drifting, and what to do right now."
+            status={<EvoStatusBadge label={progressTone} tone={progressTone === 'On track' ? 'success' : progressTone === 'Watch intake' ? 'warning' : 'focus'} />}
+            rightAction={<AICoachAvatar size="md" />}
+          />
 
           {daySnapshot.loading ? (
             <div className="space-y-2.5">
@@ -302,39 +351,44 @@ export default function DashboardPage() {
             </div>
           ) : insight ? (
             <div className="space-y-4">
-              <blockquote className="rounded-lg border border-primary-500/25 bg-primary-500/8 p-3.5 md:p-4">
-                <div className="flex items-start gap-2">
-                  <Quote className="h-4 w-4 mt-0.5 text-primary-400 shrink-0" />
-                  <p className="text-base text-text-primary leading-relaxed">{insight.summary}</p>
+              <HeroInsightCard
+                title="Main insight"
+                insight={insight.summary}
+                supportLine={evoPresence}
+                cta={
+                  <NextBestActionCard
+                    title={nextAction.title}
+                    description={nextAction.description}
+                    actionLabel={nextAction.actionLabel}
+                    onAction={() => router.push(nextAction.targetPath)}
+                  />
+                }
+              >
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                  <EmojiMetric emoji="🎯" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} tooltip="Goal mode" />
+                  <EmojiMetric emoji="🍽️" value={String(completedMeals)} tooltip="Meals today" />
+                  <EmojiMetric emoji="🏋️" value={`${daySnapshot.derived.workoutCount}`} tooltip={`Training today (${dailyTrainingLabel})`} />
+                  <EmojiMetric emoji="⚖️" value={`${insight.netCalories.toFixed(0)}`} tooltip="Net calories (food - workouts)" />
+                  <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)}`} tooltip="Calories left for today" />
+                  <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)}g`} tooltip="Protein left for today" />
                 </div>
-              </blockquote>
+              </HeroInsightCard>
 
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                <EmojiMetric emoji="🎯" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} tooltip="Goal mode" />
-                <EmojiMetric emoji="🍽️" value={String(completedMeals)} tooltip="Meals today" />
-                <EmojiMetric emoji="🏋️" value={`${daySnapshot.derived.workoutCount}`} tooltip={`Training today (${dailyTrainingLabel})`} />
-                <EmojiMetric emoji="⚖️" value={`${insight.netCalories.toFixed(0)}`} tooltip="Net calories (food - workouts)" />
-                <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)}`} tooltip="Calories left for today" />
-                <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)}g`} tooltip="Protein left for today" />
-              </div>
-
-              <div className="rounded-lg border border-border bg-surface-elevated p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1.5">What to do now</p>
-                <p className="text-sm text-text-primary">{guidance}</p>
-                <p className="text-xs text-text-secondary mt-2">{evoPresence}</p>
-              </div>
+              <EvoHintCard title="Quick read from Evo" content={guidance} tone="notice" />
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 {categorizedTips.map((item) => (
-                  <div key={item.label} className="rounded-lg border border-border bg-surface-elevated px-3 py-2.5">
-                    <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1">{item.label}</p>
-                    <p className="text-sm text-text-secondary">{item.tip}</p>
-                  </div>
+                  <EvoHintCard key={item.label} title={item.label} content={item.tip} tone="positive" />
                 ))}
               </div>
             </div>
           ) : (
-            <p className="text-sm text-text-secondary">No coach summary yet.</p>
+            <InsightEmptyState
+              title="Evo is waiting for enough context"
+              description="Log at least one meal or workout and Evo will build a focused daily brief."
+              actionLabel="Open meals"
+              onAction={() => router.push('/meals')}
+            />
           )}
         </motion.section>
 
@@ -741,14 +795,16 @@ function ActionCard({
 
 function EmojiMetric({ emoji, value, tooltip }: { emoji: string; value: string; tooltip: string }) {
   return (
-    <div
-      className="relative cursor-help rounded-lg border border-border bg-surface-elevated px-2.5 py-2 text-center after:absolute after:right-1.5 after:top-1 after:text-[10px] after:text-text-muted after:content-['?'] after:opacity-0 after:transition-opacity hover:after:opacity-100"
-      title={tooltip}
-      aria-label={tooltip}
-    >
-      <p className="text-sm">{emoji}</p>
-      <p className="text-xs font-semibold text-text-primary truncate mt-1">{value}</p>
-    </div>
+    <Tooltip content={tooltip}>
+      <div
+        tabIndex={0}
+        aria-label={tooltip}
+        className="relative cursor-help rounded-lg border border-border bg-surface-elevated px-2.5 py-2 text-center after:absolute after:right-1.5 after:top-1 after:text-[10px] after:text-text-muted after:content-['?'] after:opacity-80"
+      >
+        <p className="text-sm">{emoji}</p>
+        <p className="text-xs font-semibold text-text-primary truncate mt-1">{value}</p>
+      </div>
+    </Tooltip>
   );
 }
 

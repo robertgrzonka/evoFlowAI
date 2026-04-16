@@ -6,6 +6,8 @@ import { SEND_MESSAGE_MUTATION } from '@/lib/graphql/mutations';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import { ButtonSpinner } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
+import ChatMarkdown from '@/components/ChatMarkdown';
+import { SmartSuggestionChips } from '@/components/evo';
 
 type ContextAICoachProps = {
   title: string;
@@ -70,15 +72,11 @@ export default function ContextAICoach({
       </div>
 
       <div className="space-y-2">
-        {quickPrompts.map((quickPrompt) => (
-          <button
-            key={quickPrompt}
-            onClick={() => setPrompt(quickPrompt)}
-            className="w-full text-left bg-surface-elevated border border-border rounded-lg px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:border-primary-500/30 transition-colors duration-150 ease-out"
-          >
-            {quickPrompt}
-          </button>
-        ))}
+        <SmartSuggestionChips
+          title="Smart prompts"
+          suggestions={quickPrompts.map((quickPrompt, index) => ({ id: `ctx-${index}`, label: quickPrompt }))}
+          onSelect={(value) => setPrompt(value)}
+        />
       </div>
 
       <textarea
@@ -103,8 +101,8 @@ export default function ContextAICoach({
 
       {lastAnswer ? (
         <div className="bg-surface-elevated border border-border rounded-lg p-3">
-          <p className="text-xs uppercase tracking-[0.14em] text-text-muted mb-2">AI answer</p>
-          <p className="text-sm text-text-primary whitespace-pre-wrap">{lastAnswer}</p>
+          <p className="text-xs uppercase tracking-[0.14em] text-text-muted mb-2">Evo answer</p>
+          <ChatMarkdown content={lastAnswer} />
         </div>
       ) : null}
     </aside>
