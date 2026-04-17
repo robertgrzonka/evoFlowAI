@@ -28,7 +28,7 @@ import AICoachAvatar from '@/components/AICoachAvatar';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import Tooltip from '@/components/ui/atoms/Tooltip';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
-import { AISectionHeader, EvoHintCard, InsightEmptyState, SmartSuggestionChips } from '@/components/evo';
+import { AISectionHeader, EvoHintCard, EvoStatusBadge, InsightEmptyState, SmartSuggestionChips } from '@/components/evo';
 import {
   ADAPT_COACH_PRO_PLAN_MUTATION,
   REFRESH_COACH_PRO_PLAN_BY_TODAY_SIGNALS_MUTATION,
@@ -917,14 +917,22 @@ export default function EvoCoachProPage() {
             </section>
 
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h3 className="text-sm font-semibold text-text-primary mb-3">Need to adapt today?</h3>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-text-primary">Need to adapt today?</h3>
+                <EvoStatusBadge label="In progress" tone="warning" />
+              </div>
               <SmartSuggestionChips
                 title="Adjust today plan in one click"
                 suggestions={adaptiveActionButtons.map((entry) => ({ id: entry.action, label: entry.label }))}
                 onSelect={(action) => handleAdaptiveAction(action as ProAdaptiveAction)}
                 selectValue="id"
               />
-              {adaptingPlan ? <p className="text-xs text-text-secondary mt-2">Applying adaptive change...</p> : null}
+              {adaptingPlan ? (
+                <p className="text-xs text-text-secondary mt-2 inline-flex items-center gap-2">
+                  <ButtonSpinner />
+                  In progress…
+                </p>
+              ) : null}
               {refreshingPlanBySignals ? <p className="text-xs text-text-secondary mt-1">Syncing today signals...</p> : null}
               {adaptiveFeedback ? (
                 <div className="mt-3 rounded-lg border border-amber-300/35 bg-amber-300/10 p-3">
