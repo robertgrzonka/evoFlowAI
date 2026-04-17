@@ -163,7 +163,7 @@ type AdaptiveFeedback = {
   lines: string[];
 };
 
-/** Mon=0 … Sun=6 — dopasowanie do prefiksów dayLabel (Mon / Monday itd.) */
+/** Mon=0 … Sun=6 — match dayLabel prefixes (Mon / Monday, etc.) */
 function dayLabelToMondayIndex(dayLabel: string): number {
   const s = dayLabel.trim().toLowerCase();
   if (s.startsWith('mon')) return 0;
@@ -181,7 +181,7 @@ function getMondayBasedTodayIndex(): number {
   return d === 0 ? 6 : d - 1;
 }
 
-/** Kolejność od dzisiaj; najpierw sort Mon→Sun, potem rotacja tak, by pierwszy wpis = aktualny dzień. */
+/** Order from today: sort Mon→Sun, then rotate so the first item is the current weekday. */
 function rotateWeekFromToday<T extends { dayLabel: string }>(items: T[]): T[] {
   if (items.length === 0) return items;
   const sorted = [...items].sort((a, b) => dayLabelToMondayIndex(a.dayLabel) - dayLabelToMondayIndex(b.dayLabel));
@@ -947,8 +947,8 @@ export default function EvoCoachProPage() {
                     <h3 className="text-base font-semibold text-text-primary">Weekly nutrition plan</h3>
                     <p className="text-xs text-text-muted mt-1">
                       {canExpandWeekView && !showFullWeekSchedule
-                        ? `Od dzisiaj · widać 3 z ${nutritionWeekFromToday.length} dni`
-                        : 'Od dzisiaj · pełny tydzień w tej sekcji'}
+                        ? `From today · showing 3 of ${nutritionWeekFromToday.length} days`
+                        : 'From today · full week in this section'}
                     </p>
                   </div>
                   <div className="space-y-3">
@@ -1051,8 +1051,8 @@ export default function EvoCoachProPage() {
                       className="mt-3 w-full rounded-lg border border-amber-300/35 bg-amber-300/5 px-3 py-2.5 text-sm text-amber-100/95 transition-colors hover:bg-amber-300/10"
                     >
                       {showFullWeekSchedule
-                        ? 'Zwiń do 3 najbliższych dni (żywienie + trening)'
-                        : `Pokaż pozostałe dni (${remainingWeekDaysCount}) — żywienie i trening`}
+                        ? 'Show only the next 3 days (nutrition + training)'
+                        : `Show remaining days (${remainingWeekDaysCount}) — nutrition and training`}
                     </button>
                   ) : null}
                 </section>
@@ -1060,7 +1060,7 @@ export default function EvoCoachProPage() {
                 <section className="bg-surface rounded-xl border border-border p-5">
                   <div className="mb-3">
                     <h3 className="text-base font-semibold text-text-primary">Weekly training plan</h3>
-                    <p className="text-xs text-text-muted mt-1">Ta sama kolejność dni co powyżej (od dzisiaj).</p>
+                    <p className="text-xs text-text-muted mt-1">Same day order as above (from today).</p>
                   </div>
                   <div className="space-y-2.5">
                     {trainingDaysVisible.map((session) => (
