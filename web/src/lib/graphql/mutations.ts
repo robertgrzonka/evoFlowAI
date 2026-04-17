@@ -157,6 +157,21 @@ export const LOG_WORKOUT_MUTATION = gql`
   }
 `;
 
+export const IMPORT_WORKOUT_FILE_MUTATION = gql`
+  mutation ImportWorkoutFile($input: ImportWorkoutFileInput!) {
+    importWorkoutFile(input: $input) {
+      id
+      title
+      notes
+      durationMinutes
+      caloriesBurned
+      intensity
+      performedAt
+      createdAt
+    }
+  }
+`;
+
 export const DELETE_WORKOUT_MUTATION = gql`
   mutation DeleteWorkout($id: ID!) {
     deleteWorkout(id: $id)
@@ -175,6 +190,229 @@ export const UPSERT_DAILY_ACTIVITY_MUTATION = gql`
       date
       steps
       estimatedCalories
+    }
+  }
+`;
+
+export const CONNECT_GARMIN_STEP_SYNC_MUTATION = gql`
+  mutation ConnectGarminStepSync($input: ConnectGarminStepSyncInput) {
+    connectGarminStepSync(input: $input) {
+      provider
+      connected
+      configured
+      usingEnvToken
+      lastSyncedAt
+      lastError
+    }
+  }
+`;
+
+export const DISCONNECT_STEP_SYNC_MUTATION = gql`
+  mutation DisconnectStepSync($provider: StepSyncProvider!) {
+    disconnectStepSync(provider: $provider)
+  }
+`;
+
+export const SYNC_GARMIN_STEPS_MUTATION = gql`
+  mutation SyncGarminSteps($date: String!) {
+    syncGarminSteps(date: $date) {
+      date
+      importedSteps
+      savedSteps
+      source
+      syncedAt
+    }
+  }
+`;
+
+export const ADAPT_COACH_PRO_PLAN_MUTATION = gql`
+  mutation AdaptEvoCoachProPlan($input: AdaptCoachProPlanInput!) {
+    adaptEvoCoachProPlan(input: $input) {
+      generatedAt
+      generationSource
+      fallbackReason
+      generationWarnings
+      normalizationApplied
+      normalizationSummary
+      normalizedFields
+      shoppingListSource
+      shoppingListWarnings
+      sectionSources
+      fallbackSections
+      overview {
+        calorieTargetRange
+        trainingFrequency
+        planDifficulty
+        expectedPace
+        flexibilityLevel
+      }
+      weeklyNutrition {
+        dayLabel
+        calorieTarget
+        proteinTarget
+        carbsTarget
+        fatTarget
+        meals {
+          mealType
+          name
+          description
+          estimatedCalories
+          estimatedProtein
+          estimatedCarbs
+          estimatedFat
+          fiberGrams
+          estimatedSatiety
+          suggestedUse
+          prepTimeMinutes
+          tags
+          ingredients {
+            item
+            quantity
+          }
+          recipeSteps
+          substitutions
+          mealPrepNote
+          rationale
+        }
+      }
+      weeklyTraining {
+        dayLabel
+        sessionGoal
+        workoutType
+        durationMinutes
+        intensity
+        structure {
+          name
+          sets
+          reps
+          durationMinutes
+          notes
+        }
+        fallbackVersion
+        minimumViableVersion
+      }
+      rationale
+      smartWarnings
+      shoppingList {
+        proteins
+        carbs
+        fats
+        vegetables
+        dairy
+        extras
+        optionalItems
+      }
+      substitutions {
+        ingredientSubstitutions
+        mealSwaps
+        exerciseSubstitutions
+        lowEnergyAlternatives
+        shortOnTimeAlternatives
+      }
+      coachNotes
+      hardestPartThisWeek
+      focusForBestResults
+      executionTips
+      mealPrepTips
+      recoveryNote
+      bestCasePlan
+      realisticPlan
+    }
+  }
+`;
+
+export const REFRESH_COACH_PRO_PLAN_BY_TODAY_SIGNALS_MUTATION = gql`
+  mutation RefreshEvoCoachProPlanByTodaySignals($date: String!) {
+    refreshEvoCoachProPlanByTodaySignals(date: $date) {
+      generatedAt
+      generationSource
+      fallbackReason
+      generationWarnings
+      normalizationApplied
+      normalizationSummary
+      normalizedFields
+      shoppingListSource
+      shoppingListWarnings
+      sectionSources
+      fallbackSections
+      overview {
+        calorieTargetRange
+        trainingFrequency
+        planDifficulty
+        expectedPace
+        flexibilityLevel
+      }
+      weeklyNutrition {
+        dayLabel
+        calorieTarget
+        proteinTarget
+        carbsTarget
+        fatTarget
+        meals {
+          mealType
+          name
+          description
+          estimatedCalories
+          estimatedProtein
+          estimatedCarbs
+          estimatedFat
+          fiberGrams
+          estimatedSatiety
+          suggestedUse
+          prepTimeMinutes
+          tags
+          ingredients {
+            item
+            quantity
+          }
+          recipeSteps
+          substitutions
+          mealPrepNote
+          rationale
+        }
+      }
+      weeklyTraining {
+        dayLabel
+        sessionGoal
+        workoutType
+        durationMinutes
+        intensity
+        structure {
+          name
+          sets
+          reps
+          durationMinutes
+          notes
+        }
+        fallbackVersion
+        minimumViableVersion
+      }
+      rationale
+      smartWarnings
+      shoppingList {
+        proteins
+        carbs
+        fats
+        vegetables
+        dairy
+        extras
+        optionalItems
+      }
+      substitutions {
+        ingredientSubstitutions
+        mealSwaps
+        exerciseSubstitutions
+        lowEnergyAlternatives
+        shortOnTimeAlternatives
+      }
+      coachNotes
+      hardestPartThisWeek
+      focusForBestResults
+      executionTips
+      mealPrepTips
+      recoveryNote
+      bestCasePlan
+      realisticPlan
     }
   }
 `;

@@ -395,22 +395,19 @@ export default function StatsPage() {
                 <section className="bg-surface rounded-xl border border-border p-4">
                   <h4 className="text-sm font-semibold tracking-tight text-text-primary mb-2">Weekly trend snapshot</h4>
                   {!weeklyReview.isCompleteWeek ? (
-                    <div className="rounded-lg border border-dashed border-border bg-surface-elevated p-3.5">
-                      <p className="text-sm text-text-primary font-medium mb-1">Evo is waiting for a full week of data</p>
-                      <p className="text-sm text-text-secondary">
-                        Currently, data is available for <span className="font-semibold text-text-primary">{weeklyReview.trackedDays}/7</span> days.
+                    <div className="rounded-lg border border-dashed border-primary-500/30 bg-primary-500/5 px-3 py-2 mb-3">
+                      <p className="text-xs text-primary-200">
+                        Partial weekly review for <span className="font-semibold text-primary-100">{weeklyReview.availableDays}/7</span> available days
+                        (<span className="font-semibold text-primary-100">{weeklyReview.trackedDays}</span> tracked).
                       </p>
                     </div>
-                  ) : (
-                    <>
-                      <p className="text-sm text-text-secondary mb-3">{weeklyReview.summary}</p>
-                      <div className="grid grid-cols-3 gap-2 mb-2">
-                        <WorkoutSummaryCard icon={<Camera className="h-4 w-4 text-info-400" />} label="Nutrition" value={`${weeklyReview.nutritionScore}/100`} />
-                        <WorkoutSummaryCard icon={<Dumbbell className="h-4 w-4 text-amber-300" />} label="Training" value={`${weeklyReview.trainingScore}/100`} />
-                        <WorkoutSummaryCard icon={<Flame className="h-4 w-4 text-success-400" />} label="Consistency" value={`${weeklyReview.consistencyScore}/100`} />
-                      </div>
-                    </>
-                  )}
+                  ) : null}
+                  <p className="text-sm text-text-secondary mb-3">{weeklyReview.summary}</p>
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    <WorkoutSummaryCard icon={<Camera className="h-4 w-4 text-info-400" />} label="Nutrition" value={`${weeklyReview.nutritionScore}/100`} />
+                    <WorkoutSummaryCard icon={<Dumbbell className="h-4 w-4 text-amber-300" />} label="Training" value={`${weeklyReview.trainingScore}/100`} />
+                    <WorkoutSummaryCard icon={<Flame className="h-4 w-4 text-success-400" />} label="Consistency" value={`${weeklyReview.consistencyScore}/100`} />
+                  </div>
                 </section>
               ) : (
                 <section className="bg-surface rounded-xl border border-border p-4">

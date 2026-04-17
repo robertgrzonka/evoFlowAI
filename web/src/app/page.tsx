@@ -37,14 +37,16 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-surface to-background">
       <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <div className="inline-flex items-center gap-2">
-            <EvoMark className="h-6 w-6" />
-            <span className="text-sm font-semibold tracking-tight text-gradient">evoFlowAI</span>
-          </div>
-          <div className="inline-flex items-center gap-2">
-            <Link href="/login" className="btn-ghost">Login</Link>
-            <Link href="/register" className="btn-primary">Get Started</Link>
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-6xl h-14 flex items-center justify-between">
+            <Link href="/" aria-label="Go to homepage" className="inline-flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-surface-elevated transition-colors">
+              <EvoMark className="h-6 w-6" />
+              <span className="text-sm font-semibold tracking-tight text-gradient">evoFlowAI</span>
+            </Link>
+            <div className="inline-flex items-center gap-2">
+              <Link href="/login" className="btn-ghost">Login</Link>
+              <Link href="/register" className="btn-primary">Get Started</Link>
+            </div>
           </div>
         </div>
       </nav>

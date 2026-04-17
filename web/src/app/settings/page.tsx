@@ -5,9 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import {
   Bell,
+  Cable,
   ChartColumnIncreasing,
   Dumbbell,
+  Link2Off,
   LogOut,
+  RefreshCw,
   MessageSquareMore,
   Save,
   ShieldCheck,
@@ -16,8 +19,13 @@ import {
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
-import { ME_QUERY } from '@/lib/graphql/queries';
-import { UPDATE_PREFERENCES_MUTATION } from '@/lib/graphql/mutations';
+import { ME_QUERY, STEP_SYNC_STATUS_QUERY } from '@/lib/graphql/queries';
+import {
+  CONNECT_GARMIN_STEP_SYNC_MUTATION,
+  DISCONNECT_STEP_SYNC_MUTATION,
+  SYNC_GARMIN_STEPS_MUTATION,
+  UPDATE_PREFERENCES_MUTATION,
+} from '@/lib/graphql/mutations';
 import { clearAuthToken } from '@/lib/auth-token';
 import { ButtonSpinner, PageLoader } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
@@ -34,12 +42,19 @@ export default function SettingsPage() {
   const [heightCm, setHeightCm] = useState('');
   const [coachingTone, setCoachingTone] = useState<'SUPPORTIVE' | 'DIRECT'>('SUPPORTIVE');
   const [proactivityLevel, setProactivityLevel] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
+  const [garminToken, setGarminToken] = useState('');
 
   const { data, loading, error } = useQuery(ME_QUERY);
+  const { data: stepSyncData, loading: stepSyncLoading, refetch: refetchStepSync } = useQuery(STEP_SYNC_STATUS_QUERY, {
+    variables: { provider: 'GARMIN' },
+  });
   const [updatePreferences, { loading: saving }] = useMutation(UPDATE_PREFERENCES_MUTATION, {
     refetchQueries: [{ query: ME_QUERY }, ...buildDayRefetchQueries(today)],
     awaitRefetchQueries: true,
   });
+  const [connectGarminStepSync, { loading: connectingGarmin }] = useMutation(CONNECT_GARMIN_STEP_SYNC_MUTATION);
+  const [disconnectStepSync, { loading: disconnectingGarmin }] = useMutation(DISCONNECT_STEP_SYNC_MUTATION);
+  const [syncGarminSteps, { loading: syncingGarmin }] = useMutation(SYNC_GARMIN_STEPS_MUTATION);
 
   useEffect(() => {
     if (!data?.me?.preferences) return;
@@ -109,8 +124,50 @@ export default function SettingsPage() {
   }
 
   const user = data?.me;
+  const garminStatus = stepSyncData?.stepSyncStatus;
   const proteinSuggestionByWeight =
     typeof user?.preferences?.weightKg === 'number' ? Math.round(user.preferences.weightKg * 2) : null;
+
+  const handleConnectGarmin = async () => {
+    try {
+      await connectGarminStepSync({
+        variables: {
+          input: garminToken.trim() ? { apiToken: garminToken.trim() } : {},
+        },
+      });
+      setGarminToken('');
+      await refetchStepSync();
+      appToast.success('Garmin connected', 'Step sync is enabled for your account.');
+    } catch (mutationError: any) {
+      appToast.error('Garmin connect failed', mutationError.message || 'Could not connect Garmin.');
+    }
+  };
+
+  const handleDisconnectGarmin = async () => {
+    try {
+      await disconnectStepSync({ variables: { provider: 'GARMIN' } });
+      await refetchStepSync();
+      appToast.success('Garmin disconnected', 'Automatic step sync is disabled.');
+    } catch (mutationError: any) {
+      appToast.error('Disconnect failed', mutationError.message || 'Could not disconnect Garmin.');
+    }
+  };
+
+  const handleSyncGarminNow = async () => {
+    try {
+      const result = await syncGarminSteps({ variables: { date: today } });
+      await refetchStepSync();
+      const payload = result.data?.syncGarminSteps;
+      appToast.success(
+        'Garmin synced',
+        payload
+          ? `Imported ${payload.importedSteps} steps for ${payload.date}. Saved ${payload.savedSteps} steps in your day snapshot.`
+          : 'Steps were synced successfully.'
+      );
+    } catch (mutationError: any) {
+      appToast.error('Sync failed', mutationError.message || 'Could not sync Garmin steps.');
+    }
+  };
 
   return (
     <AppShell>
@@ -259,6 +316,88 @@ export default function SettingsPage() {
                         placeholder="e.g. 180"
                       />
                     </div>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary">Garmin step sync (Beta connector)</p>
+                      <p className="text-xs text-text-secondary mt-1">
+                        Prototype connector for Garmin-like endpoints. For production, use official Garmin approval or file import.
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-flex items-center justify-center rounded-full px-2.5 py-1 text-[11px] leading-none whitespace-nowrap ${
+                        garminStatus?.connected
+                          ? 'bg-success-500/15 text-success-300 border border-success-500/35'
+                          : 'bg-border/40 text-text-secondary border border-border'
+                      }`}
+                    >
+                      {garminStatus?.connected ? 'Connected' : 'Not connected'}
+                    </span>
+                  </div>
+
+                  {!garminStatus?.configured ? (
+                    <p className="text-xs text-amber-300 mt-3">
+                      Garmin endpoint is not configured on server. Set <code>GARMIN_DAILY_STEPS_ENDPOINT</code> in backend env.
+                    </p>
+                  ) : null}
+
+                  <div className="mt-3 space-y-2.5">
+                    <div>
+                      <label htmlFor="garmin-token" className="block text-xs text-text-secondary mb-1">
+                        Garmin API token (optional when server has GARMIN_API_TOKEN)
+                      </label>
+                      <input
+                        id="garmin-token"
+                        type="password"
+                        value={garminToken}
+                        onChange={(event) => setGarminToken(event.target.value)}
+                        className="input-field w-full"
+                        placeholder="Paste Garmin token only if needed"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleConnectGarmin}
+                        disabled={connectingGarmin || stepSyncLoading || !garminStatus?.configured}
+                        className="btn-secondary inline-flex items-center gap-2"
+                      >
+                        <Cable className="h-4 w-4" />
+                        {connectingGarmin ? 'Connecting...' : 'Connect Garmin'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSyncGarminNow}
+                        disabled={syncingGarmin || !garminStatus?.connected}
+                        className="btn-primary inline-flex items-center gap-2"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${syncingGarmin ? 'animate-spin' : ''}`} />
+                        {syncingGarmin ? 'Syncing...' : 'Sync now'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDisconnectGarmin}
+                        disabled={disconnectingGarmin || !garminStatus?.connected}
+                        className="btn-ghost inline-flex items-center gap-2"
+                      >
+                        <Link2Off className="h-4 w-4" />
+                        Disconnect
+                      </button>
+                    </div>
+                    <p className="text-xs text-text-secondary">
+                      Last sync:{' '}
+                      <span className="text-text-primary">
+                        {garminStatus?.lastSyncedAt
+                          ? new Date(garminStatus.lastSyncedAt).toLocaleString()
+                          : 'Never'}
+                      </span>
+                      {garminStatus?.usingEnvToken ? ' • using server token' : ''}
+                    </p>
+                    {garminStatus?.lastError ? (
+                      <p className="text-xs text-red-300">Last error: {garminStatus.lastError}</p>
+                    ) : null}
                   </div>
                 </div>
               </div>

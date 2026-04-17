@@ -220,12 +220,191 @@ export const typeDefs = gql`
     startDate: String!
     endDate: String!
     trackedDays: Int!
+    availableDays: Int!
     isCompleteWeek: Boolean!
     summary: String!
     highlights: [String!]!
     nutritionScore: Int!
     trainingScore: Int!
     consistencyScore: Int!
+  }
+
+  enum ProMealStyle {
+    HIGH_PROTEIN
+    LOW_CARB
+    BALANCED
+    QUICK_EASY
+    BUDGET_FRIENDLY
+    COMFORT_HEALTHY
+  }
+
+  enum ProTrainingType {
+    GYM
+    RUNNING
+    WALKING
+    CYCLING
+    CALISTHENICS
+    MOBILITY
+    STRETCHING
+    HIIT
+  }
+
+  enum ProCoachingStyle {
+    SUPPORTIVE
+    DIRECT
+    ANALYTICAL
+    MOTIVATING
+  }
+
+  enum ProPlanAggressiveness {
+    CONSERVATIVE
+    BALANCED
+    AGGRESSIVE
+  }
+
+  enum ProAdaptiveAction {
+    SLEPT_BADLY
+    MISSED_WORKOUT
+    ONLY_30_MINUTES
+    ATE_MORE_THAN_PLANNED
+    NEED_EASIER_DAY
+    SIMPLER_MEAL_TODAY
+    SHOULDER_KNEE_ISSUE
+  }
+
+  type CoachProOverview {
+    calorieTargetRange: String!
+    trainingFrequency: String!
+    planDifficulty: String!
+    expectedPace: String!
+    flexibilityLevel: String!
+  }
+
+  type CoachProMeal {
+    mealType: String!
+    name: String!
+    description: String!
+    estimatedCalories: Int!
+    estimatedProtein: Int!
+    estimatedCarbs: Int!
+    estimatedFat: Int!
+    fiberGrams: Int
+    estimatedSatiety: String
+    suggestedUse: String
+    prepTimeMinutes: Int!
+    tags: [String!]!
+    ingredients: [CoachProMealIngredient!]!
+    recipeSteps: [String!]!
+    substitutions: [String!]!
+    mealPrepNote: String
+    rationale: String
+  }
+
+  type CoachProMealIngredient {
+    item: String!
+    quantity: String!
+  }
+
+  type CoachProNutritionDay {
+    dayLabel: String!
+    calorieTarget: Int!
+    proteinTarget: Int!
+    carbsTarget: Int!
+    fatTarget: Int!
+    meals: [CoachProMeal!]!
+  }
+
+  type CoachProExerciseBlock {
+    name: String!
+    sets: String
+    reps: String
+    durationMinutes: Int
+    notes: String
+  }
+
+  type CoachProTrainingSession {
+    dayLabel: String!
+    sessionGoal: String!
+    workoutType: String!
+    durationMinutes: Int!
+    intensity: String!
+    structure: [CoachProExerciseBlock!]!
+    fallbackVersion: String!
+    minimumViableVersion: String!
+  }
+
+  type CoachProShoppingList {
+    proteins: [String!]!
+    carbs: [String!]!
+    fats: [String!]!
+    vegetables: [String!]!
+    dairy: [String!]!
+    extras: [String!]!
+    optionalItems: [String!]!
+  }
+
+  type CoachProSubstitutions {
+    ingredientSubstitutions: [String!]!
+    mealSwaps: [String!]!
+    exerciseSubstitutions: [String!]!
+    lowEnergyAlternatives: [String!]!
+    shortOnTimeAlternatives: [String!]!
+  }
+
+  type CoachProPlan {
+    generatedAt: Date!
+    generationSource: String!
+    fallbackReason: String
+    generationWarnings: [String!]!
+    normalizationApplied: Boolean!
+    normalizationSummary: [String!]!
+    normalizedFields: [String!]!
+    shoppingListSource: String!
+    shoppingListWarnings: [String!]!
+    sectionSources: [String!]!
+    fallbackSections: [String!]!
+    overview: CoachProOverview!
+    weeklyNutrition: [CoachProNutritionDay!]!
+    weeklyTraining: [CoachProTrainingSession!]!
+    rationale: [String!]!
+    smartWarnings: [String!]!
+    shoppingList: CoachProShoppingList!
+    substitutions: CoachProSubstitutions!
+    coachNotes: [String!]!
+    hardestPartThisWeek: String!
+    focusForBestResults: String!
+    executionTips: [String!]!
+    mealPrepTips: [String!]!
+    recoveryNote: String!
+    bestCasePlan: String!
+    realisticPlan: String!
+  }
+
+  type CoachProTrainingDrawerDetails {
+    session: CoachProTrainingSession!
+    whyThisSession: String!
+    painSubstitution: String!
+  }
+
+  enum StepSyncProvider {
+    GARMIN
+  }
+
+  type StepSyncStatus {
+    provider: StepSyncProvider!
+    connected: Boolean!
+    configured: Boolean!
+    usingEnvToken: Boolean!
+    lastSyncedAt: Date
+    lastError: String
+  }
+
+  type StepSyncResult {
+    date: String!
+    importedSteps: Int!
+    savedSteps: Int!
+    source: StepSyncProvider!
+    syncedAt: Date!
   }
 
   type AnalyzeImageResponse {
@@ -359,9 +538,120 @@ export const typeDefs = gql`
     performedAt: String
   }
 
+  input ImportWorkoutFileInput {
+    fileName: String!
+    fileContentBase64: String!
+    performedAt: String
+    title: String
+    notes: String
+    intensity: WorkoutIntensity
+  }
+
   input UpsertDailyActivityInput {
     date: String!
     steps: Int!
+  }
+
+  input ConnectGarminStepSyncInput {
+    apiToken: String
+  }
+
+  input CoachProNutritionPreferencesInput {
+    hardExclusions: [String!]!
+    softDislikes: [String!]!
+    allergies: [String!]!
+    favoriteFoods: [String!]!
+    stapleFoods: [String!]!
+    preferredStyles: [ProMealStyle!]!
+    mealsPerDay: Int!
+    allowRepeatedBreakfasts: Boolean!
+    requireLunchDinnerVariety: Boolean!
+    cookingSkill: String!
+    cookingEnjoyment: String!
+    cookingTimeMinutes: Int!
+    wantsMealPrep: Boolean!
+    weeklyFoodBudget: Int
+    useUpIngredients: [String!]!
+  }
+
+  input CoachProTrainingProfileInput {
+    trainingTypes: [ProTrainingType!]!
+    realisticDaysPerWeek: Int!
+    preferredDurationMinutes: Int!
+    availableEquipment: [String!]!
+    favoriteExercises: [String!]!
+    dislikedExercises: [String!]!
+    injuriesOrLimitations: [String!]!
+    preferredIntensity: String!
+    strictOrFlexible: String!
+  }
+
+  input CoachProGoalSetupInput {
+    primaryGoal: String!
+    secondaryGoal: String
+    targetDate: String
+    priorityFocus: [String!]!
+    coachingStyle: ProCoachingStyle!
+    aggressiveness: ProPlanAggressiveness!
+  }
+
+  input CoachProLifestyleInput {
+    workScheduleIntensity: String!
+    sleepQuality: String!
+    stressLevel: String!
+    averageDailyActivity: String!
+    weekendsDiffer: Boolean!
+    eatsOutOften: Boolean!
+    practicalOverIdeal: Boolean!
+    extraContext: String
+  }
+
+  input GenerateCoachProPlanInput {
+    nutrition: CoachProNutritionPreferencesInput!
+    training: CoachProTrainingProfileInput!
+    goals: CoachProGoalSetupInput!
+    lifestyle: CoachProLifestyleInput!
+  }
+
+  input AdaptCoachProPlanInput {
+    currentPlanJson: String!
+    action: ProAdaptiveAction!
+    note: String
+  }
+
+  input CoachProMealDrawerInput {
+    dayLabel: String!
+    mealType: String!
+    name: String!
+    description: String!
+    estimatedCalories: Int!
+    estimatedProtein: Int!
+    estimatedCarbs: Int!
+    estimatedFat: Int!
+    prepTimeMinutes: Int!
+    dayTargetCalories: Int!
+    dayTargetProtein: Int!
+    dayTargetCarbs: Int!
+    dayTargetFat: Int!
+  }
+
+  input CoachProExerciseBlockInput {
+    name: String!
+    sets: String
+    reps: String
+    durationMinutes: Int
+    notes: String
+  }
+
+  input CoachProTrainingDrawerInput {
+    dayLabel: String!
+    sessionGoal: String!
+    workoutType: String!
+    durationMinutes: Int!
+    intensity: String!
+    structure: [CoachProExerciseBlockInput!]!
+    fallbackVersion: String!
+    minimumViableVersion: String!
   }
 
   type AuthPayload {
@@ -409,6 +699,11 @@ export const typeDefs = gql`
     workoutCoachSummary(date: String!): WorkoutCoachSummary!
     dashboardInsight(date: String!): DashboardInsight!
     weeklyEvoReview(endDate: String): WeeklyEvoReview!
+    stepSyncStatus(provider: StepSyncProvider!): StepSyncStatus!
+    generateEvoCoachProPlan(input: GenerateCoachProPlanInput!): CoachProPlan!
+    myEvoCoachProPlan: CoachProPlan
+    coachProMealDrawerDetails(input: CoachProMealDrawerInput!): CoachProMeal!
+    coachProTrainingDrawerDetails(input: CoachProTrainingDrawerInput!): CoachProTrainingDrawerDetails!
   }
 
   type Mutation {
@@ -436,8 +731,14 @@ export const typeDefs = gql`
 
     # Workouts
     logWorkout(input: LogWorkoutInput!): Workout!
+    importWorkoutFile(input: ImportWorkoutFileInput!): Workout!
     upsertDailyActivity(input: UpsertDailyActivityInput!): DailyActivity!
     deleteWorkout(id: ID!): Boolean!
+    connectGarminStepSync(input: ConnectGarminStepSyncInput): StepSyncStatus!
+    disconnectStepSync(provider: StepSyncProvider!): Boolean!
+    syncGarminSteps(date: String!): StepSyncResult!
+    adaptEvoCoachProPlan(input: AdaptCoachProPlanInput!): CoachProPlan!
+    refreshEvoCoachProPlanByTodaySignals(date: String!): CoachProPlan!
   }
 
   type Subscription {

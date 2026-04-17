@@ -9,12 +9,14 @@ type SmartSuggestionChipsProps = {
   title?: string;
   suggestions: SmartSuggestionChip[];
   onSelect: (value: string) => void;
+  selectValue?: 'label' | 'id';
 };
 
 export default function SmartSuggestionChips({
   title = 'Smart suggestions',
   suggestions,
   onSelect,
+  selectValue = 'label',
 }: SmartSuggestionChipsProps) {
   if (!suggestions.length) return null;
 
@@ -26,7 +28,7 @@ export default function SmartSuggestionChips({
           <button
             key={suggestion.id}
             type="button"
-            onClick={() => onSelect(suggestion.label)}
+            onClick={() => onSelect(selectValue === 'id' ? suggestion.id : suggestion.label)}
             className="text-left rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:border-primary-500/30 transition-colors"
           >
             {suggestion.label}

@@ -403,16 +403,15 @@ export default function DashboardPage() {
               <Skeleton className="h-10 w-full rounded-lg" />
             </div>
           ) : weeklyReview ? (
-            !weeklyReview.isCompleteWeek ? (
-              <div className="rounded-lg border border-dashed border-border bg-surface-elevated p-3.5">
-                <p className="text-sm text-text-primary font-medium mb-1">Evo is collecting weekly data</p>
-                <p className="text-sm text-text-secondary">
-                  Data has been collected for <span className="font-semibold text-text-primary">{weeklyReview.trackedDays}/7</span> days.
-                  Once the full week is complete, you will see the full weekly review with scores and recommendations.
-                </p>
-              </div>
-            ) : (
             <div className="space-y-3">
+              {!weeklyReview.isCompleteWeek ? (
+                <div className="rounded-lg border border-dashed border-primary-500/30 bg-primary-500/5 px-3 py-2">
+                  <p className="text-xs text-primary-200">
+                    Partial weekly review for <span className="font-semibold text-primary-100">{weeklyReview.availableDays}/7</span> available days
+                    (<span className="font-semibold text-primary-100">{weeklyReview.trackedDays}</span> tracked).
+                  </p>
+                </div>
+              ) : null}
               <p className="text-sm text-text-secondary">{weeklyReview.summary}</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <ScorePill label="Nutrition" score={weeklyReview.nutritionScore} />
@@ -427,7 +426,6 @@ export default function DashboardPage() {
                 ))}
               </div>
             </div>
-            )
           ) : (
             <p className="text-sm text-text-secondary">Weekly review will appear after more logs.</p>
           )}

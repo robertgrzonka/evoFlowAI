@@ -204,12 +204,270 @@ export const WEEKLY_EVO_REVIEW_QUERY = gql`
       startDate
       endDate
       trackedDays
+      availableDays
       isCompleteWeek
       summary
       highlights
       nutritionScore
       trainingScore
       consistencyScore
+    }
+  }
+`;
+
+export const STEP_SYNC_STATUS_QUERY = gql`
+  query StepSyncStatus($provider: StepSyncProvider!) {
+    stepSyncStatus(provider: $provider) {
+      provider
+      connected
+      configured
+      usingEnvToken
+      lastSyncedAt
+      lastError
+    }
+  }
+`;
+
+export const GENERATE_COACH_PRO_PLAN_QUERY = gql`
+  query GenerateEvoCoachProPlan($input: GenerateCoachProPlanInput!) {
+    generateEvoCoachProPlan(input: $input) {
+      generatedAt
+      generationSource
+      fallbackReason
+      generationWarnings
+      normalizationApplied
+      normalizationSummary
+      normalizedFields
+      shoppingListSource
+      shoppingListWarnings
+      sectionSources
+      fallbackSections
+      overview {
+        calorieTargetRange
+        trainingFrequency
+        planDifficulty
+        expectedPace
+        flexibilityLevel
+      }
+      weeklyNutrition {
+        dayLabel
+        calorieTarget
+        proteinTarget
+        carbsTarget
+        fatTarget
+        meals {
+          mealType
+          name
+          description
+          estimatedCalories
+          estimatedProtein
+          estimatedCarbs
+          estimatedFat
+          fiberGrams
+          estimatedSatiety
+          suggestedUse
+          prepTimeMinutes
+          tags
+          ingredients {
+            item
+            quantity
+          }
+          recipeSteps
+          substitutions
+          mealPrepNote
+          rationale
+        }
+      }
+      weeklyTraining {
+        dayLabel
+        sessionGoal
+        workoutType
+        durationMinutes
+        intensity
+        structure {
+          name
+          sets
+          reps
+          durationMinutes
+          notes
+        }
+        fallbackVersion
+        minimumViableVersion
+      }
+      rationale
+      smartWarnings
+      shoppingList {
+        proteins
+        carbs
+        fats
+        vegetables
+        dairy
+        extras
+        optionalItems
+      }
+      substitutions {
+        ingredientSubstitutions
+        mealSwaps
+        exerciseSubstitutions
+        lowEnergyAlternatives
+        shortOnTimeAlternatives
+      }
+      coachNotes
+      hardestPartThisWeek
+      focusForBestResults
+      executionTips
+      mealPrepTips
+      recoveryNote
+      bestCasePlan
+      realisticPlan
+    }
+  }
+`;
+
+export const MY_COACH_PRO_PLAN_QUERY = gql`
+  query MyEvoCoachProPlan {
+    myEvoCoachProPlan {
+      generatedAt
+      generationSource
+      fallbackReason
+      generationWarnings
+      normalizationApplied
+      normalizationSummary
+      normalizedFields
+      shoppingListSource
+      shoppingListWarnings
+      sectionSources
+      fallbackSections
+      overview {
+        calorieTargetRange
+        trainingFrequency
+        planDifficulty
+        expectedPace
+        flexibilityLevel
+      }
+      weeklyNutrition {
+        dayLabel
+        calorieTarget
+        proteinTarget
+        carbsTarget
+        fatTarget
+        meals {
+          mealType
+          name
+          description
+          estimatedCalories
+          estimatedProtein
+          estimatedCarbs
+          estimatedFat
+          fiberGrams
+          estimatedSatiety
+          suggestedUse
+          prepTimeMinutes
+          tags
+          ingredients {
+            item
+            quantity
+          }
+          recipeSteps
+          substitutions
+          mealPrepNote
+          rationale
+        }
+      }
+      weeklyTraining {
+        dayLabel
+        sessionGoal
+        workoutType
+        durationMinutes
+        intensity
+        structure {
+          name
+          sets
+          reps
+          durationMinutes
+          notes
+        }
+        fallbackVersion
+        minimumViableVersion
+      }
+      rationale
+      smartWarnings
+      shoppingList {
+        proteins
+        carbs
+        fats
+        vegetables
+        dairy
+        extras
+        optionalItems
+      }
+      substitutions {
+        ingredientSubstitutions
+        mealSwaps
+        exerciseSubstitutions
+        lowEnergyAlternatives
+        shortOnTimeAlternatives
+      }
+      coachNotes
+      hardestPartThisWeek
+      focusForBestResults
+      executionTips
+      mealPrepTips
+      recoveryNote
+      bestCasePlan
+      realisticPlan
+    }
+  }
+`;
+
+export const COACH_PRO_MEAL_DRAWER_DETAILS_QUERY = gql`
+  query CoachProMealDrawerDetails($input: CoachProMealDrawerInput!) {
+    coachProMealDrawerDetails(input: $input) {
+      mealType
+      name
+      description
+      estimatedCalories
+      estimatedProtein
+      estimatedCarbs
+      estimatedFat
+      fiberGrams
+      estimatedSatiety
+      suggestedUse
+      prepTimeMinutes
+      tags
+      ingredients {
+        item
+        quantity
+      }
+      recipeSteps
+      substitutions
+      mealPrepNote
+      rationale
+    }
+  }
+`;
+
+export const COACH_PRO_TRAINING_DRAWER_DETAILS_QUERY = gql`
+  query CoachProTrainingDrawerDetails($input: CoachProTrainingDrawerInput!) {
+    coachProTrainingDrawerDetails(input: $input) {
+      whyThisSession
+      painSubstitution
+      session {
+        dayLabel
+        sessionGoal
+        workoutType
+        durationMinutes
+        intensity
+        structure {
+          name
+          sets
+          reps
+          durationMinutes
+          notes
+        }
+        fallbackVersion
+        minimumViableVersion
+      }
     }
   }
 `;

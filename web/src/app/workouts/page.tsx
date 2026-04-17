@@ -1,12 +1,12 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
-import { Dumbbell, Flame, Timer, Trash2 } from 'lucide-react';
+import { Dumbbell, FileUp, Flame, Timer, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, Skeleton } from '@/components/ui/loading';
-import { DELETE_WORKOUT_MUTATION, LOG_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
+import { DELETE_WORKOUT_MUTATION, IMPORT_WORKOUT_FILE_MUTATION, LOG_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
 import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION } from '@/lib/graphql/queries';
 import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries } from '@/lib/day-data';
@@ -29,6 +29,7 @@ export default function WorkoutsPage() {
   const [durationMinutes, setDurationMinutes] = useState(45);
   const [caloriesBurned, setCaloriesBurned] = useState(300);
   const [intensity, setIntensity] = useState<WorkoutIntensity>('MEDIUM');
+  const [importNotes, setImportNotes] = useState('');
 
   const { data: meData } = useQuery(ME_QUERY);
   const daySnapshot = useDaySnapshot({ date: today, enabled: true, includeInsight: false });
@@ -56,6 +57,16 @@ export default function WorkoutsPage() {
   const [deleteWorkout, { loading: deletingWorkout }] = useMutation(DELETE_WORKOUT_MUTATION, {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete workout.');
+    },
+    refetchQueries: buildDayRefetchQueries(today),
+  });
+  const [importWorkoutFile, { loading: importingWorkoutFile }] = useMutation(IMPORT_WORKOUT_FILE_MUTATION, {
+    onCompleted: () => {
+      setImportNotes('');
+      appToast.success('Workout imported', 'File was parsed and added to your timeline.');
+    },
+    onError: (error) => {
+      appToast.error('Import failed', error.message || 'Could not import workout file.');
     },
     refetchQueries: buildDayRefetchQueries(today),
   });
@@ -98,6 +109,41 @@ export default function WorkoutsPage() {
     } else {
       appToast.error('Delete failed', 'Could not delete workout.');
     }
+  };
+  const handleImportWorkout = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const extension = file.name.toLowerCase().split('.').pop();
+    if (!extension || !['gpx', 'tcx', 'fit'].includes(extension)) {
+      appToast.warning('Unsupported format', 'Use GPX, TCX, or FIT file.');
+      event.target.value = '';
+      return;
+    }
+
+    const base64Content = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const payload = result.includes(',') ? result.split(',')[1] : result;
+        resolve(payload);
+      };
+      reader.onerror = () => reject(new Error('Could not read file.'));
+      reader.readAsDataURL(file);
+    });
+
+    await importWorkoutFile({
+      variables: {
+        input: {
+          fileName: file.name,
+          fileContentBase64: base64Content,
+          performedAt: new Date().toISOString(),
+          notes: importNotes.trim() || null,
+          intensity,
+        },
+      },
+    });
+    event.target.value = '';
   };
   const lastWorkout = workouts[0];
   const workoutTemplates = [
@@ -153,6 +199,28 @@ export default function WorkoutsPage() {
             ) : null}
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <p className="text-sm font-semibold text-text-primary mb-1">Import from device file</p>
+                <p className="text-xs text-text-secondary mb-3">
+                  Upload Garmin/fitness export file (GPX, TCX, FIT). Evo will parse and log it automatically.
+                </p>
+                <div className="space-y-2.5">
+                  <input
+                    value={importNotes}
+                    onChange={(event) => setImportNotes(event.target.value)}
+                    className="input-field w-full"
+                    placeholder="Optional note for imported workout"
+                  />
+                  <label className="btn-secondary w-full cursor-pointer">
+                    <input type="file" accept=".gpx,.tcx,.fit" className="hidden" onChange={handleImportWorkout} />
+                    <span className="inline-flex items-center gap-2">
+                      <FileUp className="h-4 w-4" />
+                      {importingWorkoutFile ? 'Importing...' : 'Import workout file'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <div>
                 <label htmlFor="workoutTitle" className="block text-sm font-medium text-text-primary mb-2">
                   Workout title

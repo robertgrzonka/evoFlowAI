@@ -7,6 +7,7 @@ import { chatResolvers } from './chat';
 import { statsResolvers } from './stats';
 import { recommendationResolvers } from './recommendations';
 import { workoutResolvers } from './workout';
+import { coachProResolvers } from './coachPro';
 
 // Custom scalar for Date
 const dateScalar = new GraphQLScalarType({
@@ -40,6 +41,7 @@ export const resolvers = {
     ...statsResolvers.Query,
     ...recommendationResolvers.Query,
     ...workoutResolvers.Query,
+    ...coachProResolvers.Query,
   },
   
   Mutation: {
@@ -50,6 +52,7 @@ export const resolvers = {
     ...statsResolvers.Mutation,
     ...recommendationResolvers.Mutation,
     ...workoutResolvers.Mutation,
+    ...coachProResolvers.Mutation,
   },
   
   Subscription: {
