@@ -28,11 +28,8 @@ import AICoachAvatar from '@/components/AICoachAvatar';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import Tooltip from '@/components/ui/atoms/Tooltip';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
-import { AISectionHeader, EvoHintCard, EvoStatusBadge, InsightEmptyState, SmartSuggestionChips } from '@/components/evo';
-import {
-  ADAPT_COACH_PRO_PLAN_MUTATION,
-  REFRESH_COACH_PRO_PLAN_BY_TODAY_SIGNALS_MUTATION,
-} from '@/lib/graphql/mutations';
+import { AISectionHeader, EvoHintCard, EvoStatusBadge, InsightEmptyState } from '@/components/evo';
+import { REFRESH_COACH_PRO_PLAN_BY_TODAY_SIGNALS_MUTATION } from '@/lib/graphql/mutations';
 import {
   COACH_PRO_MEAL_DRAWER_DETAILS_QUERY,
   COACH_PRO_TRAINING_DRAWER_DETAILS_QUERY,
@@ -40,7 +37,7 @@ import {
   ME_QUERY,
   MY_COACH_PRO_PLAN_QUERY,
 } from '@/lib/graphql/queries';
-import type { CoachProPlan, CoachProSetupInput, ProAdaptiveAction, ProMealStyle, ProTrainingType } from '@/lib/coach-pro/types';
+import type { CoachProPlan, CoachProSetupInput, ProMealStyle, ProTrainingType } from '@/lib/coach-pro/types';
 import { appToast } from '@/lib/app-toast';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 
@@ -63,21 +60,6 @@ const trainingTypes: { value: ProTrainingType; label: string }[] = [
   { value: 'STRETCHING', label: 'Stretching' },
   { value: 'HIIT', label: 'HIIT' },
 ];
-
-const adaptiveActionButtons: { action: ProAdaptiveAction; label: string }[] = [
-  { action: 'SLEPT_BADLY', label: 'I slept badly' },
-  { action: 'MISSED_WORKOUT', label: 'I missed today’s workout' },
-  { action: 'ONLY_30_MINUTES', label: 'I only have 30 minutes' },
-  { action: 'ATE_MORE_THAN_PLANNED', label: 'I ate more than planned' },
-  { action: 'NEED_EASIER_DAY', label: 'I need an easier day' },
-  { action: 'SIMPLER_MEAL_TODAY', label: 'I want a simpler meal today' },
-  { action: 'SHOULDER_KNEE_ISSUE', label: 'My shoulder/knee hurts today' },
-];
-
-const adaptiveActionLabelById: Record<ProAdaptiveAction, string> = adaptiveActionButtons.reduce(
-  (acc, item) => ({ ...acc, [item.action]: item.label }),
-  {} as Record<ProAdaptiveAction, string>
-);
 
 const splitCsv = (value: string) =>
   value
@@ -159,11 +141,6 @@ type TrainingDrawerDetails = {
   painSubstitution: string;
 };
 
-type AdaptiveFeedback = {
-  title: string;
-  lines: string[];
-};
-
 /** Mon=0 … Sun=6 — match dayLabel prefixes (Mon / Monday, etc.) */
 function dayLabelToMondayIndex(dayLabel: string): number {
   const s = dayLabel.trim().toLowerCase();
@@ -212,11 +189,9 @@ export default function EvoCoachProPage() {
   const [selectedTraining, setSelectedTraining] = useState<SelectedTrainingSession | null>(null);
   const [mealDrawerDetails, setMealDrawerDetails] = useState<PlanMeal | null>(null);
   const [trainingDrawerDetails, setTrainingDrawerDetails] = useState<TrainingDrawerDetails | null>(null);
-  const [adaptiveFeedback, setAdaptiveFeedback] = useState<AdaptiveFeedback | null>(null);
   const [showAllNutritionDays, setShowAllNutritionDays] = useState(false);
   const [showAllTrainingDays, setShowAllTrainingDays] = useState(false);
   const lastSignalSyncRef = useRef<string>('');
-  const lastPlanBeforeAdaptRef = useRef<CoachProPlan | null>(null);
 
   const { data: meData, loading: meLoading } = useQuery(ME_QUERY);
   const { data: savedPlanData, loading: savedPlanLoading, refetch: refetchSavedPlan } = useQuery(MY_COACH_PRO_PLAN_QUERY, {
@@ -227,7 +202,6 @@ export default function EvoCoachProPage() {
     GENERATE_COACH_PRO_PLAN_QUERY,
     { fetchPolicy: 'no-cache' }
   );
-  const [adaptPlan, { loading: adaptingPlan }] = useMutation(ADAPT_COACH_PRO_PLAN_MUTATION);
   const [loadMealDrawerDetails, { loading: mealDrawerLoading, data: mealDrawerData }] = useLazyQuery(
     COACH_PRO_MEAL_DRAWER_DETAILS_QUERY,
     { fetchPolicy: 'no-cache' }
@@ -291,7 +265,6 @@ export default function EvoCoachProPage() {
     setSelectedTraining(null);
     setMealDrawerDetails(null);
     setTrainingDrawerDetails(null);
-    setAdaptiveFeedback(null);
   }, [plan]);
 
   useEffect(() => {
@@ -468,30 +441,6 @@ export default function EvoCoachProPage() {
     };
     setSetup(nextSetup);
     await generatePlan({ variables: { input: nextSetup } });
-  };
-
-  const handleAdaptiveAction = async (action: ProAdaptiveAction) => {
-    if (!plan) return;
-    lastPlanBeforeAdaptRef.current = plan;
-    setAdaptiveFeedback(null);
-    try {
-      const { data } = await adaptPlan({
-        variables: {
-          input: {
-            currentPlanJson: JSON.stringify(plan),
-            action,
-          },
-        },
-      });
-      const updated = data?.adaptEvoCoachProPlan;
-      if (!updated) return;
-      setPlan(updated);
-      const feedback = buildAdaptiveFeedback(lastPlanBeforeAdaptRef.current, updated, adaptiveActionLabelById[action]);
-      setAdaptiveFeedback(feedback);
-      appToast.success('Plan adapted', 'Evo applied a contextual update.');
-    } catch (error: any) {
-      appToast.error('Adaptation failed', error?.message || 'Could not adapt the plan.');
-    }
   };
 
   const handleMealAction = (actionLabel: string) => {
@@ -921,37 +870,17 @@ export default function EvoCoachProPage() {
                 <h3 className="text-sm font-semibold text-text-primary">Need to adapt today?</h3>
                 <EvoStatusBadge label="In progress" tone="warning" />
               </div>
-              <SmartSuggestionChips
-                title="Adjust today plan in one click"
-                suggestions={adaptiveActionButtons.map((entry) => ({ id: entry.action, label: entry.label }))}
-                onSelect={(action) => handleAdaptiveAction(action as ProAdaptiveAction)}
-                selectValue="id"
-              />
-              {adaptingPlan ? (
-                <p className="text-xs text-text-secondary mt-2 inline-flex items-center gap-2">
-                  <ButtonSpinner />
-                  In progress…
-                </p>
-              ) : null}
-              {refreshingPlanBySignals ? <p className="text-xs text-text-secondary mt-1">Syncing today signals...</p> : null}
-              {adaptiveFeedback ? (
-                <div className="mt-3 rounded-lg border border-amber-300/35 bg-amber-300/10 p-3">
-                  <p className="text-xs uppercase tracking-[0.1em] text-amber-200">{adaptiveFeedback.title}</p>
-                  <ul className="mt-2 space-y-1 text-xs text-amber-100/95">
-                    {adaptiveFeedback.lines.map((line) => (
-                      <li key={line}>- {line}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
+              <p className="mb-2 text-xs uppercase tracking-[0.12em] text-text-muted">One-tap adjustments (preview)</p>
+              <p className="text-xs text-text-secondary mb-3">
+                Quick actions for sleep, training, and meals are coming soon. Fewer options will ship first.
+              </p>
+              <div className="grid grid-cols-1 gap-2" aria-hidden>
+                <Skeleton className="h-10 w-full rounded-lg" />
+                <Skeleton className="h-10 w-full rounded-lg" />
+                <Skeleton className="h-10 w-full rounded-lg" />
+              </div>
+              {refreshingPlanBySignals ? <p className="text-xs text-text-secondary mt-3">Syncing today signals...</p> : null}
             </section>
-
-            {adaptingPlan ? (
-              <section className="space-y-2">
-                <Skeleton className="h-12 w-full rounded-lg" />
-                <Skeleton className="h-12 w-full rounded-lg" />
-              </section>
-            ) : null}
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
               <section className="xl:col-span-8 space-y-4">
@@ -1280,39 +1209,6 @@ const sumDayMealMacros = (meals: PlanMeal[]) =>
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
-
-const buildAdaptiveFeedback = (previousPlan: CoachProPlan | null, nextPlan: CoachProPlan, actionLabel: string): AdaptiveFeedback => {
-  if (!previousPlan) {
-    return {
-      title: `Plan updated: ${actionLabel}`,
-      lines: ['Strategy refreshed with context-aware adjustments.'],
-    };
-  }
-
-  const beforeTraining = previousPlan.weeklyTraining[0];
-  const afterTraining = nextPlan.weeklyTraining[0];
-  const beforeDinner = previousPlan.weeklyNutrition[0]?.meals?.find((meal) => meal.mealType === 'Dinner');
-  const afterDinner = nextPlan.weeklyNutrition[0]?.meals?.find((meal) => meal.mealType === 'Dinner');
-
-  const lines: string[] = [];
-  if (beforeTraining && afterTraining && beforeTraining.sessionGoal !== afterTraining.sessionGoal) {
-    lines.push(`Training focus changed: "${beforeTraining.sessionGoal}" -> "${afterTraining.sessionGoal}"`);
-  }
-  if (beforeDinner && afterDinner && beforeDinner.name !== afterDinner.name) {
-    lines.push(`Dinner adjusted: "${beforeDinner.name}" -> "${afterDinner.name}"`);
-  }
-  if (beforeDinner && afterDinner && beforeDinner.estimatedProtein !== afterDinner.estimatedProtein) {
-    lines.push(`Dinner protein shifted from ${beforeDinner.estimatedProtein}g to ${afterDinner.estimatedProtein}g`);
-  }
-  if (lines.length === 0) {
-    lines.push('Daily tradeoffs updated while preserving your weekly strategy.');
-  }
-
-  return {
-    title: `Plan updated: ${actionLabel}`,
-    lines: lines.slice(0, 3),
-  };
-};
 
 const META_PILL_VALUE_MAX_CHARS = 28;
 
