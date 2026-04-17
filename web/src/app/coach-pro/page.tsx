@@ -951,8 +951,8 @@ export default function EvoCoachProPage() {
                                     Details
                                   </span>
                                 </div>
-                                <p className="text-sm font-semibold text-text-primary mt-2 leading-snug">{meal.name}</p>
-                                <p className="text-xs text-text-secondary mt-2 mb-2 leading-relaxed">
+                                <p className="text-sm font-semibold text-text-primary mt-3 leading-snug">{meal.name}</p>
+                                <p className="text-xs text-text-secondary mt-3 mb-3 leading-relaxed">
                                   {truncateText(meal.description, 108)}
                                 </p>
                                 <p className="text-xs mt-auto leading-snug">
