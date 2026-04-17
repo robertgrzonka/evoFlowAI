@@ -213,7 +213,8 @@ export default function EvoCoachProPage() {
   const [mealDrawerDetails, setMealDrawerDetails] = useState<PlanMeal | null>(null);
   const [trainingDrawerDetails, setTrainingDrawerDetails] = useState<TrainingDrawerDetails | null>(null);
   const [adaptiveFeedback, setAdaptiveFeedback] = useState<AdaptiveFeedback | null>(null);
-  const [showFullWeekSchedule, setShowFullWeekSchedule] = useState(false);
+  const [showAllNutritionDays, setShowAllNutritionDays] = useState(false);
+  const [showAllTrainingDays, setShowAllTrainingDays] = useState(false);
   const lastSignalSyncRef = useRef<string>('');
   const lastPlanBeforeAdaptRef = useRef<CoachProPlan | null>(null);
 
@@ -280,7 +281,8 @@ export default function EvoCoachProPage() {
   }, [savedPlanData]);
 
   useEffect(() => {
-    setShowFullWeekSchedule(false);
+    setShowAllNutritionDays(false);
+    setShowAllTrainingDays(false);
   }, [plan?.generatedAt]);
 
   useEffect(() => {
@@ -396,16 +398,18 @@ export default function EvoCoachProPage() {
     () => (plan ? rotateWeekFromToday(plan.weeklyTraining) : []),
     [plan]
   );
-  const canExpandWeekView = nutritionWeekFromToday.length > 3;
+  const canExpandNutritionWeek = nutritionWeekFromToday.length > 3;
+  const canExpandTrainingWeek = trainingWeekFromToday.length > 3;
   const nutritionDaysVisible =
-    showFullWeekSchedule || nutritionWeekFromToday.length <= 3
+    showAllNutritionDays || nutritionWeekFromToday.length <= 3
       ? nutritionWeekFromToday
       : nutritionWeekFromToday.slice(0, 3);
   const trainingDaysVisible =
-    showFullWeekSchedule || trainingWeekFromToday.length <= 3
+    showAllTrainingDays || trainingWeekFromToday.length <= 3
       ? trainingWeekFromToday
       : trainingWeekFromToday.slice(0, 3);
-  const remainingWeekDaysCount = Math.max(0, nutritionWeekFromToday.length - 3);
+  const remainingNutritionDaysCount = Math.max(0, nutritionWeekFromToday.length - 3);
+  const remainingTrainingDaysCount = Math.max(0, trainingWeekFromToday.length - 3);
 
   if (meLoading || savedPlanLoading) {
     return <PageLoader />;
@@ -947,7 +951,7 @@ export default function EvoCoachProPage() {
                   <div className="mb-3">
                     <h3 className="text-base font-semibold text-text-primary">Weekly nutrition plan</h3>
                     <p className="text-xs text-text-muted mt-1">
-                      {canExpandWeekView && !showFullWeekSchedule
+                      {canExpandNutritionWeek && !showAllNutritionDays
                         ? `From today · showing 3 of ${nutritionWeekFromToday.length} days`
                         : 'From today · full week in this section'}
                     </p>
@@ -1045,15 +1049,15 @@ export default function EvoCoachProPage() {
                       );
                     })}
                   </div>
-                  {canExpandWeekView ? (
+                  {canExpandNutritionWeek ? (
                     <button
                       type="button"
-                      onClick={() => setShowFullWeekSchedule((previous) => !previous)}
+                      onClick={() => setShowAllNutritionDays((previous) => !previous)}
                       className="mt-3 w-full rounded-lg border border-amber-300/35 bg-amber-300/5 px-3 py-2.5 text-sm text-amber-100/95 transition-colors hover:bg-amber-300/10"
                     >
-                      {showFullWeekSchedule
-                        ? 'Show only the next 3 days (nutrition + training)'
-                        : `Show remaining days (${remainingWeekDaysCount}) — nutrition and training`}
+                      {showAllNutritionDays
+                        ? 'Show only the next 3 nutrition days'
+                        : `Show remaining nutrition days (${remainingNutritionDaysCount})`}
                     </button>
                   ) : null}
                 </section>
@@ -1061,7 +1065,11 @@ export default function EvoCoachProPage() {
                 <section className="bg-surface rounded-xl border border-border p-5">
                   <div className="mb-3">
                     <h3 className="text-base font-semibold text-text-primary">Weekly training plan</h3>
-                    <p className="text-xs text-text-muted mt-1">Same day order as above (from today).</p>
+                    <p className="text-xs text-text-muted mt-1">
+                      {canExpandTrainingWeek && !showAllTrainingDays
+                        ? `From today · showing 3 of ${trainingWeekFromToday.length} days (same order as nutrition)`
+                        : 'From today · full week · same day order as nutrition'}
+                    </p>
                   </div>
                   <div className="space-y-2.5">
                     {trainingDaysVisible.map((session) => (
@@ -1100,6 +1108,17 @@ export default function EvoCoachProPage() {
                       </button>
                     ))}
                   </div>
+                  {canExpandTrainingWeek ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllTrainingDays((previous) => !previous)}
+                      className="mt-3 w-full rounded-lg border border-info-300/35 bg-info-300/5 px-3 py-2.5 text-sm text-info-200/95 transition-colors hover:bg-info-300/10"
+                    >
+                      {showAllTrainingDays
+                        ? 'Show only the next 3 training days'
+                        : `Show remaining training days (${remainingTrainingDaysCount})`}
+                    </button>
+                  ) : null}
                 </section>
               </section>
 
