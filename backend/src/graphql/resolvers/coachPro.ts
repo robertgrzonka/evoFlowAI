@@ -995,6 +995,108 @@ const isMealDrawerDetailsReady = (meal: any) =>
 const buildMealDrawerCacheKey = (input: { dayLabel: string; mealType: string; name: string }) =>
   `${textKey(input.dayLabel)}|${textKey(input.mealType)}|${textKey(input.name)}`;
 
+const isTrainingDrawerDetailsReady = (details: any) => {
+  if (!details || typeof details !== 'object') return false;
+  const session = details.session;
+  if (!session || typeof session !== 'object') return false;
+  const structure = Array.isArray(session.structure) ? session.structure : [];
+  if (structure.length < 2) return false;
+  const blocksOk = structure.every((block: any) => String(block?.name || '').trim().length > 0);
+  if (!blocksOk) return false;
+  const why = String(details.whyThisSession || '').trim();
+  const pain = String(details.painSubstitution || '').trim();
+  return why.length >= 12 && pain.length >= 12;
+};
+
+const buildTrainingDrawerCacheKey = (input: { dayLabel: string; sessionGoal: string; workoutType: string }) =>
+  `${textKey(input.dayLabel)}|${textKey(input.sessionGoal)}|${textKey(input.workoutType)}`;
+
+const findCachedTrainingFromPlan = (
+  plan: any,
+  sessionInput: { dayLabel: string; sessionGoal: string; workoutType: string }
+) => {
+  const cache =
+    plan?._trainingDrawerCache && typeof plan._trainingDrawerCache === 'object' ? plan._trainingDrawerCache : {};
+  const exactKey = buildTrainingDrawerCacheKey(sessionInput);
+  const exact = cache[exactKey];
+  if (exact?.source === 'ai-drawer' && isTrainingDrawerDetailsReady(exact.details)) {
+    return exact.details;
+  }
+  const loosePrefix = `${textKey(sessionInput.dayLabel)}|`;
+  const looseSuffix = `|${textKey(sessionInput.workoutType)}`;
+  const matchKey = Object.keys(cache).find(
+    (key) => key.startsWith(loosePrefix) && key.endsWith(looseSuffix) && cache[key]?.source === 'ai-drawer'
+  );
+  if (!matchKey) return null;
+  const candidate = cache[matchKey]?.details;
+  return isTrainingDrawerDetailsReady(candidate) ? candidate : null;
+};
+
+const persistTrainingDrawerDetailsInPlan = (
+  plan: any,
+  sessionInput: { dayLabel: string; sessionGoal: string; workoutType: string },
+  drawerDetails: { session: any; whyThisSession: string; painSubstitution: string }
+) => {
+  const nextPlan = { ...(plan || {}) };
+  const weeklyTraining = Array.isArray(nextPlan?.weeklyTraining) ? [...nextPlan.weeklyTraining] : [];
+  const dayKey = textKey(sessionInput.dayLabel);
+  const goalKey = textKey(sessionInput.sessionGoal);
+  const typeKey = textKey(sessionInput.workoutType);
+
+  let updated = false;
+  const tryMatch = (strictDay: boolean) => {
+    for (let i = 0; i < weeklyTraining.length; i += 1) {
+      const session = weeklyTraining[i];
+      const dayMatches = !strictDay || textKey(session?.dayLabel) === dayKey;
+      const goalMatches = textKey(session?.sessionGoal) === goalKey;
+      const typeMatches = textKey(session?.workoutType) === typeKey;
+      if (!dayMatches || !goalMatches || !typeMatches) continue;
+      weeklyTraining[i] = { ...session, ...drawerDetails.session };
+      updated = true;
+      return;
+    }
+  };
+
+  tryMatch(true);
+  if (!updated) tryMatch(false);
+
+  const cachePayload = {
+    source: 'ai-drawer' as const,
+    cachedAt: new Date().toISOString(),
+    details: drawerDetails,
+  };
+
+  if (!updated) {
+    const nextCache = {
+      ...(nextPlan?._trainingDrawerCache && typeof nextPlan._trainingDrawerCache === 'object'
+        ? nextPlan._trainingDrawerCache
+        : {}),
+      [buildTrainingDrawerCacheKey(sessionInput)]: cachePayload,
+    };
+    return {
+      plan: {
+        ...nextPlan,
+        _trainingDrawerCache: nextCache,
+      },
+      updated: true,
+    };
+  }
+  const nextCache = {
+    ...(nextPlan?._trainingDrawerCache && typeof nextPlan._trainingDrawerCache === 'object'
+      ? nextPlan._trainingDrawerCache
+      : {}),
+    [buildTrainingDrawerCacheKey(sessionInput)]: cachePayload,
+  };
+  return {
+    plan: {
+      ...nextPlan,
+      weeklyTraining,
+      _trainingDrawerCache: nextCache,
+    },
+    updated: true,
+  };
+};
+
 const hasCoachProCriticalContent = (plan: any) => {
   const substitutions = plan?.substitutions || {};
   const hasArrayItems = (value: any) => Array.isArray(value) && value.length > 0;
@@ -2016,16 +2118,44 @@ export const coachProResolvers = {
         minimumViableVersion: String(input?.minimumViableVersion || 'Complete one main block plus cooldown'),
       };
 
+      const record = await CoachProPlan.findOne({ userId: context.user.id });
+      const cacheInput = {
+        dayLabel: sessionInput.dayLabel,
+        sessionGoal: sessionInput.sessionGoal,
+        workoutType: sessionInput.workoutType,
+      };
+      const cachedDetails = findCachedTrainingFromPlan(record?.plan, cacheInput);
+      if (cachedDetails && isTrainingDrawerDetailsReady(cachedDetails)) {
+        const normalizedSession = ensureCoachProPlanShape({ weeklyTraining: [cachedDetails.session] }).weeklyTraining[0];
+        return {
+          session: normalizedSession,
+          whyThisSession: String(cachedDetails.whyThisSession || ''),
+          painSubstitution: String(cachedDetails.painSubstitution || ''),
+        };
+      }
+
       try {
         const details = await openAIService.generateCoachProTrainingDrawerDetails({
           session: sessionInput,
           userContext: { preferences: context.user.preferences },
         });
         const normalizedSession = ensureCoachProPlanShape({ weeklyTraining: [details.session] }).weeklyTraining[0];
-        return {
+        const drawerPayload = {
           session: normalizedSession,
           whyThisSession: String(details.whyThisSession || ''),
           painSubstitution: String(details.painSubstitution || ''),
+        };
+        if (record?.plan) {
+          const persisted = persistTrainingDrawerDetailsInPlan(record.plan, cacheInput, drawerPayload);
+          if (persisted.updated) {
+            record.plan = persisted.plan;
+            await record.save();
+          }
+        }
+        return {
+          session: normalizedSession,
+          whyThisSession: drawerPayload.whyThisSession,
+          painSubstitution: drawerPayload.painSubstitution,
         };
       } catch (error) {
         const failureMessage = safeErrorMessage(error);

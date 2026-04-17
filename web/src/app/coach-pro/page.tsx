@@ -840,29 +840,6 @@ export default function EvoCoachProPage() {
                 <OverviewPill label="Flexibility" value={plan.overview.flexibilityLevel} icon={<WandSparkles className="h-4 w-4 text-primary-300" />} />
                 <OverviewPill label="Confidence" value={confidenceLevel} icon={<ShieldCheck className="h-4 w-4 text-success-300" />} />
               </div>
-              {process.env.NODE_ENV === 'development' ? (
-                <div className="mt-3 rounded-lg border border-border bg-surface-elevated p-3">
-                  <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted">Debug source</p>
-                  <p className="text-xs text-text-secondary mt-1">
-                    Plan: <span className="text-text-primary font-medium">{plan.generationSource}</span> • Shopping list:{' '}
-                    <span className="text-text-primary font-medium">{plan.shoppingListSource}</span> • Normalized:{' '}
-                    <span className="text-text-primary font-medium">{plan.normalizationApplied ? 'yes' : 'no'}</span>
-                  </p>
-                  <p className="text-xs text-text-secondary mt-1">
-                    Fallback sections:{' '}
-                    <span className="text-text-primary font-medium">
-                      {plan.fallbackSections.length > 0 ? plan.fallbackSections.join(', ') : 'none'}
-                    </span>
-                  </p>
-                  <p className="text-xs text-text-secondary mt-1 break-words">
-                    Section sources:{' '}
-                    <span className="text-text-primary font-medium">
-                      {plan.sectionSources.length > 0 ? plan.sectionSources.join(' • ') : 'n/a'}
-                    </span>
-                  </p>
-                  {plan.fallbackReason ? <p className="text-xs text-amber-200/90 mt-1">Fallback reason: {plan.fallbackReason}</p> : null}
-                </div>
-              ) : null}
             </section>
 
             <section className="bg-surface rounded-xl border border-border p-5">
