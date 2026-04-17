@@ -7,6 +7,7 @@ import {
   EvoUserContext,
   resolveToneAndProactivity,
 } from '../ai/evo';
+import { resolveCoachProDailyProteinFloor } from '../utils/coachProNutrition';
 
 type FoodAnalysisJson = {
   foodName: string;
@@ -1011,13 +1012,57 @@ Rules:
   }): Promise<CoachProPlanJson> {
     this.ensureInitialized();
 
+    const prefs = ((input.userContext || {}) as { preferences?: Record<string, unknown> }).preferences || {};
+    const proteinFloor = resolveCoachProDailyProteinFloor(
+      prefs as { proteinGoal?: number; weightKg?: number }
+    );
+    const weightKg =
+      typeof prefs.weightKg === 'number' && Number.isFinite(prefs.weightKg) && prefs.weightKg > 0
+        ? prefs.weightKg
+        : undefined;
+    const systemUserContext: EvoUserContext = {
+      userName: String((input.userContext as { userName?: string })?.userName || ''),
+      weightKg,
+      heightCm: typeof prefs.heightCm === 'number' ? prefs.heightCm : undefined,
+      primaryGoal: prefs.primaryGoal as string | undefined,
+      coachingTone: prefs.coachingTone as string | undefined,
+      proactivityLevel: prefs.proactivityLevel as string | undefined,
+      dailyCalorieGoal: typeof prefs.dailyCalorieGoal === 'number' ? prefs.dailyCalorieGoal : undefined,
+      proteinGoal: typeof prefs.proteinGoal === 'number' ? prefs.proteinGoal : undefined,
+      carbsGoal: typeof prefs.carbsGoal === 'number' ? prefs.carbsGoal : undefined,
+      fatGoal: typeof prefs.fatGoal === 'number' ? prefs.fatGoal : undefined,
+      weeklyWorkoutsGoal: typeof prefs.weeklyWorkoutsGoal === 'number' ? prefs.weeklyWorkoutsGoal : undefined,
+      weeklyActiveMinutesGoal:
+        typeof prefs.weeklyActiveMinutesGoal === 'number' ? prefs.weeklyActiveMinutesGoal : undefined,
+      activityLevel: prefs.activityLevel as string | undefined,
+      dietaryRestrictions: Array.isArray(prefs.dietaryRestrictions)
+        ? (prefs.dietaryRestrictions as string[])
+        : undefined,
+      suggestedProteinGoal: weightKg ? Math.round(weightKg * 2) : undefined,
+    };
+
     const systemPrompt = composeEvoSystemPrompt({
       mode: 'analysis',
       tone: 'supportive',
       proactivity: 'high',
       includeHumor: false,
       channel: 'insight',
+      userContext: systemUserContext,
     });
+
+    const nutritionMacroContract =
+      proteinFloor > 0
+        ? `
+NUTRITION MACRO CONTRACT (mandatory)
+- Daily protein floor: ${proteinFloor} g (max of saved protein goal and 2 g/kg body weight when weight is known).
+- Every day, sum(meal.estimatedProtein) must land within about 12 g of ${proteinFloor} g or higher. Do not output full days that sit far under this floor.
+- Align each day's calorieTarget and sum(estimatedCalories) with the user's calorie goal (~${typeof prefs.dailyCalorieGoal === 'number' ? prefs.dailyCalorieGoal : 'n/a'} kcal) unless setup explicitly prescribes different daily energy targets; per-day calorie sums should match that day's calorieTarget within ~120 kcal.
+`
+        : `
+NUTRITION MACRO CONTRACT (mandatory)
+- Honor preferences.proteinGoal for daily protein. If weightKg is present, treat ~2 g protein/kg/day as the planning baseline unless preferences clearly override.
+- Keep each day's total protein within a realistic band of that target (not half of it).
+`;
 
     const prompt = `
 You are creating Evo Coach Pro: a premium weekly nutrition + training strategy.
@@ -1029,6 +1074,7 @@ Setup input:
 ${JSON.stringify(input.setup, null, 2)}
 
 Return ONLY valid JSON in the structured-output schema.
+${nutritionMacroContract}
 HARD RULES — NEVER VIOLATE
 1. Return only schema-compliant JSON.
 2. Do not include markdown, commentary, explanations, or text outside schema fields.

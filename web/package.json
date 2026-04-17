@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@apollo/client": "^3.8.7",
+    "@apollo/sandbox": "^2.7.4",
     "@evoflowai/shared": "file:../shared",
     "@headlessui/react": "^1.7.17",
     "@hookform/resolvers": "^3.3.2",

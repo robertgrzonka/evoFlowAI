@@ -6,6 +6,7 @@ import { Workout } from '../../models/Workout';
 import { DailyActivity } from '../../models/DailyActivity';
 import { CoachProPlan } from '../../models/CoachProPlan';
 import { getDailyMetrics, normalizeDateKey } from '../../utils/dailyMetrics';
+import { resolveCoachProDailyProteinFloor } from '../../utils/coachProNutrition';
 
 const openAIService = new OpenAIService();
 
@@ -1713,6 +1714,8 @@ const syncNutritionDayTargetsFromMeals = (plan: any) => {
 const rebalanceNutritionPlanToTargets = (input: {
   plan: any;
   preferredDailyTargets?: { calories?: number; protein?: number; carbs?: number; fat?: number };
+  /** When set, daily protein target is at least this (e.g. max(stored goal, 2g/kg)). */
+  minimumDailyProtein?: number;
 }) => {
   const plan = { ...(input.plan || {}) };
   const weeklyNutrition = Array.isArray(plan?.weeklyNutrition) ? plan.weeklyNutrition : [];
@@ -1733,7 +1736,14 @@ const rebalanceNutritionPlanToTargets = (input: {
 
     // Default targets = sums of planned meals for that day (not day.calorieTarget from AI, which is often the same profile goal every day and forced all headers to match).
     const targetCalories = toInt(input.preferredDailyTargets?.calories ?? currentCaloriesSum, currentCaloriesSum);
-    const targetProtein = toInt(input.preferredDailyTargets?.protein ?? currentProteinSum, currentProteinSum);
+    let targetProtein = toInt(input.preferredDailyTargets?.protein ?? currentProteinSum, currentProteinSum);
+    const proteinFloor =
+      typeof input.minimumDailyProtein === 'number' && input.minimumDailyProtein > 0
+        ? input.minimumDailyProtein
+        : 0;
+    if (proteinFloor > 0) {
+      targetProtein = Math.max(targetProtein, proteinFloor);
+    }
     const targetCarbs = toInt(input.preferredDailyTargets?.carbs ?? currentCarbsSum, currentCarbsSum);
     const targetFat = toInt(input.preferredDailyTargets?.fat ?? currentFatSum, currentFatSum);
     const withinTolerance =
@@ -1820,9 +1830,14 @@ export const coachProResolvers = {
       const normalizedFoodPreferences = buildNormalizedFoodPreferences(input);
       const recentMealNames = recentMeals.map((meal) => String(meal.name || '').trim()).filter(Boolean);
 
+      const prefs = context.user.preferences;
+      const weightKg = typeof prefs?.weightKg === 'number' && prefs.weightKg > 0 ? prefs.weightKg : undefined;
+      const coachProProteinFloor = resolveCoachProDailyProteinFloor(prefs);
       const userContext = {
         userName: context.user.name,
         preferences: context.user.preferences,
+        suggestedProteinGoal: weightKg ? Math.round(weightKg * 2) : undefined,
+        coachProDailyProteinFloor: coachProProteinFloor > 0 ? coachProProteinFloor : undefined,
         normalizedFoodPreferences,
         foodPreferenceSummary: {
           cuisines: normalizedFoodPreferences.favoriteCuisines,
@@ -1890,7 +1905,10 @@ export const coachProResolvers = {
         aiCandidate = noveltyGuard.plan;
 
         const { plan: normalizedPlan, trace } = normalizePlanWithTrace(aiCandidate, normalizationOptions);
-        const nutritionRebalance = rebalanceNutritionPlanToTargets({ plan: normalizedPlan });
+        const nutritionRebalance = rebalanceNutritionPlanToTargets({
+          plan: normalizedPlan,
+          minimumDailyProtein: coachProProteinFloor > 0 ? coachProProteinFloor : undefined,
+        });
         const enrichedPlan = enrichCoachProPlanDerivedFields(syncNutritionDayTargetsFromMeals(nutritionRebalance.plan));
         const shoppingDebug = detectFallbackLikeShoppingList(enrichedPlan);
         const generationWarnings = [
@@ -1968,8 +1986,12 @@ export const coachProResolvers = {
       const normalizationOptions: MealNormalizationOptions = {
         forbiddenUiPhrases: buildNormalizedFoodPreferences(record.setup).forbiddenUiPhrases,
       };
+      const proteinFloor = resolveCoachProDailyProteinFloor(context.user.preferences);
       const { plan: normalizedPlan, trace } = normalizePlanWithTrace(record.plan, normalizationOptions);
-      const nutritionRebalance = rebalanceNutritionPlanToTargets({ plan: normalizedPlan });
+      const nutritionRebalance = rebalanceNutritionPlanToTargets({
+        plan: normalizedPlan,
+        minimumDailyProtein: proteinFloor > 0 ? proteinFloor : undefined,
+      });
       const enrichedPlan = enrichCoachProPlanDerivedFields(syncNutritionDayTargetsFromMeals(nutritionRebalance.plan));
       const existingMeta: GenerationMeta = {
         ...DEFAULT_GENERATION_META,
@@ -2183,13 +2205,17 @@ export const coachProResolvers = {
       };
 
       try {
+        const proteinFloor = resolveCoachProDailyProteinFloor(context.user.preferences);
         const adapted = await openAIService.adaptCoachProPlan({
           currentPlanJson: planJson,
           action: input.action,
           note: input.note,
         });
         const { plan: normalizedPlan, trace } = normalizePlanWithTrace(adapted, normalizationOptions);
-        const nutritionRebalance = rebalanceNutritionPlanToTargets({ plan: normalizedPlan });
+        const nutritionRebalance = rebalanceNutritionPlanToTargets({
+          plan: normalizedPlan,
+          minimumDailyProtein: proteinFloor > 0 ? proteinFloor : undefined,
+        });
         const enrichedPlan = enrichCoachProPlanDerivedFields(syncNutritionDayTargetsFromMeals(nutritionRebalance.plan));
         const shoppingDebug = detectFallbackLikeShoppingList(enrichedPlan);
         const generationMeta: GenerationMeta = {
@@ -2278,11 +2304,15 @@ export const coachProResolvers = {
       const normalizationOptions: MealNormalizationOptions = {
         forbiddenUiPhrases: buildNormalizedFoodPreferences(record.setup).forbiddenUiPhrases,
       };
+      const proteinFloor = resolveCoachProDailyProteinFloor(context.user.preferences);
       const { plan: nextPlanRaw, trace } = normalizePlanWithTrace(
         shouldMutate ? applyTodaySignalMutations(record.plan, prevSnapshot, nextSnapshot) : record.plan,
         normalizationOptions
       );
-      const nutritionRebalance = rebalanceNutritionPlanToTargets({ plan: nextPlanRaw });
+      const nutritionRebalance = rebalanceNutritionPlanToTargets({
+        plan: nextPlanRaw,
+        minimumDailyProtein: proteinFloor > 0 ? proteinFloor : undefined,
+      });
       const enrichedNextPlanRaw = enrichCoachProPlanDerivedFields(syncNutritionDayTargetsFromMeals(nutritionRebalance.plan));
       const existingMeta: GenerationMeta = {
         ...DEFAULT_GENERATION_META,
