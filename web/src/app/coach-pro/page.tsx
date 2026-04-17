@@ -871,14 +871,9 @@ export default function EvoCoachProPage() {
                 <EvoStatusBadge label="In progress" tone="warning" />
               </div>
               <p className="mb-2 text-xs uppercase tracking-[0.12em] text-text-muted">One-tap adjustments (preview)</p>
-              <p className="text-xs text-text-secondary mb-3">
+              <p className="text-xs text-text-secondary">
                 Quick actions for sleep, training, and meals are coming soon. Fewer options will ship first.
               </p>
-              <div className="grid grid-cols-1 gap-2" aria-hidden>
-                <Skeleton className="h-10 w-full rounded-lg" />
-                <Skeleton className="h-10 w-full rounded-lg" />
-                <Skeleton className="h-10 w-full rounded-lg" />
-              </div>
               {refreshingPlanBySignals ? <p className="text-xs text-text-secondary mt-3">Syncing today signals...</p> : null}
             </section>
 
