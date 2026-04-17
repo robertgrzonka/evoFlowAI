@@ -163,6 +163,34 @@ type AdaptiveFeedback = {
   lines: string[];
 };
 
+/** Mon=0 … Sun=6 — dopasowanie do prefiksów dayLabel (Mon / Monday itd.) */
+function dayLabelToMondayIndex(dayLabel: string): number {
+  const s = dayLabel.trim().toLowerCase();
+  if (s.startsWith('mon')) return 0;
+  if (s.startsWith('tue')) return 1;
+  if (s.startsWith('wed')) return 2;
+  if (s.startsWith('thu')) return 3;
+  if (s.startsWith('fri')) return 4;
+  if (s.startsWith('sat')) return 5;
+  if (s.startsWith('sun')) return 6;
+  return 0;
+}
+
+function getMondayBasedTodayIndex(): number {
+  const d = new Date().getDay();
+  return d === 0 ? 6 : d - 1;
+}
+
+/** Kolejność od dzisiaj; najpierw sort Mon→Sun, potem rotacja tak, by pierwszy wpis = aktualny dzień. */
+function rotateWeekFromToday<T extends { dayLabel: string }>(items: T[]): T[] {
+  if (items.length === 0) return items;
+  const sorted = [...items].sort((a, b) => dayLabelToMondayIndex(a.dayLabel) - dayLabelToMondayIndex(b.dayLabel));
+  const todayIdx = getMondayBasedTodayIndex();
+  const startAt = sorted.findIndex((d) => dayLabelToMondayIndex(d.dayLabel) === todayIdx);
+  const start = startAt >= 0 ? startAt : 0;
+  return [...sorted.slice(start), ...sorted.slice(0, start)];
+}
+
 export default function EvoCoachProPage() {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [step, setStep] = useState(0);
@@ -184,6 +212,7 @@ export default function EvoCoachProPage() {
   const [mealDrawerDetails, setMealDrawerDetails] = useState<PlanMeal | null>(null);
   const [trainingDrawerDetails, setTrainingDrawerDetails] = useState<TrainingDrawerDetails | null>(null);
   const [adaptiveFeedback, setAdaptiveFeedback] = useState<AdaptiveFeedback | null>(null);
+  const [showFullWeekSchedule, setShowFullWeekSchedule] = useState(false);
   const lastSignalSyncRef = useRef<string>('');
   const lastPlanBeforeAdaptRef = useRef<CoachProPlan | null>(null);
 
@@ -248,6 +277,10 @@ export default function EvoCoachProPage() {
     if (!savedPlanData?.myEvoCoachProPlan) return;
     setPlan(savedPlanData.myEvoCoachProPlan);
   }, [savedPlanData]);
+
+  useEffect(() => {
+    setShowFullWeekSchedule(false);
+  }, [plan?.generatedAt]);
 
   useEffect(() => {
     if (plan) return;
@@ -353,6 +386,25 @@ export default function EvoCoachProPage() {
     if (!preferences) return 'No user profile context available yet.';
     return `Profile context active: ${preferences.dailyCalorieGoal} kcal, ${preferences.proteinGoal}g protein, ${preferences.weeklyWorkoutsGoal} workouts/week.`;
   }, [meData]);
+
+  const nutritionWeekFromToday = useMemo(
+    () => (plan ? rotateWeekFromToday(plan.weeklyNutrition) : []),
+    [plan]
+  );
+  const trainingWeekFromToday = useMemo(
+    () => (plan ? rotateWeekFromToday(plan.weeklyTraining) : []),
+    [plan]
+  );
+  const canExpandWeekView = nutritionWeekFromToday.length > 3;
+  const nutritionDaysVisible =
+    showFullWeekSchedule || nutritionWeekFromToday.length <= 3
+      ? nutritionWeekFromToday
+      : nutritionWeekFromToday.slice(0, 3);
+  const trainingDaysVisible =
+    showFullWeekSchedule || trainingWeekFromToday.length <= 3
+      ? trainingWeekFromToday
+      : trainingWeekFromToday.slice(0, 3);
+  const remainingWeekDaysCount = Math.max(0, nutritionWeekFromToday.length - 3);
 
   if (meLoading || savedPlanLoading) {
     return <PageLoader />;
@@ -891,9 +943,16 @@ export default function EvoCoachProPage() {
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
               <section className="xl:col-span-8 space-y-4">
                 <section className="bg-surface rounded-xl border border-border p-5">
-                  <h3 className="text-base font-semibold text-text-primary mb-3">Weekly nutrition plan</h3>
+                  <div className="mb-3">
+                    <h3 className="text-base font-semibold text-text-primary">Weekly nutrition plan</h3>
+                    <p className="text-xs text-text-muted mt-1">
+                      {canExpandWeekView && !showFullWeekSchedule
+                        ? `Od dzisiaj · widać 3 z ${nutritionWeekFromToday.length} dni`
+                        : 'Od dzisiaj · pełny tydzień w tej sekcji'}
+                    </p>
+                  </div>
                   <div className="space-y-3">
-                    {plan.weeklyNutrition.map((day) => {
+                    {nutritionDaysVisible.map((day) => {
                       const dayTotals = sumDayMealMacros(day.meals);
                       return (
                       <div key={day.dayLabel} className="rounded-lg border border-border bg-surface-elevated p-3.5">
@@ -985,12 +1044,26 @@ export default function EvoCoachProPage() {
                       );
                     })}
                   </div>
+                  {canExpandWeekView ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowFullWeekSchedule((previous) => !previous)}
+                      className="mt-3 w-full rounded-lg border border-amber-300/35 bg-amber-300/5 px-3 py-2.5 text-sm text-amber-100/95 transition-colors hover:bg-amber-300/10"
+                    >
+                      {showFullWeekSchedule
+                        ? 'Zwiń do 3 najbliższych dni (żywienie + trening)'
+                        : `Pokaż pozostałe dni (${remainingWeekDaysCount}) — żywienie i trening`}
+                    </button>
+                  ) : null}
                 </section>
 
                 <section className="bg-surface rounded-xl border border-border p-5">
-                  <h3 className="text-base font-semibold text-text-primary mb-3">Weekly training plan</h3>
+                  <div className="mb-3">
+                    <h3 className="text-base font-semibold text-text-primary">Weekly training plan</h3>
+                    <p className="text-xs text-text-muted mt-1">Ta sama kolejność dni co powyżej (od dzisiaj).</p>
+                  </div>
                   <div className="space-y-2.5">
-                    {plan.weeklyTraining.map((session) => (
+                    {trainingDaysVisible.map((session) => (
                       <button
                         key={`${session.dayLabel}-${session.sessionGoal}`}
                         type="button"
