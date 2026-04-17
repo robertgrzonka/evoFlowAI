@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import {
@@ -26,6 +26,7 @@ import {
 import AppShell from '@/components/AppShell';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
+import Tooltip from '@/components/ui/atoms/Tooltip';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
 import { AISectionHeader, EvoHintCard, InsightEmptyState, SmartSuggestionChips } from '@/components/evo';
 import {
@@ -1286,12 +1287,53 @@ const buildAdaptiveFeedback = (previousPlan: CoachProPlan | null, nextPlan: Coac
   };
 };
 
+const META_PILL_VALUE_MAX_CHARS = 28;
+
 function MetaPill({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-amber-300/35 bg-amber-300/10 px-2 py-1 text-[11px] text-amber-100/95">
-      <span className="uppercase tracking-[0.1em] text-amber-200/90">{label}</span>
-      <span className="text-amber-100">{truncateText(value, 28)}</span>
+  const full = String(value || '').trim();
+  const display = truncateText(full, META_PILL_VALUE_MAX_CHARS);
+  const truncatedByLength = full.length > META_PILL_VALUE_MAX_CHARS;
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const [truncatedByLayout, setTruncatedByLayout] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = valueRef.current;
+    if (!el) {
+      setTruncatedByLayout(false);
+      return;
+    }
+    const measure = () => {
+      setTruncatedByLayout(el.scrollWidth > el.clientWidth + 1);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [display, label]);
+
+  const showTooltip = truncatedByLength || truncatedByLayout;
+
+  const pill = (
+    <span className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-md border border-amber-300/35 bg-amber-300/10 px-2 py-1 text-[11px] text-amber-100/95">
+      <span className="shrink-0 uppercase tracking-[0.1em] text-amber-200/90">{label}</span>
+      <span ref={valueRef} className="min-w-0 truncate text-amber-100">
+        {display}
+      </span>
     </span>
+  );
+
+  if (!showTooltip) {
+    return pill;
+  }
+
+  return (
+    <Tooltip
+      content={full}
+      side="top"
+      className="max-w-[min(20rem,90vw)] !whitespace-normal border-amber-300/45 text-left text-amber-100 leading-snug"
+    >
+      {pill}
+    </Tooltip>
   );
 }
 
