@@ -3,11 +3,11 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
-import { Camera, ImagePlus, Trash2 } from 'lucide-react';
+import { ImagePlus, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import { ButtonSpinner, ListRowSkeleton, PageLoader } from '@/components/ui/loading';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
-import { DAILY_STATS_QUERY } from '@/lib/graphql/queries';
+import { DAILY_STATS_QUERY, WEEKLY_MEALS_COACH_QUERY, WEEKLY_MEALS_NUTRITION_QUERY } from '@/lib/graphql/queries';
 import { DELETE_FOOD_ITEM_MUTATION, LOG_MEAL_WITH_AI_MUTATION } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
 import ChatMarkdown from '@/components/ChatMarkdown';
@@ -18,6 +18,7 @@ import {
   InsightEmptyState,
   SmartSuggestionChips,
 } from '@/components/evo';
+import WeeklyMealsNutritionSection from '@/components/meals/WeeklyMealsNutritionSection';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 type MealEntry = {
@@ -37,6 +38,7 @@ const mealOptions: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 export default function MealsPage() {
   const router = useRouter();
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [selectedDate, setSelectedDate] = useState(today);
   const [content, setContent] = useState('');
   const [mealType, setMealType] = useState<MealType>('lunch');
   const [imageBase64, setImageBase64] = useState('');
@@ -47,7 +49,7 @@ export default function MealsPage() {
   const [pendingReview, setPendingReview] = useState(false);
 
   const { data, loading, refetch } = useQuery(DAILY_STATS_QUERY, {
-    variables: { date: today },
+    variables: { date: selectedDate },
     fetchPolicy: 'cache-and-network',
   });
 
@@ -61,13 +63,17 @@ export default function MealsPage() {
       if (message) {
         setLastInsight(message);
       }
-      await refetch({ date: today });
+      await refetch({ date: selectedDate });
       appToast.success('Meal saved', 'Meal entry was added to your day.');
     },
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save meal.');
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [
+      ...buildDayRefetchQueries(selectedDate),
+      { query: WEEKLY_MEALS_NUTRITION_QUERY, variables: { endDate: today } },
+      { query: WEEKLY_MEALS_COACH_QUERY, variables: { endDate: today } },
+    ],
     awaitRefetchQueries: true,
   });
 
@@ -75,7 +81,11 @@ export default function MealsPage() {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [
+      ...buildDayRefetchQueries(selectedDate),
+      { query: WEEKLY_MEALS_NUTRITION_QUERY, variables: { endDate: today } },
+      { query: WEEKLY_MEALS_COACH_QUERY, variables: { endDate: today } },
+    ],
   });
 
   const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,6 +141,7 @@ export default function MealsPage() {
           imageBase64: imageBase64 || null,
           imageMimeType: imageBase64 ? imageMimeType : null,
           mealType,
+          loggedDate: selectedDate,
         },
       },
     });
@@ -176,7 +187,25 @@ export default function MealsPage() {
               title="Log meal"
               subtitle="Describe or upload. Evo will analyze, then you can save with confidence."
             />
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+              <div className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                <label htmlFor="meals-date" className="block text-sm font-medium text-text-primary">
+                  Day for this log
+                  <span className="text-text-muted font-normal"> — optional</span>
+                </label>
+                <input
+                  id="meals-date"
+                  type="date"
+                  value={selectedDate}
+                  max={today}
+                  onChange={(event) => setSelectedDate(event.target.value)}
+                  className="input-field w-full"
+                />
+                <p className="text-xs text-text-muted">
+                  Defaults to today. Change only if you are logging a meal for an earlier day.
+                </p>
+              </div>
+
               <div>
                 <label htmlFor="mealType" className="block text-sm font-medium text-text-primary mb-2">
                   Meal type
@@ -275,7 +304,10 @@ export default function MealsPage() {
           </section>
 
           <section className="xl:col-span-7 bg-surface border border-border rounded-xl p-4 md:p-5 space-y-4">
-            <h2 className="text-lg font-semibold tracking-tight text-text-primary">Today meals</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-text-primary">
+              Meals for {selectedDate}
+              {selectedDate === today ? ' (today)' : ''}
+            </h2>
 
             {lastInsight ? (
               <div className="rounded-lg border border-border bg-surface-elevated p-3">
@@ -325,6 +357,8 @@ export default function MealsPage() {
             )}
           </section>
         </div>
+
+        <WeeklyMealsNutritionSection weekEndDate={today} />
       </div>
     </AppShell>
   );

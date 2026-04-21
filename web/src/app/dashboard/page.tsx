@@ -10,6 +10,7 @@ import {
 } from '@/lib/graphql/queries';
 import { Camera, ChartColumnIncreasing, Dumbbell, Plus, Target, Trash2 } from 'lucide-react';
 import { clearAuthToken, hasAuthToken } from '@/lib/auth-token';
+import { clearApolloClientCache } from '@/lib/apollo-client';
 import AppShell from '@/components/AppShell';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import {
@@ -195,11 +196,13 @@ export default function DashboardPage() {
   }, [router]);
 
   useEffect(() => {
-    if (userError) {
-      appToast.error('Session expired', 'Please login again.');
+    if (!userError) return;
+    appToast.error('Session expired', 'Please login again.');
+    void (async () => {
       clearAuthToken();
+      await clearApolloClientCache();
       router.push('/login');
-    }
+    })();
   }, [userError, router]);
 
   useEffect(() => {
@@ -412,7 +415,7 @@ export default function DashboardPage() {
                   </p>
                 </div>
               ) : null}
-              <p className="text-sm text-text-secondary">{weeklyReview.summary}</p>
+              <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{weeklyReview.summary}</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <ScorePill label="Nutrition" score={weeklyReview.nutritionScore} />
                 <ScorePill label="Training" score={weeklyReview.trainingScore} />
@@ -425,6 +428,12 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+              {weeklyReview.proTip ? (
+                <div className="rounded-xl border border-primary-500/25 bg-gradient-to-br from-primary-500/10 via-surface-elevated/80 to-amber-400/5 px-4 py-3.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-200/95 mb-1.5">Pro tip</p>
+                  <p className="text-sm text-text-primary leading-snug">{weeklyReview.proTip}</p>
+                </div>
+              ) : null}
             </div>
           ) : (
             <p className="text-sm text-text-secondary">Weekly review will appear after more logs.</p>

@@ -417,3 +417,124 @@ export const REFRESH_COACH_PRO_PLAN_BY_TODAY_SIGNALS_MUTATION = gql`
   }
 `;
 
+export const APPLY_COACH_PRO_MEAL_SMART_ACTION_MUTATION = gql`
+  mutation ApplyCoachProMealSmartAction($input: CoachProMealSmartActionInput!) {
+    applyCoachProMealSmartAction(input: $input) {
+      notice
+      meal {
+        mealType
+        name
+        description
+        estimatedCalories
+        estimatedProtein
+        estimatedCarbs
+        estimatedFat
+        fiberGrams
+        estimatedSatiety
+        suggestedUse
+        prepTimeMinutes
+        tags
+        ingredients {
+          item
+          quantity
+        }
+        recipeSteps
+        substitutions
+        mealPrepNote
+        rationale
+      }
+      updatedPlan {
+        generatedAt
+        generationSource
+        fallbackReason
+        generationWarnings
+        normalizationApplied
+        normalizationSummary
+        normalizedFields
+        shoppingListSource
+        shoppingListWarnings
+        sectionSources
+        fallbackSections
+        overview {
+          calorieTargetRange
+          trainingFrequency
+          planDifficulty
+          expectedPace
+          flexibilityLevel
+        }
+        weeklyNutrition {
+          dayLabel
+          calorieTarget
+          proteinTarget
+          carbsTarget
+          fatTarget
+          meals {
+            mealType
+            name
+            description
+            estimatedCalories
+            estimatedProtein
+            estimatedCarbs
+            estimatedFat
+            fiberGrams
+            estimatedSatiety
+            suggestedUse
+            prepTimeMinutes
+            tags
+            ingredients {
+              item
+              quantity
+            }
+            recipeSteps
+            substitutions
+            mealPrepNote
+            rationale
+          }
+        }
+        weeklyTraining {
+          dayLabel
+          sessionGoal
+          workoutType
+          durationMinutes
+          intensity
+          structure {
+            name
+            sets
+            reps
+            durationMinutes
+            notes
+          }
+          fallbackVersion
+          minimumViableVersion
+        }
+        rationale
+        smartWarnings
+        shoppingList {
+          proteins
+          carbs
+          fats
+          vegetables
+          dairy
+          extras
+          optionalItems
+        }
+        substitutions {
+          ingredientSubstitutions
+          mealSwaps
+          exerciseSubstitutions
+          lowEnergyAlternatives
+          shortOnTimeAlternatives
+        }
+        coachNotes
+        hardestPartThisWeek
+        focusForBestResults
+        executionTips
+        mealPrepTips
+        recoveryNote
+        bestCasePlan
+        realisticPlan
+      }
+    }
+  }
+`;
+

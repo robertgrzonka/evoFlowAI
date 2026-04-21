@@ -8,6 +8,7 @@ import { ArrowLeft, Eye, EyeOff, Lock } from 'lucide-react';
 import { useMutation } from '@apollo/client';
 import { RESET_PASSWORD_MUTATION } from '@/lib/graphql/mutations';
 import { setAuthToken } from '@/lib/auth-token';
+import { resetApolloClientAfterAuthChange } from '@/lib/apollo-client';
 import { ButtonSpinner } from '@/components/ui/loading';
 import EvoMark from '@/components/EvoMark';
 import { appToast } from '@/lib/app-toast';
@@ -25,8 +26,9 @@ export default function ResetPasswordPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [resetPassword, { loading }] = useMutation(RESET_PASSWORD_MUTATION, {
-    onCompleted: (data) => {
+    onCompleted: async (data) => {
       setAuthToken(data.resetPassword.token, true);
+      await resetApolloClientAfterAuthChange();
       appToast.success('Password updated', 'You can continue to your dashboard.');
       router.push('/dashboard');
     },

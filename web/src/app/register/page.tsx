@@ -8,6 +8,7 @@ import { ArrowLeft, Eye, EyeOff, Lock, Mail, User } from 'lucide-react';
 import { useMutation } from '@apollo/client';
 import { REGISTER_MUTATION } from '@/lib/graphql/mutations';
 import { setAuthToken } from '@/lib/auth-token';
+import { resetApolloClientAfterAuthChange } from '@/lib/apollo-client';
 import { ButtonSpinner } from '@/components/ui/loading';
 import EvoMark from '@/components/EvoMark';
 import { appToast } from '@/lib/app-toast';
@@ -22,10 +23,10 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const [register, { loading }] = useMutation(REGISTER_MUTATION, {
-    onCompleted: (data) => {
+    onCompleted: async (data) => {
       setAuthToken(data.register.token, true);
+      await resetApolloClientAfterAuthChange();
       appToast.success('Account created', 'Welcome to evoFlowAI. Let us build your momentum.');
-      // Redirect to dashboard
       router.push('/dashboard');
     },
     onError: (error) => {

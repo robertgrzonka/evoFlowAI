@@ -224,9 +224,93 @@ export const typeDefs = gql`
     isCompleteWeek: Boolean!
     summary: String!
     highlights: [String!]!
+    """One sharp, preference-aware coaching move — not generic filler."""
+    proTip: String!
     nutritionScore: Int!
     trainingScore: Int!
     consistencyScore: Int!
+  }
+
+  type WeeklyMealsDayRow {
+    date: String!
+    calories: Float!
+    protein: Float!
+    carbs: Float!
+    fat: Float!
+    mealCount: Int!
+  }
+
+  type WeeklyMealsMacroTotals {
+    calories: Float!
+    protein: Float!
+    carbs: Float!
+    fat: Float!
+  }
+
+  type WeeklyMealsGoals {
+    calories: Float!
+    protein: Float!
+    carbs: Float!
+    fat: Float!
+  }
+
+  type WeeklyMealsNutritionSummary {
+    weekStart: String!
+    weekEnd: String!
+    days: [WeeklyMealsDayRow!]!
+    daysWithMeals: Int!
+    totalMealsLogged: Int!
+    goals: WeeklyMealsGoals!
+    totals: WeeklyMealsMacroTotals!
+    averages: WeeklyMealsMacroTotals!
+  }
+
+  type WeeklyMealsCoachInsight {
+    headline: String!
+    summary: String!
+    focusAreas: [String!]!
+    improvements: [String!]!
+    closingLine: String!
+  }
+
+  type WeeklyWorkoutsDayRow {
+    date: String!
+    sessionCount: Int!
+    totalMinutes: Float!
+    caloriesBurned: Float!
+    lowMinutes: Float!
+    mediumMinutes: Float!
+    highMinutes: Float!
+  }
+
+  type WeeklyWorkoutsTotals {
+    minutes: Float!
+    caloriesBurned: Float!
+    sessions: Float!
+  }
+
+  type WeeklyWorkoutsGoals {
+    weeklySessionsTarget: Float!
+    weeklyActiveMinutesTarget: Float!
+  }
+
+  type WeeklyWorkoutsTrainingSummary {
+    weekStart: String!
+    weekEnd: String!
+    days: [WeeklyWorkoutsDayRow!]!
+    daysWithWorkouts: Int!
+    totalSessions: Int!
+    goals: WeeklyWorkoutsGoals!
+    totals: WeeklyWorkoutsTotals!
+    averages: WeeklyWorkoutsTotals!
+  }
+
+  type WeeklyWorkoutsCoachInsight {
+    headline: String!
+    summary: String!
+    focusAreas: [String!]!
+    improvements: [String!]!
+    closingLine: String!
   }
 
   enum ProMealStyle {
@@ -516,6 +600,8 @@ export const typeDefs = gql`
     imageMimeType: String
     mealType: MealType!
     additionalContext: String
+    """Calendar day for this entry (YYYY-MM-DD). Defaults to today; cannot be in the future."""
+    loggedDate: String
   }
 
   input MessageContextInput {
@@ -635,6 +721,48 @@ export const typeDefs = gql`
     dayTargetFat: Int!
   }
 
+  enum CoachProMealSmartAction {
+    REPLACE_MEAL
+    SHOW_SUBSTITUTIONS
+    ADD_INGREDIENTS_TO_SHOPPING_LIST
+    REGENERATE_RECIPE
+    MAKE_IT_FASTER
+    MAKE_IT_CHEAPER
+    MAKE_IT_VEGETARIAN
+    INCREASE_PROTEIN
+  }
+
+  input CoachProSmartMealIngredientInput {
+    item: String!
+    quantity: String!
+  }
+
+  input CoachProMealSmartActionInput {
+    action: CoachProMealSmartAction!
+    dayLabel: String!
+    mealType: String!
+    name: String!
+    description: String!
+    estimatedCalories: Int!
+    estimatedProtein: Int!
+    estimatedCarbs: Int!
+    estimatedFat: Int!
+    prepTimeMinutes: Int!
+    dayTargetCalories: Int!
+    dayTargetProtein: Int!
+    dayTargetCarbs: Int!
+    dayTargetFat: Int!
+    ingredients: [CoachProSmartMealIngredientInput!]
+    recipeSteps: [String!]
+    substitutions: [String!]
+  }
+
+  type CoachProMealSmartActionPayload {
+    meal: CoachProMeal!
+    updatedPlan: CoachProPlan!
+    notice: String
+  }
+
   input CoachProExerciseBlockInput {
     name: String!
     sets: String
@@ -683,6 +811,8 @@ export const typeDefs = gql`
     myFoodItems(limit: Int, offset: Int): [FoodItem!]!
     foodItem(id: ID!): FoodItem
     dailyStats(date: String!): DailyStats!
+    weeklyMealsNutrition(endDate: String): WeeklyMealsNutritionSummary!
+    weeklyMealsCoachInsight(endDate: String): WeeklyMealsCoachInsight!
     
     # Stats
     getStats(input: StatsQueryInput!): StatsResponse!
@@ -699,6 +829,8 @@ export const typeDefs = gql`
     workoutCoachSummary(date: String!): WorkoutCoachSummary!
     dashboardInsight(date: String!): DashboardInsight!
     weeklyEvoReview(endDate: String): WeeklyEvoReview!
+    weeklyWorkoutsTraining(endDate: String): WeeklyWorkoutsTrainingSummary!
+    weeklyWorkoutsCoachInsight(endDate: String): WeeklyWorkoutsCoachInsight!
     stepSyncStatus(provider: StepSyncProvider!): StepSyncStatus!
     generateEvoCoachProPlan(input: GenerateCoachProPlanInput!): CoachProPlan!
     myEvoCoachProPlan: CoachProPlan
@@ -739,6 +871,7 @@ export const typeDefs = gql`
     syncGarminSteps(date: String!): StepSyncResult!
     adaptEvoCoachProPlan(input: AdaptCoachProPlanInput!): CoachProPlan!
     refreshEvoCoachProPlanByTodaySignals(date: String!): CoachProPlan!
+    applyCoachProMealSmartAction(input: CoachProMealSmartActionInput!): CoachProMealSmartActionPayload!
   }
 
   type Subscription {

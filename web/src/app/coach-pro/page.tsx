@@ -29,7 +29,10 @@ import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import Tooltip from '@/components/ui/atoms/Tooltip';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
 import { AISectionHeader, EvoHintCard, EvoStatusBadge, InsightEmptyState } from '@/components/evo';
-import { REFRESH_COACH_PRO_PLAN_BY_TODAY_SIGNALS_MUTATION } from '@/lib/graphql/mutations';
+import {
+  APPLY_COACH_PRO_MEAL_SMART_ACTION_MUTATION,
+  REFRESH_COACH_PRO_PLAN_BY_TODAY_SIGNALS_MUTATION,
+} from '@/lib/graphql/mutations';
 import {
   COACH_PRO_MEAL_DRAWER_DETAILS_QUERY,
   COACH_PRO_TRAINING_DRAWER_DETAILS_QUERY,
@@ -220,6 +223,7 @@ export default function EvoCoachProPage() {
       },
     }
   );
+  const [applyMealSmartAction, { loading: mealActionLoading }] = useMutation(APPLY_COACH_PRO_MEAL_SMART_ACTION_MUTATION);
 
   useEffect(() => {
     const preferences = meData?.me?.preferences;
@@ -443,8 +447,57 @@ export default function EvoCoachProPage() {
     await generatePlan({ variables: { input: nextSetup } });
   };
 
-  const handleMealAction = (actionLabel: string) => {
-    appToast.info('Action queued', `${actionLabel} will be connected with Evo actions in the next iteration.`);
+  const handleMealAction = async (actionLabel: string) => {
+    if (!selectedMeal || mealActionLoading || mealDrawerLoading) return;
+    const action = MEAL_SMART_ACTION_MAP[actionLabel];
+    if (!action) {
+      appToast.error('Unsupported action', actionLabel);
+      return;
+    }
+    const slot = selectedMeal.meal;
+    const detail = mealDrawerDetails || slot;
+    try {
+      const { data } = await applyMealSmartAction({
+        variables: {
+          input: {
+            action,
+            dayLabel: selectedMeal.dayLabel,
+            mealType: slot.mealType,
+            name: slot.name,
+            description: detail.description,
+            estimatedCalories: detail.estimatedCalories,
+            estimatedProtein: detail.estimatedProtein,
+            estimatedCarbs: detail.estimatedCarbs,
+            estimatedFat: detail.estimatedFat,
+            prepTimeMinutes: detail.prepTimeMinutes,
+            dayTargetCalories: selectedMeal.dayTarget.calories,
+            dayTargetProtein: selectedMeal.dayTarget.protein,
+            dayTargetCarbs: selectedMeal.dayTarget.carbs,
+            dayTargetFat: selectedMeal.dayTarget.fat,
+            ingredients: (detail.ingredients || []).map((i) => ({
+              item: i.item,
+              quantity: i.quantity,
+            })),
+            recipeSteps: detail.recipeSteps || [],
+            substitutions: detail.substitutions || [],
+          },
+        },
+      });
+      const payload = data?.applyCoachProMealSmartAction;
+      if (payload?.updatedPlan) {
+        setPlan(payload.updatedPlan as CoachProPlan);
+      }
+      if (payload?.meal) {
+        setMealDrawerDetails(payload.meal as PlanMeal);
+      }
+      if (payload?.notice) {
+        appToast.success('Smart action', payload.notice);
+      }
+      void refetchSavedPlan();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Could not apply this action.';
+      appToast.error('Action failed', message);
+    }
   };
 
   const mealDays = plan?.weeklyNutrition?.length || 0;
@@ -1126,6 +1179,7 @@ export default function EvoCoachProPage() {
           selectedMeal={selectedMeal}
           aiMealDetails={mealDrawerDetails}
           aiLoading={mealDrawerLoading}
+          actionLoading={mealActionLoading}
           onClose={() => {
             setSelectedMeal(null);
             setMealDrawerDetails(null);
@@ -1156,6 +1210,17 @@ const mealActionButtons = [
   'Make it vegetarian',
   'Increase protein',
 ];
+
+const MEAL_SMART_ACTION_MAP: Record<string, string> = {
+  'Replace meal': 'REPLACE_MEAL',
+  'Show substitutions': 'SHOW_SUBSTITUTIONS',
+  'Add ingredients to shopping list': 'ADD_INGREDIENTS_TO_SHOPPING_LIST',
+  'Regenerate recipe': 'REGENERATE_RECIPE',
+  'Make it faster': 'MAKE_IT_FASTER',
+  'Make it cheaper': 'MAKE_IT_CHEAPER',
+  'Make it vegetarian': 'MAKE_IT_VEGETARIAN',
+  'Increase protein': 'INCREASE_PROTEIN',
+};
 
 const truncateText = (value: string, maxChars: number) => {
   const text = String(value || '').trim();
@@ -1236,12 +1301,14 @@ function MealDetailsDrawer({
   selectedMeal,
   aiMealDetails,
   aiLoading,
+  actionLoading,
   onClose,
   onAction,
 }: {
   selectedMeal: SelectedPlanMeal | null;
   aiMealDetails: PlanMeal | null;
   aiLoading: boolean;
+  actionLoading: boolean;
   onClose: () => void;
   onAction: (actionLabel: string) => void;
 }) {
@@ -1415,13 +1482,17 @@ function MealDetailsDrawer({
 
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Smart actions</p>
+                  {actionLoading ? (
+                    <p className="mt-2 text-xs text-amber-200/90">Applying action…</p>
+                  ) : null}
                   <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {mealActionButtons.map((actionLabel) => (
                       <button
                         key={actionLabel}
                         type="button"
+                        disabled={actionLoading || aiLoading}
                         onClick={() => onAction(actionLabel)}
-                        className="rounded-md border border-border px-3 py-2 text-left text-sm text-text-secondary hover:text-text-primary hover:border-amber-300/45 hover:bg-amber-300/10 transition-colors"
+                        className="rounded-md border border-border px-3 py-2 text-left text-sm text-text-secondary hover:text-text-primary hover:border-amber-300/45 hover:bg-amber-300/10 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                       >
                         {actionLabel}
                       </button>

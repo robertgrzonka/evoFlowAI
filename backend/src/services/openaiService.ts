@@ -36,6 +36,19 @@ type DashboardInsightJson = {
   tips: unknown[];
 };
 
+type WeeklyMealsCoachAiJson = {
+  headline: string;
+  summary: string;
+  focusAreas: unknown[];
+  improvements: unknown[];
+  closingLine: string;
+};
+
+type WeeklyEvoReviewAiJson = {
+  summary: string;
+  proTip: string;
+};
+
 type CoachProPlanJson = {
   overview: {
     calorieTargetRange: string;
@@ -1006,6 +1019,377 @@ Rules:
     return normalized;
   }
 
+  async generateWeeklyMealsCoachInsight(input: {
+    weekStart: string;
+    weekEnd: string;
+    userName?: string;
+    primaryGoal?: string;
+    coachingTone?: string;
+    proactivityLevel?: string;
+    calorieGoal: number;
+    proteinGoal: number;
+    carbsGoal: number;
+    fatGoal: number;
+    daysWithMeals: number;
+    totalMealsLogged: number;
+    days: Array<{
+      date: string;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      mealCount: number;
+    }>;
+    averages: { calories: number; protein: number; carbs: number; fat: number };
+    totals: { calories: number; protein: number; carbs: number; fat: number };
+  }): Promise<{
+    headline: string;
+    summary: string;
+    focusAreas: string[];
+    improvements: string[];
+    closingLine: string;
+  }> {
+    this.ensureInitialized();
+
+    const { tone, proactivity } = resolveToneAndProactivity({
+      coachingTone: input.coachingTone,
+      proactivityLevel: input.proactivityLevel,
+    });
+    const systemPrompt = composeEvoSystemPrompt({
+      mode: 'insight',
+      tone,
+      proactivity,
+      includeHumor: true,
+      channel: 'insight',
+      userContext: {
+        primaryGoal: input.primaryGoal,
+        userName: input.userName,
+        dailyCalorieGoal: input.calorieGoal,
+        proteinGoal: input.proteinGoal,
+        carbsGoal: input.carbsGoal,
+        fatGoal: input.fatGoal,
+      },
+    });
+
+    const dayLines = input.days
+      .map(
+        (d) =>
+          `${d.date}: ${d.mealCount} meals, ${Math.round(d.calories)} kcal, P ${Math.round(d.protein)}g / C ${Math.round(d.carbs)}g / F ${Math.round(d.fat)}g`
+      )
+      .join('\n');
+
+    const prompt = `
+You are Evo — a sharp, warm nutrition coach reviewing ONE WEEK of logged meals (not workouts).
+
+Week window: ${input.weekStart} → ${input.weekEnd}
+User: ${input.userName || 'Athlete'}
+Primary goal: ${input.primaryGoal || 'general health'}
+Daily targets (reference): ${input.calorieGoal} kcal, protein ${input.proteinGoal}g, carbs ${input.carbsGoal}g, fat ${input.fatGoal}g.
+
+Per-day log (zeros mean no meals that day):
+${dayLines}
+
+Week totals: ${Math.round(input.totals.calories)} kcal, P ${Math.round(input.totals.protein)}g, C ${Math.round(input.totals.carbs)}g, F ${Math.round(input.totals.fat)}g
+7-day averages: ${Math.round(input.averages.calories)} kcal/day, P ${Math.round(input.averages.protein)}g, C ${Math.round(input.averages.carbs)}g, F ${Math.round(input.averages.fat)}g
+Days with at least one meal: ${input.daysWithMeals}/7 · Total meal entries: ${input.totalMealsLogged}
+
+Return JSON only:
+{
+  "headline": "short punchy title, max 8 words, no quotes inside",
+  "summary": "2-3 sentences; reference concrete numbers and at least one pattern (e.g. weekend drift, protein gaps)",
+  "focusAreas": ["exactly 3 bullets: what to watch based on THIS data — macro balance, consistency, calorie pacing, or logging gaps"],
+  "improvements": ["exactly 3 bullets: specific actionable tweaks for next week — food choices, timing, or logging habits"],
+  "closingLine": "one encouraging sentence tied to their goal"
+}
+
+Rules:
+- Sound observant and specific; never generic filler.
+- If logging is sparse (${input.daysWithMeals} < 4), acknowledge data limits honestly.
+- Do not invent meals; only use rows above.
+- Bullets max 1 sentence each, practical.
+- Optional: at most one subtle emoji in headline OR closingLine, not both.
+    `.trim();
+
+    const response = await this.openai!.chat.completions.create(
+      this.createCompletionOptions(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+        520
+      )
+    );
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No response from OpenAI');
+    }
+
+    const parsed = this.parseJsonResponse<WeeklyMealsCoachAiJson>(content);
+    const headline = String(parsed.headline || '').trim();
+    const summary = String(parsed.summary || '').trim();
+    const closingLine = String(parsed.closingLine || '').trim();
+    const focusAreas = (Array.isArray(parsed.focusAreas) ? parsed.focusAreas : [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, 3);
+    const improvements = (Array.isArray(parsed.improvements) ? parsed.improvements : [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, 3);
+
+    if (!headline || !summary || !closingLine || focusAreas.length === 0 || improvements.length === 0) {
+      throw new Error('Invalid weekly meals coach response');
+    }
+
+    while (focusAreas.length < 3) {
+      focusAreas.push('Track at least breakfast and dinner to spot macro drift earlier in the week.');
+    }
+    while (improvements.length < 3) {
+      improvements.push('Pre-log your go-to protein anchor for tomorrow to protect weekly protein average.');
+    }
+
+    return { headline, summary, focusAreas, improvements, closingLine };
+  }
+
+  async generateWeeklyWorkoutsCoachInsight(input: {
+    weekStart: string;
+    weekEnd: string;
+    userName?: string;
+    primaryGoal?: string;
+    coachingTone?: string;
+    proactivityLevel?: string;
+    activityLevel?: string;
+    weeklyWorkoutsGoal: number;
+    weeklyActiveMinutesGoal: number;
+    daysWithWorkouts: number;
+    totalSessions: number;
+    days: Array<{
+      date: string;
+      sessionCount: number;
+      totalMinutes: number;
+      caloriesBurned: number;
+      lowMinutes: number;
+      mediumMinutes: number;
+      highMinutes: number;
+    }>;
+    averages: { minutes: number; caloriesBurned: number; sessions: number };
+    totals: { minutes: number; caloriesBurned: number; sessions: number };
+  }): Promise<{
+    headline: string;
+    summary: string;
+    focusAreas: string[];
+    improvements: string[];
+    closingLine: string;
+  }> {
+    this.ensureInitialized();
+
+    const { tone, proactivity } = resolveToneAndProactivity({
+      coachingTone: input.coachingTone,
+      proactivityLevel: input.proactivityLevel,
+    });
+    const systemPrompt = composeEvoSystemPrompt({
+      mode: 'insight',
+      tone,
+      proactivity,
+      includeHumor: true,
+      channel: 'insight',
+      userContext: {
+        primaryGoal: input.primaryGoal,
+        userName: input.userName,
+        coachingTone: input.coachingTone,
+        proactivityLevel: input.proactivityLevel,
+        activityLevel: input.activityLevel,
+        weeklyWorkoutsGoal: input.weeklyWorkoutsGoal,
+        weeklyActiveMinutesGoal: input.weeklyActiveMinutesGoal,
+      },
+    });
+
+    const dayLines = input.days
+      .map(
+        (d) =>
+          `${d.date}: ${d.sessionCount} sessions, ${Math.round(d.totalMinutes)} min, ${Math.round(d.caloriesBurned)} kcal burned · intensity min L ${Math.round(d.lowMinutes)} / M ${Math.round(d.mediumMinutes)} / H ${Math.round(d.highMinutes)}`
+      )
+      .join('\n');
+
+    const prompt = `
+You are Evo — a performance coach reviewing ONE WEEK of logged training sessions (not meals).
+
+Week window: ${input.weekStart} → ${input.weekEnd}
+User: ${input.userName || 'Athlete'}
+Primary goal: ${input.primaryGoal || 'general health'}
+Weekly targets (reference): ${input.weeklyWorkoutsGoal} sessions/week, ${input.weeklyActiveMinutesGoal} active minutes/week.
+
+Per-day log (zeros mean no workouts that day):
+${dayLines}
+
+Week totals: ${Math.round(input.totals.minutes)} training minutes, ${Math.round(input.totals.caloriesBurned)} kcal burned, ${Math.round(input.totals.sessions)} sessions
+7-day averages: ${Math.round(input.averages.minutes)} min/day, ${Math.round(input.averages.caloriesBurned)} kcal burned/day, ${input.averages.sessions.toFixed(2)} sessions/day
+Days with at least one session: ${input.daysWithWorkouts}/7 · Total sessions logged: ${input.totalSessions}
+
+Return JSON only:
+{
+  "headline": "short punchy title, max 8 words, no quotes inside",
+  "summary": "2-3 sentences; reference concrete numbers and at least one pattern (e.g. intensity skew, weekend gaps, volume vs goal)",
+  "focusAreas": ["exactly 3 bullets: what to watch — frequency, intensity mix, recovery signals from minutes/kcal pattern"],
+  "improvements": ["exactly 3 bullets: specific training actions for next week — scheduling, progression, or session design"],
+  "closingLine": "one motivating sentence tied to their primary goal"
+}
+
+Rules:
+- Sound observant and specific; never generic filler.
+- If training logs are sparse (${input.daysWithWorkouts} < 3), acknowledge limits honestly.
+- Do not invent sessions; only use rows above.
+- Bullets max 1 sentence each, practical.
+- Optional: at most one subtle emoji in headline OR closingLine, not both.
+    `.trim();
+
+    const response = await this.openai!.chat.completions.create(
+      this.createCompletionOptions(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+        520
+      )
+    );
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No response from OpenAI');
+    }
+
+    const parsed = this.parseJsonResponse<WeeklyMealsCoachAiJson>(content);
+    const headline = String(parsed.headline || '').trim();
+    const summary = String(parsed.summary || '').trim();
+    const closingLine = String(parsed.closingLine || '').trim();
+    const focusAreas = (Array.isArray(parsed.focusAreas) ? parsed.focusAreas : [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, 3);
+    const improvements = (Array.isArray(parsed.improvements) ? parsed.improvements : [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, 3);
+
+    if (!headline || !summary || !closingLine || focusAreas.length === 0 || improvements.length === 0) {
+      throw new Error('Invalid weekly workouts coach response');
+    }
+
+    while (focusAreas.length < 3) {
+      focusAreas.push('Check whether hard sessions cluster on back-to-back days without a lighter recovery block.');
+    }
+    while (improvements.length < 3) {
+      improvements.push('Pre-book two fixed workout slots next week before adjusting nutrition targets.');
+    }
+
+    return { headline, summary, focusAreas, improvements, closingLine };
+  }
+
+  async generateWeeklyEvoReviewNarrative(input: {
+    userName?: string;
+    coachingTone?: string;
+    proactivityLevel?: string;
+    primaryGoal?: string;
+    activityLevel?: string;
+    dietaryRestrictions?: string[];
+    weightKg?: number;
+    weeklyWorkoutsGoal?: number;
+    weeklyActiveMinutesGoal?: number;
+    isCompleteWeek: boolean;
+    availableDays: number;
+    trackedDays: number;
+    nutritionScore: number;
+    trainingScore: number;
+    consistencyScore: number;
+    highlightLines: string[];
+    weekStart: string;
+    weekEnd: string;
+    baselineSummary: string;
+  }): Promise<{ summary: string; proTip: string }> {
+    this.ensureInitialized();
+
+    const { tone, proactivity } = resolveToneAndProactivity({
+      coachingTone: input.coachingTone,
+      proactivityLevel: input.proactivityLevel,
+    });
+
+    const systemPrompt = composeEvoSystemPrompt({
+      mode: 'insight',
+      tone,
+      proactivity,
+      includeHumor: true,
+      channel: 'insight',
+      userContext: {
+        userName: input.userName,
+        primaryGoal: input.primaryGoal,
+        coachingTone: input.coachingTone,
+        proactivityLevel: input.proactivityLevel,
+        activityLevel: input.activityLevel,
+        dietaryRestrictions: input.dietaryRestrictions,
+        weightKg: input.weightKg,
+        weeklyWorkoutsGoal: input.weeklyWorkoutsGoal,
+        weeklyActiveMinutesGoal: input.weeklyActiveMinutesGoal,
+      },
+      latestUserMessage: 'Weekly training and nutrition review.',
+    });
+
+    const restrictions = (input.dietaryRestrictions || []).filter(Boolean).join(', ') || 'none listed';
+    const prompt = `
+Write a WEEKLY EVO REVIEW for the dashboard (not chat). The user already sees numeric scores elsewhere — your job is narrative punch + one unforgettable Pro Tip.
+
+Week: ${input.weekStart} → ${input.weekEnd}
+Window: ${input.availableDays}/7 available days · ${input.trackedDays} days with any tracking
+Complete week flag: ${input.isCompleteWeek}
+
+Scores (0-100, already computed — do not change them): nutrition ${input.nutritionScore}, training ${input.trainingScore}, consistency ${input.consistencyScore}
+
+Verified highlight lines (treat as ground truth; quote or paraphrase numbers accurately):
+${input.highlightLines.map((line) => `- ${line}`).join('\n')}
+
+Fallback summary if you get stuck (do not copy verbatim; improve it): ${input.baselineSummary}
+
+Return JSON only (no markdown inside strings):
+{
+  "summary": "3-5 sentences max. Intriguing, specific, slightly edgy where tone allows. Name the main tension between scores and the highlight data. Match SUPPORTIVE vs DIRECT coaching tone from system instructions.",
+  "proTip": "Exactly ONE sentence, max 240 characters. Must feel bespoke: weave together (a) primary goal or dietary restrictions if any, (b) the weakest score or clearest gap in highlights, (c) proactivity level — LOW = one micro-habit, HIGH = a bolder stacked habit. Forbidden: clichés like drink more water, believe in yourself, stay consistent without specifics."
+}
+
+Rules:
+- Plain text inside JSON only (no **markdown**, no bullet characters).
+- Do not contradict the numeric scores or highlight facts.
+- If dietary restrictions exist, proTip must respect them explicitly.
+    `.trim();
+
+    const response = await this.openai!.chat.completions.create(
+      this.createCompletionOptions(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+        480
+      )
+    );
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No response from OpenAI');
+    }
+
+    const parsed = this.parseJsonResponse<WeeklyEvoReviewAiJson>(content);
+    const summary = String(parsed.summary || '').trim();
+    let proTip = String(parsed.proTip || '').trim();
+    if (proTip.length > 280) {
+      proTip = `${proTip.slice(0, 277)}…`;
+    }
+
+    if (!summary || summary.length < 28 || !proTip || proTip.length < 20) {
+      throw new Error('Invalid weekly Evo review narrative');
+    }
+
+    return { summary, proTip };
+  }
+
   async generateCoachProPlan(input: {
     userContext: Record<string, unknown>;
     setup: Record<string, unknown>;
@@ -1308,6 +1692,70 @@ Rules:
     return this.generateCoachProMealDrawerWithContract({
       userPrompt: prompt,
       maxOutputTokens: 2500,
+    });
+  }
+
+  async applyCoachProMealSmartAction(input: {
+    action:
+      | 'REPLACE_MEAL'
+      | 'SHOW_SUBSTITUTIONS'
+      | 'REGENERATE_RECIPE'
+      | 'MAKE_IT_FASTER'
+      | 'MAKE_IT_CHEAPER'
+      | 'MAKE_IT_VEGETARIAN'
+      | 'INCREASE_PROTEIN';
+    meal: Record<string, unknown>;
+    dayTarget: { calories: number; protein: number; carbs: number; fat: number };
+    userContext?: Record<string, unknown>;
+  }): Promise<CoachProMealDrawerJson> {
+    this.ensureInitialized();
+
+    const actionGuide: Record<string, string> = {
+      REPLACE_MEAL:
+        'Replace this slot with a completely different realistic dish that still fits the meal type and day macro budget. Pick a new name and a fresh ingredient list. Keep totals roughly aligned with day targets.',
+      SHOW_SUBSTITUTIONS:
+        'Keep the same dish concept and similar macros. Put most effort into the substitutions array: 6–10 concrete one-line ingredient or method swaps (e.g. "chicken breast → turkey cutlets"). Other fields may stay close to the current meal.',
+      REGENERATE_RECIPE:
+        'Keep the same dish idea and similar calories and macros, but rewrite ingredients and recipeSteps from scratch with fresh wording and practical steps.',
+      MAKE_IT_FASTER:
+        'Reduce prep and cook time meaningfully (lower prepTimeMinutes). Simplify steps and techniques while keeping the dish recognizable and macros similar.',
+      MAKE_IT_CHEAPER:
+        'Use more budget-friendly ingredients and shopping choices. Keep protein and calories in the same ballpark as the current meal.',
+      MAKE_IT_VEGETARIAN:
+        'Remove meat and fish; use plant proteins (legumes, tofu, dairy, eggs if acceptable). Ensure the meal is still filling and macro-balanced for the day.',
+      INCREASE_PROTEIN:
+        'Increase protein by roughly 15–30g versus the current meal; adjust carbs/fat so the meal still fits the day calorie target approximately.',
+    };
+
+    const guide = actionGuide[input.action] || actionGuide.REPLACE_MEAL;
+
+    const prompt = `
+You are applying a SMART ACTION to ONE meal in Evo Coach Pro.
+
+Action: ${input.action}
+Instruction:
+${guide}
+
+Current meal (full JSON):
+${JSON.stringify(input.meal, null, 2)}
+
+Day macro targets (kcal / P / C / F):
+${JSON.stringify(input.dayTarget, null, 2)}
+
+User context:
+${JSON.stringify(input.userContext || {}, null, 2)}
+
+Return ONLY valid JSON in the structured-output schema (same shape as meal drawer enrichment).
+Rules:
+- Natural English only for all user-visible strings.
+- Ingredients and recipe steps must stay practical and realistic.
+- Honor userContext food preferences and exclusions when relevant.
+- No meta phrases about "the model" or "generation".
+    `.trim();
+
+    return this.generateCoachProMealDrawerWithContract({
+      userPrompt: prompt,
+      maxOutputTokens: 2800,
     });
   }
 

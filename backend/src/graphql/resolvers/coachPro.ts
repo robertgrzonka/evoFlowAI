@@ -1098,6 +1098,94 @@ const persistTrainingDrawerDetailsInPlan = (
   };
 };
 
+type CoachProShoppingBucketKey = 'proteins' | 'carbs' | 'fats' | 'vegetables' | 'dairy' | 'extras' | 'optionalItems';
+
+const categorizeSmartShoppingBucket = (itemRaw: string): CoachProShoppingBucketKey => {
+  const item = String(itemRaw || '').toLowerCase();
+  if (
+    /(chicken|beef|pork|turkey|fish|salmon|tuna|cod|egg|eggs|tofu|tempeh|shrimp|prawn|lamb|steak|breast|thigh|ground|protein)/i.test(
+      item
+    )
+  ) {
+    return 'proteins';
+  }
+  if (/(milk|yogurt|yoghurt|cheese|cottage|skyr|cream cheese)/i.test(item)) return 'dairy';
+  if (/(rice|pasta|oat|bread|potato|quinoa|tortilla|noodle|cereal|flour|bean|lentil|chickpea|wrap)/i.test(item)) return 'carbs';
+  if (/(oil|olive|avocado|nut|almond|walnut|mayo)/i.test(item)) return 'fats';
+  if (/(spinach|broccoli|tomato|pepper|onion|lettuce|vegetable|carrot|zucchini|cucumber|kale|greens|salad)/i.test(item)) {
+    return 'vegetables';
+  }
+  return 'extras';
+};
+
+const mergeIngredientsIntoCoachProShoppingList = (
+  plan: any,
+  ingredients: Array<{ item: string; quantity: string }>
+): { plan: any; added: number } => {
+  const nextPlan = { ...(plan || {}) };
+  const shopping =
+    nextPlan.shoppingList && typeof nextPlan.shoppingList === 'object' ? { ...nextPlan.shoppingList } : {};
+  const buckets: CoachProShoppingBucketKey[] = [
+    'proteins',
+    'carbs',
+    'fats',
+    'vegetables',
+    'dairy',
+    'extras',
+    'optionalItems',
+  ];
+  buckets.forEach((b) => {
+    shopping[b] = Array.isArray(shopping[b]) ? [...shopping[b]] : [];
+  });
+  let added = 0;
+  ingredients.forEach((ing) => {
+    const item = String(ing?.item || '').trim();
+    if (!item) return;
+    const qty = String(ing?.quantity || '').trim();
+    const line = qty ? `${item} (${qty})` : item;
+    const bucket = categorizeSmartShoppingBucket(item);
+    const arr = shopping[bucket] as string[];
+    const exists = arr.some((x) => x.toLowerCase() === line.toLowerCase());
+    if (!exists) {
+      arr.push(line);
+      added += 1;
+    }
+  });
+  nextPlan.shoppingList = shopping;
+  return { plan: nextPlan, added };
+};
+
+const pickCoachProMealFromPlan = (
+  plan: any,
+  mealInput: { dayLabel: string; mealType: string; name: string }
+) => {
+  const shaped = ensureCoachProPlanShape({ weeklyNutrition: plan?.weeklyNutrition || [] });
+  const dayKey = textKey(mealInput.dayLabel);
+  const typeKey = textKey(mealInput.mealType);
+  const nameKey = textKey(mealInput.name);
+  for (const day of shaped.weeklyNutrition || []) {
+    if (textKey(day.dayLabel) !== dayKey) continue;
+    for (const meal of day.meals || []) {
+      if (textKey(meal.mealType) === typeKey && textKey(meal.name) === nameKey) {
+        return meal;
+      }
+    }
+  }
+  return null;
+};
+
+const finalizeCoachProPlanResponse = (planRoot: any, meta: GenerationMeta, context: Context) => {
+  const shaped = ensureCoachProPlanShape(planRoot);
+  const enriched = enrichCoachProPlanDerivedFields(shaped);
+  const proteinFloor = resolveCoachProDailyProteinFloor(context.user.preferences);
+  const reb = rebalanceNutritionPlanToTargets({
+    plan: enriched,
+    minimumDailyProtein: proteinFloor > 0 ? proteinFloor : undefined,
+  });
+  const finalPlan = enrichCoachProPlanDerivedFields(syncNutritionDayTargetsFromMeals(reb.plan));
+  return applyGenerationMetaToPlan(finalPlan, meta);
+};
+
 const hasCoachProCriticalContent = (plan: any) => {
   const substitutions = plan?.substitutions || {};
   const hasArrayItems = (value: any) => Array.isArray(value) && value.length > 0;
@@ -2355,6 +2443,170 @@ export const coachProResolvers = {
         ...record.plan,
         generatedAt: record.generatedAt,
       };
+    },
+    applyCoachProMealSmartAction: async (_: any, { input }: { input: any }, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+      const record = await CoachProPlan.findOne({ userId: context.user.id });
+      if (!record?.plan) {
+        throw new UserInputError('No Evo Coach Pro plan found. Generate a plan first.');
+      }
+
+      const mealInput = {
+        dayLabel: String(input?.dayLabel || ''),
+        mealType: String(input?.mealType || 'Meal'),
+        name: String(input?.name || 'Meal'),
+        description: String(input?.description || ''),
+        estimatedCalories: toInt(input?.estimatedCalories, 0),
+        estimatedProtein: toInt(input?.estimatedProtein, 0),
+        estimatedCarbs: toInt(input?.estimatedCarbs, 0),
+        estimatedFat: toInt(input?.estimatedFat, 0),
+        prepTimeMinutes: toInt(input?.prepTimeMinutes, 20),
+      };
+      const dayTarget = {
+        calories: toInt(input?.dayTargetCalories, 0),
+        protein: toInt(input?.dayTargetProtein, 0),
+        carbs: toInt(input?.dayTargetCarbs, 0),
+        fat: toInt(input?.dayTargetFat, 0),
+      };
+
+      const action = String(input?.action || '');
+      const fromPlan = pickCoachProMealFromPlan(record.plan, mealInput);
+
+      const ingredientsFromClient = Array.isArray(input?.ingredients) ? input.ingredients : null;
+      const recipeStepsFromClient = Array.isArray(input?.recipeSteps) ? input.recipeSteps : null;
+      const substitutionsFromClient = Array.isArray(input?.substitutions) ? input.substitutions : null;
+
+      const baseIngredients =
+        ingredientsFromClient && ingredientsFromClient.length > 0
+          ? ingredientsFromClient.map((x: any) => ({
+              item: String(x?.item || ''),
+              quantity: String(x?.quantity || ''),
+            }))
+          : Array.isArray(fromPlan?.ingredients)
+            ? fromPlan.ingredients.map((x: any) => ({
+                item: String(x?.item || ''),
+                quantity: String(x?.quantity || ''),
+              }))
+            : [];
+      const baseSteps =
+        recipeStepsFromClient && recipeStepsFromClient.length > 0
+          ? recipeStepsFromClient.map((s: any) => String(s || '')).filter(Boolean)
+          : Array.isArray(fromPlan?.recipeSteps)
+            ? fromPlan.recipeSteps.map((s: any) => String(s || '')).filter(Boolean)
+            : [];
+      const baseSubs =
+        substitutionsFromClient && substitutionsFromClient.length > 0
+          ? substitutionsFromClient.map((s: any) => String(s || '')).filter(Boolean)
+          : Array.isArray(fromPlan?.substitutions)
+            ? fromPlan.substitutions.map((s: any) => String(s || '')).filter(Boolean)
+            : [];
+
+      const metaFromRecord: GenerationMeta = {
+        ...DEFAULT_GENERATION_META,
+        ...(record.generationMeta || {}),
+      };
+
+      if (action === 'ADD_INGREDIENTS_TO_SHOPPING_LIST') {
+        if (baseIngredients.length === 0) {
+          throw new UserInputError('No ingredients to add. Open meal details so ingredients are loaded.');
+        }
+        const { plan: nextPlan, added } = mergeIngredientsIntoCoachProShoppingList(record.plan, baseIngredients);
+        const mealSlot = pickCoachProMealFromPlan(record.plan, mealInput);
+        if (!mealSlot) {
+          throw new UserInputError('Could not locate this meal in your saved plan.');
+        }
+        if (added === 0) {
+          return {
+            meal: mealSlot,
+            updatedPlan: {
+              ...finalizeCoachProPlanResponse(record.plan, metaFromRecord, context),
+              generatedAt: record.generatedAt || new Date(),
+            },
+            notice: 'Those ingredients were already on your plan shopping list.',
+          };
+        }
+        record.plan = nextPlan;
+        await record.save();
+        return {
+          meal: mealSlot,
+          updatedPlan: {
+            ...finalizeCoachProPlanResponse(record.plan, metaFromRecord, context),
+            generatedAt: record.generatedAt || new Date(),
+          },
+          notice: `Added ${added} ingredient line(s) to your plan shopping list.`,
+        };
+      }
+
+      const mealForAi: Record<string, unknown> = {
+        ...mealInput,
+        description: fromPlan?.description || mealInput.description,
+        tags: Array.isArray(fromPlan?.tags) ? fromPlan.tags : [],
+        fiberGrams: fromPlan?.fiberGrams ?? null,
+        estimatedSatiety: fromPlan?.estimatedSatiety ?? null,
+        suggestedUse: fromPlan?.suggestedUse ?? null,
+        mealPrepNote: fromPlan?.mealPrepNote ?? null,
+        rationale: fromPlan?.rationale ?? null,
+        ingredients: baseIngredients,
+        recipeSteps: baseSteps,
+        substitutions: baseSubs,
+      };
+
+      try {
+        const normalizedFoodPreferences = buildNormalizedFoodPreferences(record?.setup || {});
+        const details = await openAIService.applyCoachProMealSmartAction({
+          action: action as
+            | 'REPLACE_MEAL'
+            | 'SHOW_SUBSTITUTIONS'
+            | 'REGENERATE_RECIPE'
+            | 'MAKE_IT_FASTER'
+            | 'MAKE_IT_CHEAPER'
+            | 'MAKE_IT_VEGETARIAN'
+            | 'INCREASE_PROTEIN',
+          meal: mealForAi,
+          dayTarget,
+          userContext: {
+            preferences: context.user.preferences,
+            normalizedFoodPreferences,
+            foodPreferenceSummary: {
+              cuisines: normalizedFoodPreferences.favoriteCuisines,
+              anchorDishes: normalizedFoodPreferences.favoriteDishes,
+              anchorIngredients: normalizedFoodPreferences.favoriteIngredients,
+              staples: normalizedFoodPreferences.mealPrepStaples,
+              mealStyles: normalizedFoodPreferences.preferredMealStyles,
+            },
+          },
+        });
+        const normalizedMeal = ensureCoachProPlanShape({
+          weeklyNutrition: [
+            {
+              dayLabel: mealInput.dayLabel,
+              calorieTarget: dayTarget.calories,
+              proteinTarget: dayTarget.protein,
+              carbsTarget: dayTarget.carbs,
+              fatTarget: dayTarget.fat,
+              meals: [details],
+            },
+          ],
+        }).weeklyNutrition[0].meals[0];
+        const persisted = persistMealDrawerDetailsInPlan(record.plan, mealInput, normalizedMeal);
+        if (persisted.updated) {
+          record.plan = persisted.plan;
+          await record.save();
+        }
+        return {
+          meal: normalizedMeal,
+          updatedPlan: {
+            ...finalizeCoachProPlanResponse(record.plan, metaFromRecord, context),
+            generatedAt: record.generatedAt || new Date(),
+          },
+          notice: 'Meal updated for this plan.',
+        };
+      } catch (error) {
+        const failureMessage = safeErrorMessage(error);
+        throw new UserInputError(`Smart action failed. ${failureMessage}`);
+      }
     },
   },
 };

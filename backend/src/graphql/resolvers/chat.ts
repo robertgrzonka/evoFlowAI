@@ -1,4 +1,4 @@
-import { AuthenticationError } from 'apollo-server-express';
+import { AuthenticationError, UserInputError } from 'apollo-server-express';
 import { ChatMessage } from '../../models/ChatMessage';
 import { FoodItem } from '../../models/FoodItem';
 import { OpenAIService } from '../../services/openaiService';
@@ -329,6 +329,21 @@ export const chatResolvers = {
         throw new Error('Invalid meal type');
       }
 
+      const rawLoggedDate = input.loggedDate != null && input.loggedDate !== '' ? String(input.loggedDate).trim() : '';
+      let loggedDateKey = getTodayDateKey();
+      if (rawLoggedDate) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(rawLoggedDate)) {
+          throw new UserInputError('loggedDate must be YYYY-MM-DD');
+        }
+        loggedDateKey = normalizeDateKey(rawLoggedDate);
+      }
+      const todayKey = getTodayDateKey();
+      if (loggedDateKey > todayKey) {
+        throw new UserInputError('Cannot log meals for a future date');
+      }
+
+      const loggedAt = new Date(`${loggedDateKey}T12:00:00.000Z`);
+
       try {
         const userMessageContent = content || `Analyze this ${mealType} image and save it`;
 
@@ -358,6 +373,8 @@ export const chatResolvers = {
           description: analysis.description,
           nutrition: analysis.nutrition,
           mealType,
+          createdAt: loggedAt,
+          updatedAt: loggedAt,
         });
         await foodItem.save();
 
@@ -379,7 +396,7 @@ export const chatResolvers = {
           channel: 'LOG',
           context: {
             relatedFoodItems: [foodItem.id],
-            statsReference: new Date().toISOString().split('T')[0],
+            statsReference: loggedDateKey,
           },
           timestamp: new Date(),
         });

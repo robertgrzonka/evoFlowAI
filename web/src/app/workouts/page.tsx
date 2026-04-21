@@ -7,9 +7,9 @@ import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, Skeleton } from '@/components/ui/loading';
 import { DELETE_WORKOUT_MUTATION, IMPORT_WORKOUT_FILE_MUTATION, LOG_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
-import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION } from '@/lib/graphql/queries';
+import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION, WEEKLY_WORKOUTS_COACH_QUERY, WEEKLY_WORKOUTS_TRAINING_QUERY } from '@/lib/graphql/queries';
 import { appToast } from '@/lib/app-toast';
-import { buildDayRefetchQueries } from '@/lib/day-data';
+import { buildDayRefetchQueries, dateKeyToNoonUtcIso } from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import {
   AISectionHeader,
@@ -17,6 +17,7 @@ import {
   InsightEmptyState,
   SmartSuggestionChips,
 } from '@/components/evo';
+import WeeklyWorkoutsTrainingSection from '@/components/workouts/WeeklyWorkoutsTrainingSection';
 
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 
@@ -24,6 +25,7 @@ const intensityOptions: WorkoutIntensity[] = ['LOW', 'MEDIUM', 'HIGH'];
 
 export default function WorkoutsPage() {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [selectedDate, setSelectedDate] = useState(today);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(45);
@@ -32,7 +34,7 @@ export default function WorkoutsPage() {
   const [importNotes, setImportNotes] = useState('');
 
   const { data: meData } = useQuery(ME_QUERY);
-  const daySnapshot = useDaySnapshot({ date: today, enabled: true, includeInsight: false });
+  const daySnapshot = useDaySnapshot({ date: selectedDate, enabled: true, includeInsight: false });
 
   useSubscription(NEW_WORKOUT_SUBSCRIPTION, {
     variables: { userId: meData?.me?.id },
@@ -46,29 +48,47 @@ export default function WorkoutsPage() {
     onCompleted: () => {
       setTitle('');
       setNotes('');
-      appToast.success('Workout saved', 'Session was added to today.');
+      appToast.success(
+        'Workout saved',
+        selectedDate === today ? 'Session was added to today.' : `Session was added to ${selectedDate}.`
+      );
     },
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save workout.');
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [
+      ...buildDayRefetchQueries(selectedDate),
+      { query: WEEKLY_WORKOUTS_TRAINING_QUERY, variables: { endDate: today } },
+      { query: WEEKLY_WORKOUTS_COACH_QUERY, variables: { endDate: today } },
+    ],
   });
 
   const [deleteWorkout, { loading: deletingWorkout }] = useMutation(DELETE_WORKOUT_MUTATION, {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete workout.');
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [
+      ...buildDayRefetchQueries(selectedDate),
+      { query: WEEKLY_WORKOUTS_TRAINING_QUERY, variables: { endDate: today } },
+      { query: WEEKLY_WORKOUTS_COACH_QUERY, variables: { endDate: today } },
+    ],
   });
   const [importWorkoutFile, { loading: importingWorkoutFile }] = useMutation(IMPORT_WORKOUT_FILE_MUTATION, {
     onCompleted: () => {
       setImportNotes('');
-      appToast.success('Workout imported', 'File was parsed and added to your timeline.');
+      appToast.success(
+        'Workout imported',
+        selectedDate === today ? 'File was parsed and added to today.' : `File was parsed and added to ${selectedDate}.`
+      );
     },
     onError: (error) => {
       appToast.error('Import failed', error.message || 'Could not import workout file.');
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [
+      ...buildDayRefetchQueries(selectedDate),
+      { query: WEEKLY_WORKOUTS_TRAINING_QUERY, variables: { endDate: today } },
+      { query: WEEKLY_WORKOUTS_COACH_QUERY, variables: { endDate: today } },
+    ],
   });
 
   const handleSubmit = async (event: FormEvent) => {
@@ -87,7 +107,7 @@ export default function WorkoutsPage() {
           durationMinutes: Number(durationMinutes),
           caloriesBurned: Number(caloriesBurned),
           intensity,
-          performedAt: new Date().toISOString(),
+          performedAt: dateKeyToNoonUtcIso(selectedDate),
         },
       },
     });
@@ -97,7 +117,8 @@ export default function WorkoutsPage() {
   const workouts = daySnapshot.workouts || [];
   const weeklyWorkoutsGoal = Number(meData?.me?.preferences?.weeklyWorkoutsGoal || 4);
   const weeklyActiveMinutesGoal = Number(meData?.me?.preferences?.weeklyActiveMinutesGoal || 180);
-  const minutesToday = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
+  const minutesOnDay = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
+  const dayLabel = selectedDate === today ? 'today' : selectedDate;
 
   const handleDeleteWorkout = async (workoutId: string) => {
     const confirmed = window.confirm('Delete this workout entry?');
@@ -137,7 +158,7 @@ export default function WorkoutsPage() {
         input: {
           fileName: file.name,
           fileContentBase64: base64Content,
-          performedAt: new Date().toISOString(),
+          performedAt: dateKeyToNoonUtcIso(selectedDate),
           notes: importNotes.trim() || null,
           intensity,
         },
@@ -156,9 +177,10 @@ export default function WorkoutsPage() {
     <AppShell>
       <div className="space-y-5">
         <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">Workout Coach</h1>} />
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <MetricCard icon={<Dumbbell className="h-4 w-4" />} label="Sessions today" value={`${workouts.length}`} />
-          <MetricCard icon={<Timer className="h-4 w-4" />} label="Minutes today" value={`${minutesToday} min`} />
+          <MetricCard icon={<Dumbbell className="h-4 w-4" />} label={`Sessions (${dayLabel})`} value={`${workouts.length}`} />
+          <MetricCard icon={<Timer className="h-4 w-4" />} label={`Minutes (${dayLabel})`} value={`${minutesOnDay} min`} />
           <MetricCard icon={<Flame className="h-4 w-4" />} label="Weekly sessions goal" value={`${weeklyWorkoutsGoal}`} />
           <MetricCard icon={<Flame className="h-4 w-4" />} label="Weekly minutes goal" value={`${weeklyActiveMinutesGoal} min`} />
         </div>
@@ -198,7 +220,25 @@ export default function WorkoutsPage() {
               />
             ) : null}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+              <div className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                <label htmlFor="workouts-date" className="block text-sm font-medium text-text-primary">
+                  Day for this log
+                  <span className="text-text-muted font-normal"> — optional</span>
+                </label>
+                <input
+                  id="workouts-date"
+                  type="date"
+                  value={selectedDate}
+                  max={today}
+                  onChange={(event) => setSelectedDate(event.target.value)}
+                  className="input-field w-full"
+                />
+                <p className="text-xs text-text-muted">
+                  Defaults to today. Change only if you are logging or importing a session for an earlier day.
+                </p>
+              </div>
+
               <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
                 <p className="text-sm font-semibold text-text-primary mb-1">Import from device file</p>
                 <p className="text-xs text-text-secondary mb-3">
@@ -322,7 +362,10 @@ export default function WorkoutsPage() {
 
           <section className="xl:col-span-7 space-y-4">
             <div className="bg-surface border border-border rounded-xl p-4 md:p-5">
-              <h2 className="text-lg font-semibold tracking-tight text-text-primary mb-4">Today summary (food + training)</h2>
+              <h2 className="text-lg font-semibold tracking-tight text-text-primary mb-4">
+                Day summary for {selectedDate}
+                {selectedDate === today ? ' (today)' : ''} — food + training
+              </h2>
               {daySnapshot.loading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-16 w-full rounded-lg" />
@@ -333,7 +376,11 @@ export default function WorkoutsPage() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <MetricCard icon={<Flame className="h-4 w-4" />} label="Net calories" value={`${summary.netCalories.toFixed(0)} kcal`} />
-                    <MetricCard icon={<Timer className="h-4 w-4" />} label="Burned today" value={`${summary.caloriesBurned.toFixed(0)} kcal`} />
+                    <MetricCard
+                      icon={<Timer className="h-4 w-4" />}
+                      label={selectedDate === today ? 'Burned today' : `Burned (${selectedDate})`}
+                      value={`${summary.caloriesBurned.toFixed(0)} kcal`}
+                    />
                     <MetricCard icon={<Dumbbell className="h-4 w-4" />} label="Protein left" value={`${Math.max(0, summary.remainingProtein).toFixed(0)} g`} />
                   </div>
                   <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
@@ -358,7 +405,10 @@ export default function WorkoutsPage() {
             </div>
 
             <div className="bg-surface border border-border rounded-xl p-4 md:p-5">
-              <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">Today workouts</h3>
+              <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">
+                Workouts for {selectedDate}
+                {selectedDate === today ? ' (today)' : ''}
+              </h3>
               {daySnapshot.loading ? (
                 <div className="space-y-2">
                   <Skeleton className="h-14 w-full rounded-lg" />
@@ -391,11 +441,16 @@ export default function WorkoutsPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-text-secondary">No workouts logged yet today.</p>
+                <p className="text-sm text-text-secondary">
+                  No workouts logged for {selectedDate}
+                  {selectedDate === today ? ' yet' : ''}.
+                </p>
               )}
             </div>
           </section>
         </div>
+
+        <WeeklyWorkoutsTrainingSection weekEndDate={today} />
       </div>
     </AppShell>
   );

@@ -10,6 +10,9 @@ import {
 export const WORKOUTS_DAY_LIMIT = 50;
 export const CHAT_HISTORY_LIMIT = 40;
 
+/** Aligns manual logs with daily rollups (see backend getDayRangeByDateKey). */
+export const dateKeyToNoonUtcIso = (dateKey: string): string => `${dateKey}T12:00:00.000Z`;
+
 export const buildDayRefetchQueries = (date: string): Array<{ query: DocumentNode; variables: Record<string, unknown> }> => [
   { query: DAILY_STATS_QUERY, variables: { date } },
   { query: MY_WORKOUTS_QUERY, variables: { date, limit: WORKOUTS_DAY_LIMIT, offset: 0 } },

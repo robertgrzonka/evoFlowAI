@@ -8,6 +8,7 @@ import { ArrowLeft, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { useMutation } from '@apollo/client';
 import { LOGIN_MUTATION } from '@/lib/graphql/mutations';
 import { setAuthToken } from '@/lib/auth-token';
+import { resetApolloClientAfterAuthChange } from '@/lib/apollo-client';
 import { ButtonSpinner } from '@/components/ui/loading';
 import EvoMark from '@/components/EvoMark';
 import { appToast } from '@/lib/app-toast';
@@ -20,10 +21,10 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   
   const [login, { loading }] = useMutation(LOGIN_MUTATION, {
-    onCompleted: (data) => {
+    onCompleted: async (data) => {
       setAuthToken(data.login.token, rememberMe);
+      await resetApolloClientAfterAuthChange();
       appToast.success('Welcome back!', 'You are now logged in to evoFlowAI.');
-      // Redirect to dashboard
       router.push('/dashboard');
     },
     onError: (error) => {

@@ -27,6 +27,7 @@ import {
   UPDATE_PREFERENCES_MUTATION,
 } from '@/lib/graphql/mutations';
 import { clearAuthToken } from '@/lib/auth-token';
+import { clearApolloClientCache } from '@/lib/apollo-client';
 import { ButtonSpinner, PageLoader } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries } from '@/lib/day-data';
@@ -74,8 +75,11 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!error) return;
     appToast.error('Session expired', 'Please log in again.');
-    clearAuthToken();
-    router.push('/login');
+    void (async () => {
+      clearAuthToken();
+      await clearApolloClientCache();
+      router.push('/login');
+    })();
   }, [error, router]);
 
   const handleSaveSettings = async () => {
@@ -114,8 +118,9 @@ export default function SettingsPage() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearAuthToken();
+    await clearApolloClientCache();
     router.push('/');
   };
 

@@ -6,6 +6,7 @@ import { useMutation, useQuery } from '@apollo/client';
 import { ME_QUERY } from '@/lib/graphql/queries';
 import { SET_GOALS_WITH_AI_MUTATION, UPDATE_PREFERENCES_MUTATION } from '@/lib/graphql/mutations';
 import { clearAuthToken } from '@/lib/auth-token';
+import { clearApolloClientCache } from '@/lib/apollo-client';
 import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
@@ -49,8 +50,11 @@ export default function GoalsPage() {
   useEffect(() => {
     if (!error) return;
     appToast.error('Session expired', 'Please login again.');
-    clearAuthToken();
-    router.push('/login');
+    void (async () => {
+      clearAuthToken();
+      await clearApolloClientCache();
+      router.push('/login');
+    })();
   }, [error, router]);
 
   const handleSaveGoals = async () => {

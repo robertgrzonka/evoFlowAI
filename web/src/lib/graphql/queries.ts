@@ -50,6 +50,101 @@ export const MY_FOOD_ITEMS_QUERY = gql`
   }
 `;
 
+export const WEEKLY_MEALS_NUTRITION_QUERY = gql`
+  query WeeklyMealsNutrition($endDate: String) {
+    weeklyMealsNutrition(endDate: $endDate) {
+      weekStart
+      weekEnd
+      daysWithMeals
+      totalMealsLogged
+      goals {
+        calories
+        protein
+        carbs
+        fat
+      }
+      totals {
+        calories
+        protein
+        carbs
+        fat
+      }
+      averages {
+        calories
+        protein
+        carbs
+        fat
+      }
+      days {
+        date
+        calories
+        protein
+        carbs
+        fat
+        mealCount
+      }
+    }
+  }
+`;
+
+export const WEEKLY_MEALS_COACH_QUERY = gql`
+  query WeeklyMealsCoachInsight($endDate: String) {
+    weeklyMealsCoachInsight(endDate: $endDate) {
+      headline
+      summary
+      focusAreas
+      improvements
+      closingLine
+    }
+  }
+`;
+
+export const WEEKLY_WORKOUTS_TRAINING_QUERY = gql`
+  query WeeklyWorkoutsTraining($endDate: String) {
+    weeklyWorkoutsTraining(endDate: $endDate) {
+      weekStart
+      weekEnd
+      daysWithWorkouts
+      totalSessions
+      goals {
+        weeklySessionsTarget
+        weeklyActiveMinutesTarget
+      }
+      totals {
+        minutes
+        caloriesBurned
+        sessions
+      }
+      averages {
+        minutes
+        caloriesBurned
+        sessions
+      }
+      days {
+        date
+        sessionCount
+        totalMinutes
+        caloriesBurned
+        lowMinutes
+        mediumMinutes
+        highMinutes
+      }
+    }
+  }
+`;
+
+export const WEEKLY_WORKOUTS_COACH_QUERY = gql`
+  query WeeklyWorkoutsCoachInsight($endDate: String) {
+    weeklyWorkoutsCoachInsight(endDate: $endDate) {
+      headline
+      summary
+      focusAreas
+      improvements
+      closingLine
+    }
+  }
+`;
+
 export const DAILY_STATS_QUERY = gql`
   query DailyStats($date: String!) {
     dailyStats(date: $date) {
@@ -208,6 +303,7 @@ export const WEEKLY_EVO_REVIEW_QUERY = gql`
       isCompleteWeek
       summary
       highlights
+      proTip
       nutritionScore
       trainingScore
       consistencyScore

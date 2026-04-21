@@ -164,4 +164,28 @@ export function ApolloProvider({ children }: { children: ReactNode }) {
   return <Provider client={client}>{children}</Provider>;
 }
 
+/**
+ * After setAuthToken (login/register): drop cached queries from the previous user and refetch active ones with the new JWT.
+ */
+export async function resetApolloClientAfterAuthChange(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    await client.resetStore();
+  } catch (err) {
+    console.warn('[Apollo] resetStore after auth change failed', err);
+  }
+}
+
+/**
+ * After clearAuthToken (logout/session expiry): remove cached user data without refetching (no token).
+ */
+export async function clearApolloClientCache(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    await client.clearStore();
+  } catch (err) {
+    console.warn('[Apollo] clearStore failed', err);
+  }
+}
+
 export { client };

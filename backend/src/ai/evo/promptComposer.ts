@@ -78,7 +78,7 @@ const detectTurnLanguage = (latestUserMessage?: string): 'Polish' | 'English' =>
     return 'Polish';
   }
 
-  const polishSignals = [
+  const polishPhrases = [
     'chce',
     'chcę',
     'jest',
@@ -90,11 +90,11 @@ const detectTurnLanguage = (latestUserMessage?: string): 'Polish' | 'English' =>
     'kalorie',
     'białko',
     'kroki',
-    'nie',
-    'tak',
     'moze',
     'może',
   ];
+  /** Short tokens must be whole words — e.g. avoid matching "nie" inside "nutrition". */
+  const polishShortWords = ['nie', 'tak'];
   const englishSignals = [
     'today',
     'calories',
@@ -107,16 +107,22 @@ const detectTurnLanguage = (latestUserMessage?: string): 'Polish' | 'English' =>
     'how',
   ];
 
-  const polishScore = polishSignals.reduce((acc, token) => (text.includes(token) ? acc + 1 : acc), 0);
+  let polishScore = polishPhrases.reduce((acc, token) => (text.includes(token) ? acc + 1 : acc), 0);
+  for (const w of polishShortWords) {
+    if (new RegExp(`(^|[^a-ząćęłńóśźż])${w}([^a-ząćęłńóśźż]|$)`, 'i').test(text)) {
+      polishScore += 1;
+    }
+  }
   const englishScore = englishSignals.reduce((acc, token) => (text.includes(token) ? acc + 1 : acc), 0);
-  return polishScore >= englishScore ? 'Polish' : 'English';
+  return polishScore > englishScore ? 'Polish' : 'English';
 };
 
 export const composeEvoSystemPrompt = (input: EvoPromptComposeInput): string => {
   const modeInstructions = evoResponseModeInstructions[input.mode];
   const toneInstructions = evoToneModifiers[input.tone];
   const humorDisabled = shouldDisableHumor(input.mode, input.latestUserMessage);
-  const turnLanguage = detectTurnLanguage(input.latestUserMessage);
+  /** App dashboard insight surfaces are English; chat keeps adaptive language. */
+  const turnLanguage = input.channel === 'insight' ? 'English' : detectTurnLanguage(input.latestUserMessage);
   const humorInstruction = humorDisabled
     ? 'Humor disabled for this response due to sensitivity/safety context.'
     : input.includeHumor

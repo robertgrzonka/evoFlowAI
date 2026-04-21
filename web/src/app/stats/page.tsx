@@ -9,6 +9,7 @@ import {
   WEEKLY_EVO_REVIEW_QUERY,
 } from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
+import { clearApolloClientCache } from '@/lib/apollo-client';
 import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import ContextAICoach from '@/components/ContextAICoach';
@@ -72,8 +73,11 @@ export default function StatsPage() {
   useEffect(() => {
     if (!userError) return;
     appToast.error('Session expired', 'Please login again.');
-    clearAuthToken();
-    router.push('/login');
+    void (async () => {
+      clearAuthToken();
+      await clearApolloClientCache();
+      router.push('/login');
+    })();
   }, [userError, router]);
 
   useEffect(() => {
@@ -402,12 +406,18 @@ export default function StatsPage() {
                       </p>
                     </div>
                   ) : null}
-                  <p className="text-sm text-text-secondary mb-3">{weeklyReview.summary}</p>
+                  <p className="text-sm text-text-secondary mb-3 leading-relaxed whitespace-pre-wrap">{weeklyReview.summary}</p>
                   <div className="grid grid-cols-3 gap-2 mb-2">
                     <WorkoutSummaryCard icon={<Camera className="h-4 w-4 text-info-400" />} label="Nutrition" value={`${weeklyReview.nutritionScore}/100`} />
                     <WorkoutSummaryCard icon={<Dumbbell className="h-4 w-4 text-amber-300" />} label="Training" value={`${weeklyReview.trainingScore}/100`} />
                     <WorkoutSummaryCard icon={<Flame className="h-4 w-4 text-success-400" />} label="Consistency" value={`${weeklyReview.consistencyScore}/100`} />
                   </div>
+                  {weeklyReview.proTip ? (
+                    <div className="rounded-lg border border-primary-500/25 bg-primary-500/5 px-3 py-2.5 mb-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-primary-200 mb-1">Pro tip</p>
+                      <p className="text-xs text-text-primary leading-snug">{weeklyReview.proTip}</p>
+                    </div>
+                  ) : null}
                 </section>
               ) : (
                 <section className="bg-surface rounded-xl border border-border p-4">

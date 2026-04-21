@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ME_QUERY } from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
+import { clearApolloClientCache } from '@/lib/apollo-client';
 import EvoMark from '@/components/EvoMark';
 import EvoChatDock from '@/components/EvoChatDock';
 import ProBadge from '@/components/ui/atoms/ProBadge';
@@ -72,8 +73,9 @@ export default function AppShell({ children }: AppShellProps) {
     };
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearAuthToken();
+    await clearApolloClientCache();
     router.push('/');
   };
 

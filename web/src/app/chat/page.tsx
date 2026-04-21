@@ -12,6 +12,7 @@ import {
   NEW_CHAT_MESSAGE_SUBSCRIPTION,
 } from '@/lib/graphql/queries';
 import { clearAuthToken } from '@/lib/auth-token';
+import { clearApolloClientCache } from '@/lib/apollo-client';
 import AppShell from '@/components/AppShell';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import ChatMarkdown from '@/components/ChatMarkdown';
@@ -77,8 +78,11 @@ export default function ChatPage() {
   useEffect(() => {
     if (!historyError) return;
     appToast.error('Session expired', 'Please log in again.');
-    clearAuthToken();
-    router.push('/login');
+    void (async () => {
+      clearAuthToken();
+      await clearApolloClientCache();
+      router.push('/login');
+    })();
   }, [historyError, router]);
 
   useEffect(() => {

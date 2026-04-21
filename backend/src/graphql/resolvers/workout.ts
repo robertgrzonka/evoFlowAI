@@ -9,16 +9,7 @@ import { OpenAIService } from '../../services/openaiService';
 import { GarminStepService } from '../../services/garminStepService';
 import { parseWorkoutFile } from '../../services/workoutImportService';
 import { getDailyMetrics, getDayRangeByDateKey, normalizeDateKey } from '../../utils/dailyMetrics';
-
-const toWeekRange = (endDateInput?: string) => {
-  const endDate = endDateInput ? new Date(endDateInput) : new Date();
-  endDate.setHours(0, 0, 0, 0);
-  const startDate = new Date(endDate);
-  startDate.setDate(startDate.getDate() - 6);
-  const nextDay = new Date(endDate);
-  nextDay.setDate(nextDay.getDate() + 1);
-  return { startDate, endDate, nextDay };
-};
+import { toWeekRange } from '../../utils/weekRange';
 
 const parseIntensity = (value: string) => value.toLowerCase();
 const openAIService = new OpenAIService();
@@ -197,6 +188,60 @@ const buildConcreteDashboardInsight = (input: {
 };
 
 const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+
+type WeeklyProTipInput = {
+  nutritionScore: number;
+  trainingScore: number;
+  consistencyScore: number;
+  avgDailyProtein: number;
+  proteinGoal: number;
+  workoutsCount: number;
+  weeklyWorkoutsGoal: number;
+  totalSteps: number;
+  highlights: string[];
+};
+
+const buildFallbackWeeklyProTip = (prefs: any, ctx: WeeklyProTipInput): string => {
+  const proactivity = String(prefs?.proactivityLevel || 'MEDIUM').toUpperCase();
+  const direct = String(prefs?.coachingTone || 'SUPPORTIVE').toUpperCase() === 'DIRECT';
+  const goal = String(prefs?.primaryGoal || 'MAINTENANCE');
+  const restrictions = Array.isArray(prefs?.dietaryRestrictions) ? prefs.dietaryRestrictions.filter(Boolean) : [];
+
+  const weakest =
+    ctx.nutritionScore <= ctx.trainingScore && ctx.nutritionScore <= ctx.consistencyScore
+      ? 'nutrition'
+      : ctx.trainingScore <= ctx.consistencyScore
+        ? 'training'
+        : 'consistency';
+
+  let core = '';
+
+  if (restrictions.length > 0) {
+    core = `Build one repeatable dinner that satisfies ${restrictions.slice(0, 2).join(' + ')} and hits ~${Math.round(
+      ctx.proteinGoal * 0.35
+    )}g protein—duplicate it twice this week so ${goal.replace('_', ' ').toLowerCase()} stays on autopilot.`;
+  } else if (weakest === 'nutrition' && ctx.avgDailyProtein < ctx.proteinGoal * 0.88) {
+    core = `Your protein averaged ${Math.round(ctx.avgDailyProtein)}g vs ${ctx.proteinGoal}g—batch one lean protein on Sunday and reuse it Mon/Wed/Fri${
+      goal === 'FAT_LOSS' ? ' (keep Fri portions tighter)' : ''
+    }.`;
+  } else if (weakest === 'training') {
+    core = `You logged ${ctx.workoutsCount} sessions vs a ${ctx.weeklyWorkoutsGoal}/week target—book two ${ctx.totalSteps > 14000 ? 'shorter strength' : 'brisk movement + strength'} blocks on fixed weekdays before tweaking macros.`;
+  } else {
+    core = `Consistency is the bottleneck—same two anchors daily for five days: log lunch + log your hardest training block; skip optional snacks in the app until that rhythm holds.`;
+  }
+
+  if (proactivity === 'LOW') {
+    core = `${core} (Micro-step version: do only the first half this week.)`;
+  } else if (proactivity === 'HIGH') {
+    core = `${core} (High-agency version: add a 10-minute Thursday audit against these three highlights.)`;
+  }
+
+  if (direct) {
+    return core;
+  }
+  return `Gentle nudge: ${core}`;
+};
+
 const ENV_GARMIN_API_TOKEN = process.env.GARMIN_API_TOKEN || '';
 const GARMIN_PROVIDER = 'GARMIN' as const;
 
@@ -208,6 +253,212 @@ const formatStepSyncStatus = (connection: any) => ({
   lastSyncedAt: connection?.lastSyncedAt || null,
   lastError: connection?.lastError || null,
 });
+
+type WeeklyWorkoutsDayAgg = {
+  date: string;
+  sessionCount: number;
+  totalMinutes: number;
+  caloriesBurned: number;
+  lowMinutes: number;
+  mediumMinutes: number;
+  highMinutes: number;
+};
+
+type WeeklyWorkoutsPayload = {
+  weekStart: string;
+  weekEnd: string;
+  days: WeeklyWorkoutsDayAgg[];
+  daysWithWorkouts: number;
+  totalSessions: number;
+  goals: { weeklySessionsTarget: number; weeklyActiveMinutesTarget: number };
+  totals: { minutes: number; caloriesBurned: number; sessions: number };
+  averages: { minutes: number; caloriesBurned: number; sessions: number };
+};
+
+const bucketIntensityMinutes = (intensityRaw: string | undefined, minutes: number) => {
+  const int = String(intensityRaw || 'medium').toLowerCase();
+  if (int === 'high') return { low: 0, medium: 0, high: minutes };
+  if (int === 'low') return { low: minutes, medium: 0, high: 0 };
+  return { low: 0, medium: minutes, high: 0 };
+};
+
+const loadWeeklyWorkoutsTraining = async (context: Context, endDateInput?: string | null): Promise<WeeklyWorkoutsPayload> => {
+  const { startDate, endDate, nextDay } = toWeekRange(endDateInput || undefined);
+
+  const sessions = await Workout.find({
+    userId: context.user.id,
+    performedAt: { $gte: startDate, $lt: nextDay },
+  }).lean();
+
+  const dateKeys: string[] = [];
+  const cursor = new Date(startDate);
+  for (let i = 0; i < 7; i++) {
+    dateKeys.push(cursor.toISOString().split('T')[0]);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  type Bucket = {
+    sessionCount: number;
+    totalMinutes: number;
+    caloriesBurned: number;
+    lowMinutes: number;
+    mediumMinutes: number;
+    highMinutes: number;
+  };
+
+  const byKey = new Map<string, Bucket>();
+  for (const key of dateKeys) {
+    byKey.set(key, {
+      sessionCount: 0,
+      totalMinutes: 0,
+      caloriesBurned: 0,
+      lowMinutes: 0,
+      mediumMinutes: 0,
+      highMinutes: 0,
+    });
+  }
+
+  for (const w of sessions) {
+    const key = new Date(w.performedAt as Date).toISOString().split('T')[0];
+    const bucket = byKey.get(key);
+    if (!bucket) continue;
+    const mins = Number(w.durationMinutes || 0);
+    const kcal = Number(w.caloriesBurned || 0);
+    const split = bucketIntensityMinutes(w.intensity as string | undefined, mins);
+    bucket.sessionCount += 1;
+    bucket.totalMinutes += mins;
+    bucket.caloriesBurned += kcal;
+    bucket.lowMinutes += split.low;
+    bucket.mediumMinutes += split.medium;
+    bucket.highMinutes += split.high;
+  }
+
+  const days: WeeklyWorkoutsDayAgg[] = dateKeys.map((date) => {
+    const b = byKey.get(date)!;
+    return {
+      date,
+      sessionCount: b.sessionCount,
+      totalMinutes: b.totalMinutes,
+      caloriesBurned: b.caloriesBurned,
+      lowMinutes: b.lowMinutes,
+      mediumMinutes: b.mediumMinutes,
+      highMinutes: b.highMinutes,
+    };
+  });
+
+  const prefs = context.user.preferences;
+  const weeklySessionsTarget = Number(prefs?.weeklyWorkoutsGoal || 4);
+  const weeklyActiveMinutesTarget = Number(prefs?.weeklyActiveMinutesGoal || 180);
+
+  let totalMinutes = 0;
+  let totalCaloriesBurned = 0;
+  let totalSessions = 0;
+  let daysWithWorkouts = 0;
+  for (const d of days) {
+    totalMinutes += d.totalMinutes;
+    totalCaloriesBurned += d.caloriesBurned;
+    totalSessions += d.sessionCount;
+    if (d.sessionCount > 0) daysWithWorkouts += 1;
+  }
+
+  const periodDays = 7;
+  const averages = {
+    minutes: totalMinutes / periodDays,
+    caloriesBurned: totalCaloriesBurned / periodDays,
+    sessions: totalSessions / periodDays,
+  };
+
+  return {
+    weekStart: dateKeys[0] || startDate.toISOString().split('T')[0],
+    weekEnd: dateKeys[6] || endDate.toISOString().split('T')[0],
+    days,
+    daysWithWorkouts,
+    totalSessions,
+    goals: {
+      weeklySessionsTarget,
+      weeklyActiveMinutesTarget,
+    },
+    totals: {
+      minutes: totalMinutes,
+      caloriesBurned: totalCaloriesBurned,
+      sessions: totalSessions,
+    },
+    averages,
+  };
+};
+
+const buildFallbackWeeklyWorkoutsCoach = (prefs: any, payload: WeeklyWorkoutsPayload) => {
+  const goal = String(prefs?.primaryGoal || 'MAINTENANCE');
+  const sessionsTarget = payload.goals.weeklySessionsTarget;
+  const minutesTarget = payload.goals.weeklyActiveMinutesTarget;
+  const totalM = payload.totals.minutes;
+  const totalS = payload.totals.sessions;
+  const highShare =
+    totalM > 0 ? payload.days.reduce((acc, d) => acc + d.highMinutes, 0) / totalM : 0;
+
+  const headline =
+    payload.daysWithWorkouts === 0
+      ? 'No training signal this week yet'
+      : totalS < sessionsTarget * 0.6
+        ? 'Volume is behind your weekly target'
+        : highShare > 0.55
+          ? 'Intensity-heavy week — watch recovery'
+          : 'Training week looks balanced';
+
+  const summary =
+    payload.daysWithWorkouts === 0
+      ? 'Zero sessions in this 7-day window. Once you log a few workouts, Evo can read streaks, intensity mix, and how volume tracks against your goals.'
+      : `You logged ${totalS} sessions and ~${Math.round(totalM)} training minutes vs targets of ${sessionsTarget} sessions and ${minutesTarget} active minutes per week. ${
+          highShare > 0.5 ? 'A big share of minutes landed in high intensity—watch joint stress and sleep.' : 'Intensity spread looks workable for steady progression.'
+        }`;
+
+  const focusAreas: string[] = [];
+  focusAreas.push(
+    payload.daysWithWorkouts < 4
+      ? `Only ${payload.daysWithWorkouts}/7 days had movement—pattern risk (weekend pile-ups) stays invisible.`
+      : `Consistency across ${payload.daysWithWorkouts} active days is your main signal for ${goal.replace('_', ' ').toLowerCase()}.`
+  );
+  focusAreas.push(
+    totalM < minutesTarget * 0.5
+      ? `Total minutes (~${Math.round(totalM)}) are well under ${minutesTarget}/week—either deliberate deload or under-logging.`
+      : `Total minutes (~${Math.round(totalM)}) vs ${minutesTarget}/week target frames how aggressive next week can be.`
+  );
+  focusAreas.push(
+    highShare > 0.45
+      ? `${Math.round(highShare * 100)}% of time in high intensity—pair with mobility or easy cardio if joints feel cranky.`
+      : 'Intensity mix has headroom to add one harder block without blowing recovery.'
+  );
+
+  const improvements: string[] = [];
+  improvements.push(
+    totalS < sessionsTarget
+      ? `Book ${Math.min(3, Math.max(1, sessionsTarget - totalS))} fixed sessions next week before touching nutrition targets.`
+      : 'Keep session count; upgrade one slot with a measurable progression (load, reps, or tempo).'
+  );
+  improvements.push(
+    totalM < minutesTarget * 0.65
+      ? `Add ${Math.max(10, Math.round(minutesTarget / sessionsTarget - 20))}+ minutes to your shortest session twice this week.`
+      : 'Add one 20-minute easy zone-2 finisher after strength for aerobic base without extra joint load.'
+  );
+  improvements.push(
+    goal === 'FAT_LOSS' || goal === 'STRENGTH'
+      ? 'Log RPE or top set each session so next week’s progression is honest, not guessed.'
+      : 'Rotate one new movement pattern weekly to keep adherence high without boredom.'
+  );
+
+  const closingLine =
+    payload.daysWithWorkouts === 0
+      ? 'One logged session beats a perfect plan—start with something you will actually repeat.'
+      : 'Progress loves a boring rhythm: repeat the structure, nudge the details.';
+
+  return {
+    headline,
+    summary,
+    focusAreas: focusAreas.slice(0, 3),
+    improvements: improvements.slice(0, 3),
+    closingLine,
+  };
+};
 
 export const workoutResolvers = {
   Workout: {
@@ -445,7 +696,14 @@ export const workoutResolvers = {
       const periodDays = availableDays;
       const periodRatio = Math.min(1, periodDays / 7);
 
+      const prefs = context.user.preferences;
+      const totalStepsTracked = activityDays.reduce((acc, day) => acc + Number(day.steps || 0), 0);
+
       if (trackedDays === 0) {
+        const directTone = String(prefs?.coachingTone || 'SUPPORTIVE').toUpperCase() === 'DIRECT';
+        const emptyProTip = directTone
+          ? 'No data this window: log one meal and one training block before the week rolls—Evo cannot optimize ghosts.'
+          : 'Start tiny: one honest meal log and one movement log unlocks a weekly story worth optimizing next Sunday.';
         return {
           startDate: startDate.toISOString().split('T')[0],
           endDate: weekEndDate.toISOString().split('T')[0],
@@ -458,6 +716,7 @@ export const workoutResolvers = {
             `No workouts captured in the current ${availableDays}/7-day window yet.`,
             'Add at least one tracked day so Evo can generate a practical weekly trend.',
           ],
+          proTip: emptyProTip,
           nutritionScore: 0,
           trainingScore: 0,
           consistencyScore: 0,
@@ -484,10 +743,10 @@ export const workoutResolvers = {
       const highlights = [
         `Calories net for current ${availableDays}/7-day window: ${Math.round(netWeeklyCalories)} kcal vs target ${Math.round(targetPeriodCalories)} kcal.`,
         `Avg daily protein: ${Math.round(avgDailyProtein)}g (goal ${proteinGoal}g).`,
-        `Training volume: ${workouts.length} sessions, ${Math.round(totalMinutes)} active minutes, and ${activityDays.reduce((acc, day) => acc + Number(day.steps || 0), 0)} tracked steps.`,
+        `Training volume: ${workouts.length} sessions, ${Math.round(totalMinutes)} active minutes, and ${totalStepsTracked} tracked steps.`,
       ];
 
-      const summary = isCompleteWeek
+      const baselineSummary = isCompleteWeek
         ? [
             `Weekly review: nutrition score ${nutritionScore}/100, training score ${trainingScore}/100, consistency ${consistencyScore}/100.`,
             nutritionScore >= 75
@@ -507,6 +766,47 @@ export const workoutResolvers = {
               : 'Try adding one focused session or more active minutes before week closes.',
           ].join(' ');
 
+      let summary = baselineSummary;
+      let proTip = buildFallbackWeeklyProTip(prefs, {
+        nutritionScore,
+        trainingScore,
+        consistencyScore,
+        avgDailyProtein,
+        proteinGoal,
+        workoutsCount: workouts.length,
+        weeklyWorkoutsGoal: weeklyWorkoutGoal,
+        totalSteps: totalStepsTracked,
+        highlights,
+      });
+
+      try {
+        const aiNarrative = await openAIService.generateWeeklyEvoReviewNarrative({
+          userName: context.user.name,
+          coachingTone: prefs?.coachingTone,
+          proactivityLevel: prefs?.proactivityLevel,
+          primaryGoal: prefs?.primaryGoal,
+          activityLevel: prefs?.activityLevel,
+          dietaryRestrictions: prefs?.dietaryRestrictions,
+          weightKg: typeof prefs?.weightKg === 'number' ? prefs.weightKg : undefined,
+          weeklyWorkoutsGoal: weeklyWorkoutGoal,
+          weeklyActiveMinutesGoal: weeklyMinutesGoal,
+          isCompleteWeek,
+          availableDays,
+          trackedDays,
+          nutritionScore,
+          trainingScore,
+          consistencyScore,
+          highlightLines: highlights,
+          weekStart: startDate.toISOString().split('T')[0],
+          weekEnd: weekEndDate.toISOString().split('T')[0],
+          baselineSummary,
+        });
+        summary = aiNarrative.summary;
+        proTip = aiNarrative.proTip;
+      } catch (error) {
+        console.error('weeklyEvoReview narrative error:', error);
+      }
+
       return {
         startDate: startDate.toISOString().split('T')[0],
         endDate: weekEndDate.toISOString().split('T')[0],
@@ -515,11 +815,55 @@ export const workoutResolvers = {
         isCompleteWeek,
         summary,
         highlights,
+        proTip,
         nutritionScore,
         trainingScore,
         consistencyScore,
       };
     },
+
+    weeklyWorkoutsTraining: async (_: any, { endDate }: { endDate?: string | null }, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+      return loadWeeklyWorkoutsTraining(context, endDate);
+    },
+
+    weeklyWorkoutsCoachInsight: async (_: any, { endDate }: { endDate?: string | null }, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+
+      const payload = await loadWeeklyWorkoutsTraining(context, endDate);
+      const prefs = context.user.preferences;
+
+      if (payload.daysWithWorkouts === 0) {
+        return buildFallbackWeeklyWorkoutsCoach(prefs, payload);
+      }
+
+      try {
+        return await openAIService.generateWeeklyWorkoutsCoachInsight({
+          weekStart: payload.weekStart,
+          weekEnd: payload.weekEnd,
+          userName: context.user.name,
+          primaryGoal: prefs?.primaryGoal,
+          coachingTone: prefs?.coachingTone,
+          proactivityLevel: prefs?.proactivityLevel,
+          activityLevel: prefs?.activityLevel,
+          weeklyWorkoutsGoal: payload.goals.weeklySessionsTarget,
+          weeklyActiveMinutesGoal: payload.goals.weeklyActiveMinutesTarget,
+          daysWithWorkouts: payload.daysWithWorkouts,
+          totalSessions: payload.totalSessions,
+          days: payload.days,
+          averages: payload.averages,
+          totals: payload.totals,
+        });
+      } catch (error) {
+        console.error('weeklyWorkoutsCoachInsight AI error:', error);
+        return buildFallbackWeeklyWorkoutsCoach(prefs, payload);
+      }
+    },
+
     stepSyncStatus: async (_: any, { provider }: { provider: 'GARMIN' }, context: Context) => {
       if (!context.user) {
         throw new AuthenticationError('You must be logged in');
