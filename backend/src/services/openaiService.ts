@@ -8,6 +8,7 @@ import {
   resolveToneAndProactivity,
 } from '../ai/evo';
 import { resolveCoachProDailyProteinFloor } from '../utils/coachProNutrition';
+import { normalizeAppLocale } from '../utils/appLocale';
 
 type FoodAnalysisJson = {
   foodName: string;
@@ -765,7 +766,7 @@ export class OpenAIService {
 
   async suggestGoalsFromPrompt(
     prompt: string,
-    userContext: { dailyCalorieGoal?: number; activityLevel?: string }
+    userContext: { dailyCalorieGoal?: number; activityLevel?: string; appLocale?: string }
   ): Promise<{ dailyCalorieGoal: number; activityLevel: string; message: string }> {
     this.ensureInitialized();
 
@@ -776,9 +777,11 @@ export class OpenAIService {
         proactivity: 'medium',
         channel: 'summary',
         includeHumor: false,
+        latestUserMessage: prompt,
         userContext: {
           dailyCalorieGoal: userContext.dailyCalorieGoal,
           activityLevel: userContext.activityLevel,
+          appLocale: normalizeAppLocale(userContext.appLocale),
         },
       });
       const aiPrompt = `
@@ -897,6 +900,7 @@ Return ONLY valid JSON:
     estimatedMealsLeft?: number;
     mealDetails?: string[];
     workoutDetails?: string[];
+    appLocale?: string;
   }): Promise<{ summary: string; tips: string[] }> {
     this.ensureInitialized();
 
@@ -914,6 +918,7 @@ Return ONLY valid JSON:
         primaryGoal: input.primaryGoal,
         dailyCalorieGoal: input.calorieGoal,
         proteinGoal: input.proteinGoal,
+        appLocale: normalizeAppLocale(input.appLocale),
         todayStats: {
           calories: input.consumedCalories,
           protein: input.consumedProtein,
@@ -1042,6 +1047,7 @@ Rules:
     }>;
     averages: { calories: number; protein: number; carbs: number; fat: number };
     totals: { calories: number; protein: number; carbs: number; fat: number };
+    appLocale?: string;
   }): Promise<{
     headline: string;
     summary: string;
@@ -1068,6 +1074,7 @@ Rules:
         proteinGoal: input.proteinGoal,
         carbsGoal: input.carbsGoal,
         fatGoal: input.fatGoal,
+        appLocale: normalizeAppLocale(input.appLocale),
       },
     });
 
@@ -1175,6 +1182,7 @@ Rules:
     }>;
     averages: { minutes: number; caloriesBurned: number; sessions: number };
     totals: { minutes: number; caloriesBurned: number; sessions: number };
+    appLocale?: string;
   }): Promise<{
     headline: string;
     summary: string;
@@ -1202,6 +1210,7 @@ Rules:
         activityLevel: input.activityLevel,
         weeklyWorkoutsGoal: input.weeklyWorkoutsGoal,
         weeklyActiveMinutesGoal: input.weeklyActiveMinutesGoal,
+        appLocale: normalizeAppLocale(input.appLocale),
       },
     });
 
@@ -1306,6 +1315,7 @@ Rules:
     weekStart: string;
     weekEnd: string;
     baselineSummary: string;
+    appLocale?: string;
   }): Promise<{ summary: string; proTip: string }> {
     this.ensureInitialized();
 
@@ -1330,6 +1340,7 @@ Rules:
         weightKg: input.weightKg,
         weeklyWorkoutsGoal: input.weeklyWorkoutsGoal,
         weeklyActiveMinutesGoal: input.weeklyActiveMinutesGoal,
+        appLocale: normalizeAppLocale(input.appLocale),
       },
       latestUserMessage: 'Weekly training and nutrition review.',
     });
@@ -1397,6 +1408,7 @@ Rules:
     this.ensureInitialized();
 
     const prefs = ((input.userContext || {}) as { preferences?: Record<string, unknown> }).preferences || {};
+    const coachProUiLocale = normalizeAppLocale(String((prefs as { appLocale?: string }).appLocale));
     const proteinFloor = resolveCoachProDailyProteinFloor(
       prefs as { proteinGoal?: number; weightKg?: number }
     );
@@ -1423,6 +1435,7 @@ Rules:
         ? (prefs.dietaryRestrictions as string[])
         : undefined,
       suggestedProteinGoal: weightKg ? Math.round(weightKg * 2) : undefined,
+      appLocale: coachProUiLocale,
     };
 
     const systemPrompt = composeEvoSystemPrompt({
@@ -1511,7 +1524,9 @@ PERSONALIZATION RULES
    - cuisine preference = flavor/style inspiration
    - dish preference = occasional anchor, not repeated literally
    - ingredient preference = recurring ingredient choice
-3. Never quote multilingual raw inputs directly unless they are intentionally presented as a proper dish title in English context.
+3. Never quote multilingual raw inputs directly unless they are intentionally presented as a proper dish title in ${
+      coachProUiLocale === 'pl' ? 'Polish' : 'English'
+    } context.
 4. Use hard exclusions as strict never-use rules.
 5. Use soft dislikes only if no strong alternative exists.
 
@@ -1520,7 +1535,11 @@ CULTURE / CUISINE / USER-STATED DISHES (high priority)
 2. If the user names cuisines (e.g. Polish, Italian) or dishes (e.g. potato pancakes, pierogi-style preparations), at least half of lunches and dinners in the week MUST clearly match those cuisines or dish styles (recognizable techniques, typical sides, classic combinations). Do not substitute with generic "fitness bowl" templates when the user asked for specific cultures.
 3. When multiple cuisines or dishes are listed, rotate across the week so the plan visibly varies by culture—not only by protein or carb source.
 4. Staple foods should recur as ingredients or clearly named dishes, not as a vague "healthy plate."
-5. Translate cultural anchors into natural English dish names; never paste raw non-English fragments into output.
+5. ${
+      coachProUiLocale === 'pl'
+        ? 'Tłumacz inspiracje kulturowe na naturalne nazwy potraw po polsku; nie wklejaj surowych fragmentów w obcym języku do outputu.'
+        : 'Translate cultural anchors into natural English dish names; never paste raw non-English fragments into output.'
+    }
 
 REPETITION RULES
 1. Breakfast may repeat up to 3 times per week.
@@ -1564,8 +1583,15 @@ Anti-leak rules (strict):
     currentPlanJson: string;
     action: string;
     note?: string;
+    appLocale?: string;
   }): Promise<CoachProPlanJson> {
     this.ensureInitialized();
+
+    const loc = normalizeAppLocale(input.appLocale);
+    const adaptLangRule =
+      loc === 'pl'
+        ? '- Utrzymuj spójny język polski; nie wstawiaj surowych fragmentów preferencji użytkownika do opisów posiłków.'
+        : '- Keep language clean and in English; never leak raw user preference fragments into meal descriptions.';
 
     const prompt = `
 Adjust the existing Evo Coach Pro plan contextually without rebuilding from scratch.
@@ -1582,7 +1608,7 @@ Rules:
 - Preserve realistic, appetizing meal naming rules from Evo Coach Pro.
 - Do not introduce placeholder meal names or abstract generic labels.
 - Keep response compact and focused on core weekly plan fields.
-- Keep language clean and in English; never leak raw user preference fragments into meal descriptions.
+${adaptLangRule}
     `.trim();
 
     return this.generateCoachProPlanWithContract({
@@ -1600,6 +1626,13 @@ Rules:
   }): Promise<CoachProPlanDetailsJson> {
     this.ensureInitialized();
 
+    const detailPrefs = ((input.userContext || {}) as { preferences?: Record<string, unknown> }).preferences || {};
+    const detailLoc = normalizeAppLocale(String((detailPrefs as { appLocale?: string }).appLocale));
+    const detailRule0 =
+      detailLoc === 'pl'
+        ? '0. Honor userContext.foodPreferenceSummary and setup.nutrition favorite/staple lists: ingredients and recipe style should align with stated cuisines and dishes (Polish output, no raw preference fragments in text).'
+        : '0. Honor userContext.foodPreferenceSummary and setup.nutrition favorite/staple lists: ingredients and recipe style should align with stated cuisines and dishes (English output, no raw preference fragments in text).';
+
     const prompt = `
 Enrich the provided Evo Coach Pro weekly plan with full details.
 
@@ -1614,7 +1647,7 @@ ${input.corePlanJson}
 
 Return ONLY valid JSON in the structured-output schema.
 DETAIL RULES
-0. Honor userContext.foodPreferenceSummary and setup.nutrition favorite/staple lists: ingredients and recipe style should align with stated cuisines and dishes (English output, no raw preference fragments in text).
+${detailRule0}
 1. Keep meal detail content practical and concise.
 2. Ingredients must be realistic and measurable.
 3. Recipe steps must be scannable and action-based.

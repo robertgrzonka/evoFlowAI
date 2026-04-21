@@ -39,7 +39,12 @@ const userPreferencesSchema = new Schema<UserPreferences>({
     enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
     default: 'moderate'
   },
-  notifications: { type: Boolean, default: true }
+  notifications: { type: Boolean, default: true },
+  appLocale: {
+    type: String,
+    enum: ['en', 'pl'],
+    default: 'en',
+  },
 });
 
 const userSchema = new Schema<UserDocument>({
@@ -85,7 +90,8 @@ const userSchema = new Schema<UserDocument>({
       proactivityLevel: 'medium',
       dietaryRestrictions: [],
       activityLevel: 'moderate',
-      notifications: true
+      notifications: true,
+      appLocale: 'en',
     })
   }
 }, {

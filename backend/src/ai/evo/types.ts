@@ -61,6 +61,8 @@ export type EvoUserContext = {
   todayStats?: EvoTodayStats;
   todayWorkouts?: EvoTodayWorkouts;
   todayActivity?: EvoTodayActivity;
+  /** Stored preference: UI + default Evo language (beta). */
+  appLocale?: 'en' | 'pl';
 };
 
 export type EvoPromptComposeInput = {
@@ -72,4 +74,6 @@ export type EvoPromptComposeInput = {
   latestUserMessage?: string;
   conversationChannel?: 'general' | 'coach' | 'log';
   channel?: 'chat' | 'insight' | 'summary' | 'empty_state' | 'onboarding' | 'notification';
+  /** Overrides userContext.appLocale when set (e.g. one-off prompts without full context). */
+  preferredAppLocale?: 'en' | 'pl';
 };

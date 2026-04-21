@@ -599,6 +599,7 @@ export const workoutResolvers = {
           estimatedMealsLeft,
           mealDetails,
           workoutDetails,
+          appLocale: context.user.preferences?.appLocale,
         });
 
         const summary = hasConcreteDataReference(aiInsight.summary, dayMetrics)
@@ -800,6 +801,7 @@ export const workoutResolvers = {
           weekStart: startDate.toISOString().split('T')[0],
           weekEnd: weekEndDate.toISOString().split('T')[0],
           baselineSummary,
+          appLocale: prefs?.appLocale,
         });
         summary = aiNarrative.summary;
         proTip = aiNarrative.proTip;
@@ -857,6 +859,7 @@ export const workoutResolvers = {
           days: payload.days,
           averages: payload.averages,
           totals: payload.totals,
+          appLocale: prefs?.appLocale,
         });
       } catch (error) {
         console.error('weeklyWorkoutsCoachInsight AI error:', error);

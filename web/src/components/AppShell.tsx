@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@apollo/client';
@@ -15,6 +15,8 @@ import {
   Target,
 } from 'lucide-react';
 import { ME_QUERY } from '@/lib/graphql/queries';
+import { appShellStrings } from '@/lib/i18n/app-shell-strings';
+import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { clearAuthToken } from '@/lib/auth-token';
 import { clearApolloClientCache } from '@/lib/apollo-client';
 import EvoMark from '@/components/EvoMark';
@@ -33,24 +35,37 @@ type NavItem = {
   premium?: boolean;
 };
 
-const navItems: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/chat', label: 'Evo Chat', icon: MessageSquareMore },
-  { href: '/meals', label: 'Meals', icon: NotebookPen },
-  { href: '/stats', label: 'Stats', icon: BarChart3 },
-  { href: '/workouts', label: 'Workouts', icon: Dumbbell },
-  { href: '/goals', label: 'Goals', icon: Target },
-  { href: '/settings', label: 'Settings', icon: Settings },
-];
-
-const coachProNavItem: NavItem = { href: '/coach-pro', label: 'Evo Coach Pro', premium: true };
-
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { data } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const user = data?.me;
+  const uiLocale = graphqlAppLocaleToUi(user?.preferences?.appLocale);
+  const t = appShellStrings[uiLocale];
   const [evoDockEnabled, setEvoDockEnabled] = useState(true);
+
+  const navItems: NavItem[] = useMemo(
+    () => [
+      { href: '/dashboard', label: t.navDashboard, icon: LayoutDashboard },
+      { href: '/chat', label: t.navChat, icon: MessageSquareMore },
+      { href: '/meals', label: t.navMeals, icon: NotebookPen },
+      { href: '/stats', label: t.navStats, icon: BarChart3 },
+      { href: '/workouts', label: t.navWorkouts, icon: Dumbbell },
+      { href: '/goals', label: t.navGoals, icon: Target },
+      { href: '/settings', label: t.navSettings, icon: Settings },
+    ],
+    [t]
+  );
+
+  const coachProNavItem: NavItem = useMemo(
+    () => ({ href: '/coach-pro', label: t.navCoachPro, premium: true }),
+    [t]
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.lang = uiLocale === 'pl' ? 'pl' : 'en';
+  }, [uiLocale]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -143,11 +158,11 @@ export default function AppShell({ children }: AppShellProps) {
           </nav>
 
           <div className="mt-3 rounded-lg border border-border bg-surface p-3">
-            <p className="text-xs text-text-muted">Logged in as</p>
+            <p className="text-xs text-text-muted">{t.loggedInAs}</p>
             <p className="text-sm text-text-primary mt-1 truncate">{user?.name || user?.email || 'User'}</p>
             <button onClick={handleLogout} className="btn-secondary w-full mt-3 inline-flex items-center justify-center gap-2">
               <LogOut className="h-4 w-4" />
-              Logout
+              {t.logout}
             </button>
           </div>
         </aside>

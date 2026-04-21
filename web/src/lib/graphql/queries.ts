@@ -22,6 +22,7 @@ export const ME_QUERY = gql`
         dietaryRestrictions
         activityLevel
         notifications
+        appLocale
       }
     }
   }

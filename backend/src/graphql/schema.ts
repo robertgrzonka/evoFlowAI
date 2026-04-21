@@ -27,6 +27,8 @@ export const typeDefs = gql`
     dietaryRestrictions: [String!]!
     activityLevel: ActivityLevel!
     notifications: Boolean!
+    """UI + Evo insights language (beta)."""
+    appLocale: AppLocale!
   }
 
   enum ActivityLevel {
@@ -53,6 +55,11 @@ export const typeDefs = gql`
     LOW
     MEDIUM
     HIGH
+  }
+
+  enum AppLocale {
+    EN
+    PL
   }
 
   type NutritionInfo {
@@ -557,6 +564,7 @@ export const typeDefs = gql`
     dietaryRestrictions: [String!]
     activityLevel: ActivityLevel
     notifications: Boolean
+    appLocale: AppLocale
   }
 
   input SetGoalsWithAIInput {

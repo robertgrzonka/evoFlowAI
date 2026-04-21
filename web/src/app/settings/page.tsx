@@ -33,6 +33,8 @@ import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries } from '@/lib/day-data';
 import { formatPrimaryGoal } from '@/lib/formatters';
 import { AISectionHeader, EvoHintCard } from '@/components/evo';
+import { settingsPageStrings } from '@/lib/i18n/settings-strings';
+import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -43,6 +45,7 @@ export default function SettingsPage() {
   const [heightCm, setHeightCm] = useState('');
   const [coachingTone, setCoachingTone] = useState<'SUPPORTIVE' | 'DIRECT'>('SUPPORTIVE');
   const [proactivityLevel, setProactivityLevel] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
+  const [appLocale, setAppLocale] = useState<'EN' | 'PL'>('EN');
   const [garminToken, setGarminToken] = useState('');
 
   const { data, loading, error } = useQuery(ME_QUERY);
@@ -64,6 +67,7 @@ export default function SettingsPage() {
     setHeightCm(data.me.preferences.heightCm ? String(data.me.preferences.heightCm) : '');
     setCoachingTone(String(data.me.preferences.coachingTone || 'SUPPORTIVE').toUpperCase() as 'SUPPORTIVE' | 'DIRECT');
     setProactivityLevel(String(data.me.preferences.proactivityLevel || 'MEDIUM').toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH');
+    setAppLocale(data.me.preferences.appLocale === 'PL' ? 'PL' : 'EN');
   }, [data]);
 
   useEffect(() => {
@@ -105,6 +109,7 @@ export default function SettingsPage() {
             heightCm: parsedHeight,
             coachingTone,
             proactivityLevel,
+            appLocale,
           },
         },
       });
@@ -129,6 +134,7 @@ export default function SettingsPage() {
   }
 
   const user = data?.me;
+  const s = settingsPageStrings[graphqlAppLocaleToUi(appLocale)];
   const garminStatus = stepSyncData?.stepSyncStatus;
   const proteinSuggestionByWeight =
     typeof user?.preferences?.weightKg === 'number' ? Math.round(user.preferences.weightKg * 2) : null;
@@ -179,6 +185,7 @@ export default function SettingsPage() {
       <div className="space-y-5">
         <div>
           <PageTopBar
+            backLabel={s.backToDashboard}
             rightContent={
               <button
                 onClick={handleSaveSettings}
@@ -188,12 +195,12 @@ export default function SettingsPage() {
                 {saving ? (
                   <>
                     <ButtonSpinner />
-                    Saving...
+                    {s.saving}
                   </>
                 ) : (
                   <>
                     <Save className="h-4 w-4" />
-                    Save settings
+                    {s.save}
                   </>
                 )}
               </button>
@@ -202,20 +209,46 @@ export default function SettingsPage() {
         </div>
 
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h1 className="text-xl font-semibold tracking-tight text-text-primary">Settings</h1>
-          <p className="text-text-secondary text-sm mt-1">
-            Configure account experience, Evo assistant behavior, and quick access tools.
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight text-text-primary">{s.pageTitle}</h1>
+          <p className="text-text-secondary text-sm mt-1">{s.pageSubtitle}</p>
         </section>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-8 space-y-4">
             <div className="bg-surface rounded-xl border border-border p-5">
-              <AISectionHeader
-                title="Experience settings"
-                subtitle="Control how Evo sounds and how visible it is across the product."
-              />
+              <AISectionHeader title={s.experienceTitle} subtitle={s.experienceSubtitle} />
               <div className="space-y-3">
+                <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                  <p className="text-sm font-semibold text-text-primary mb-1.5">{s.appLanguageTitle}</p>
+                  <p className="text-xs text-text-secondary mb-3">{s.appLanguageSubtitle}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAppLocale('EN')}
+                      className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                        appLocale === 'EN'
+                          ? 'border-primary-500/40 bg-primary-500/10 text-text-primary'
+                          : 'border-border text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      {s.langEn}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAppLocale('PL')}
+                      className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                        appLocale === 'PL'
+                          ? 'border-primary-500/40 bg-primary-500/10 text-text-primary'
+                          : 'border-border text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      {s.langPl}
+                    </button>
+                  </div>
+                  <div className="mt-3">
+                    <EvoHintCard title={s.betaTag} tone="notice" content={s.appLanguageBeta} />
+                  </div>
+                </div>
                 <ToggleRow
                   icon={<Bell className="h-4 w-4 text-info-500" />}
                   title="Notifications"

@@ -287,6 +287,7 @@ export const foodResolvers = {
           days: payload.days,
           averages: payload.averages,
           totals: payload.totals,
+          appLocale: prefs?.appLocale,
         });
       } catch (error) {
         console.error('weeklyMealsCoachInsight AI error:', error);

@@ -3,6 +3,7 @@ import { User } from '../../models/User';
 import { Context } from '../context';
 import { OpenAIService } from '../../services/openaiService';
 import { calculateMacroGoals, normalizeActivityLevel } from '../../utils/nutritionGoals';
+import { normalizeAppLocale } from '../../utils/appLocale';
 
 const openAIService = new OpenAIService();
 
@@ -23,6 +24,9 @@ export const userResolvers = {
     proactivityLevel: (preferences: any) => {
       const value = String(preferences?.proactivityLevel || 'medium');
       return value.toUpperCase();
+    },
+    appLocale: (preferences: any) => {
+      return normalizeAppLocale(preferences?.appLocale) === 'pl' ? 'PL' : 'EN';
     },
   },
 
@@ -49,6 +53,7 @@ export const userResolvers = {
         dietaryRestrictions,
         activityLevel,
         notifications,
+        appLocale,
       } = input;
 
       // Validation
@@ -101,6 +106,9 @@ export const userResolvers = {
       if (dietaryRestrictions !== undefined) updateData['preferences.dietaryRestrictions'] = dietaryRestrictions;
       if (activityLevel !== undefined) updateData['preferences.activityLevel'] = nextActivityLevel;
       if (notifications !== undefined) updateData['preferences.notifications'] = notifications;
+      if (appLocale !== undefined && appLocale !== null) {
+        updateData['preferences.appLocale'] = normalizeAppLocale(String(appLocale));
+      }
 
       const autoGoals = calculateMacroGoals(nextDailyGoal, nextActivityLevel);
       const nextWeightKg = weightKg ?? context.user.preferences.weightKg;
@@ -150,6 +158,7 @@ export const userResolvers = {
       const suggested = await openAIService.suggestGoalsFromPrompt(prompt, {
         dailyCalorieGoal: context.user.preferences?.dailyCalorieGoal,
         activityLevel: context.user.preferences?.activityLevel,
+        appLocale: context.user.preferences?.appLocale,
       });
 
       const activityLevel = normalizeActivityLevel(suggested.activityLevel);

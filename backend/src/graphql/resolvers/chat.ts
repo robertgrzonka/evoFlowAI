@@ -6,6 +6,7 @@ import { Context } from '../context';
 import { withFilter } from 'graphql-subscriptions';
 import { EvoUserContext } from '../../ai/evo';
 import { getDailyMetrics, getTodayDateKey, normalizeDateKey } from '../../utils/dailyMetrics';
+import { normalizeAppLocale } from '../../utils/appLocale';
 
 const openAIService = new OpenAIService();
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
@@ -254,6 +255,7 @@ export const chatResolvers = {
           proactivityLevel: context.user.preferences?.proactivityLevel,
           activityLevel: context.user.preferences?.activityLevel,
           dietaryRestrictions: context.user.preferences?.dietaryRestrictions,
+          appLocale: normalizeAppLocale(context.user.preferences?.appLocale as string | undefined),
         };
 
         // Always enrich chat with daily stats (selected date or today)

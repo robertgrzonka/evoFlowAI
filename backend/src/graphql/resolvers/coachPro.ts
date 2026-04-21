@@ -2298,6 +2298,7 @@ export const coachProResolvers = {
           currentPlanJson: planJson,
           action: input.action,
           note: input.note,
+          appLocale: context.user.preferences?.appLocale,
         });
         const { plan: normalizedPlan, trace } = normalizePlanWithTrace(adapted, normalizationOptions);
         const nutritionRebalance = rebalanceNutritionPlanToTargets({

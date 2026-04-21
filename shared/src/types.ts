@@ -23,6 +23,8 @@ export interface UserPreferences {
   dietaryRestrictions: string[];
   activityLevel: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
   notifications: boolean;
+  /** App UI + Evo insight language (beta). */
+  appLocale?: 'en' | 'pl';
 }
 
 export interface FoodItem {

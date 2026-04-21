@@ -10,6 +10,7 @@ import {
   EvoTone,
   EvoUserContext,
 } from './types';
+import { normalizeAppLocale } from '../../utils/appLocale';
 
 const normalizeTone = (value: string | undefined): EvoTone =>
   String(value || 'supportive').toLowerCase() === 'direct' ? 'direct' : 'supportive';
@@ -62,6 +63,12 @@ const formatUserContext = (userContext?: EvoUserContext): string => {
   if (userContext.todayActivity) {
     sections.push(
       `Today steps/activity: ${userContext.todayActivity.steps} steps tracked; dynamic daily calorie budget ${Math.round(userContext.todayActivity.calorieBudget)} kcal`
+    );
+  }
+
+  if (userContext.appLocale) {
+    sections.push(
+      `App UI language (beta): ${userContext.appLocale === 'pl' ? 'Polish' : 'English'} — match this for insight-style outputs when applicable.`
     );
   }
 
@@ -121,8 +128,24 @@ export const composeEvoSystemPrompt = (input: EvoPromptComposeInput): string => 
   const modeInstructions = evoResponseModeInstructions[input.mode];
   const toneInstructions = evoToneModifiers[input.tone];
   const humorDisabled = shouldDisableHumor(input.mode, input.latestUserMessage);
-  /** App dashboard insight surfaces are English; chat keeps adaptive language. */
-  const turnLanguage = input.channel === 'insight' ? 'English' : detectTurnLanguage(input.latestUserMessage);
+  const loc = normalizeAppLocale(input.preferredAppLocale ?? input.userContext?.appLocale);
+  const latest = input.latestUserMessage;
+  const turnLanguage =
+    input.channel === 'insight'
+      ? loc === 'pl'
+        ? 'Polish'
+        : 'English'
+      : input.channel === 'summary'
+        ? loc === 'pl'
+          ? 'Polish'
+          : detectTurnLanguage(latest)
+        : input.channel === 'chat'
+          ? loc === 'pl'
+            ? 'Polish'
+            : detectTurnLanguage(latest)
+          : loc === 'pl'
+            ? 'Polish'
+            : 'English';
   const humorInstruction = humorDisabled
     ? 'Humor disabled for this response due to sensitivity/safety context.'
     : input.includeHumor
