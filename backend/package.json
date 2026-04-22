@@ -5,6 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon src/server.ts",
+    "dev:gpt5": "cross-env OPENAI_MODEL=gpt-5 nodemon src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "jest"
@@ -32,6 +33,13 @@
     "rate-limiter-flexible": "^2.2.4",
     "ws": "^8.14.2"
   },
+  "jest": {
+    "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/jest.setup.cjs"
+    ],
+    "passWithNoTests": true
+  },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
@@ -41,6 +49,7 @@
     "@types/multer": "^1.4.11",
     "@types/node": "^20.8.0",
     "@types/ws": "^8.5.8",
+    "cross-env": "^10.1.0",
     "jest": "^29.7.0",
     "nodemon": "^3.0.1",
     "ts-node": "^10.9.1",
