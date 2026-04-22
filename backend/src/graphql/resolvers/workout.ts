@@ -11,10 +11,16 @@ import {
   getWeeklyCoachInsightFromCache,
   saveWeeklyCoachInsightToCache,
 } from '../../services/weeklyCoachInsightCache';
+import {
+  fingerprintDashboardInsight,
+  getDashboardInsightFromCache,
+  saveDashboardInsightToCache,
+} from '../../services/dashboardInsightCache';
 import { GarminStepService } from '../../services/garminStepService';
 import { parseWorkoutFile } from '../../services/workoutImportService';
 import { getDailyMetrics, getDayRangeByDateKey, normalizeDateKey } from '../../utils/dailyMetrics';
 import { buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
+import { normalizeCoachingToneKey } from '../../utils/coachingTone';
 
 const parseIntensity = (value: string) => value.toLowerCase();
 const openAIService = new OpenAIService();
@@ -206,9 +212,22 @@ type WeeklyProTipInput = {
   highlights: string[];
 };
 
+const emptyWeeklyProTipForTone = (toneKey: ReturnType<typeof normalizeCoachingToneKey>): string => {
+  switch (toneKey) {
+    case 'strict':
+      return 'No data this window: logging is the baseline. Add one meal and one training block before the week closes — without data there is nothing to optimize.';
+    case 'direct':
+      return 'No data this window: log one meal and one training block before the week rolls—Evo cannot optimize ghosts.';
+    case 'gentle':
+      return 'It is okay if this week is quiet in the log. Whenever you feel ready, one meal note and one movement note are enough for Evo to begin helping.';
+    default:
+      return 'Start tiny: one honest meal log and one movement log unlocks a weekly story worth optimizing next Sunday.';
+  }
+};
+
 const buildFallbackWeeklyProTip = (prefs: any, ctx: WeeklyProTipInput): string => {
   const proactivity = String(prefs?.proactivityLevel || 'MEDIUM').toUpperCase();
-  const direct = String(prefs?.coachingTone || 'SUPPORTIVE').toUpperCase() === 'DIRECT';
+  const toneKey = normalizeCoachingToneKey(prefs?.coachingTone);
   const goal = String(prefs?.primaryGoal || 'MAINTENANCE');
   const restrictions = Array.isArray(prefs?.dietaryRestrictions) ? prefs.dietaryRestrictions.filter(Boolean) : [];
 
@@ -241,8 +260,14 @@ const buildFallbackWeeklyProTip = (prefs: any, ctx: WeeklyProTipInput): string =
     core = `${core} (High-agency version: add a 10-minute Thursday audit against these three highlights.)`;
   }
 
-  if (direct) {
+  if (toneKey === 'strict') {
+    return `Standard for next week: ${core}`;
+  }
+  if (toneKey === 'direct') {
     return core;
+  }
+  if (toneKey === 'gentle') {
+    return `When you have capacity, consider: ${core}`;
   }
   return `Gentle nudge: ${core}`;
 };
@@ -575,68 +600,111 @@ export const workoutResolvers = {
           return `"${String(workout.title || 'Workout')}" at ${timeLabel} (${Math.round(Number(workout.durationMinutes || 0))} min, ${Math.round(Number(workout.caloriesBurned || 0))} kcal)`;
         });
 
-      try {
-        const aiInsight = await openAIService.generateDashboardInsights({
-          date: dayMetrics.dateKey,
-          calorieGoal: dayMetrics.dynamicTargets.calorieBudget,
-          proteinGoal: dayMetrics.dynamicTargets.proteinGoal,
-          primaryGoal,
-          userName: context.user.name,
-          coachingTone: context.user.preferences?.coachingTone,
-          proactivityLevel: context.user.preferences?.proactivityLevel,
-          consumedCalories: dayMetrics.totals.calories,
-          consumedProtein: dayMetrics.totals.protein,
-          consumedCarbs: dayMetrics.totals.carbs,
-          consumedFat: dayMetrics.totals.fat,
-          caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
-          remainingCalories: dayMetrics.remainingCalories,
-          remainingProtein: dayMetrics.remainingProtein,
-          mealsCount: dayMetrics.meals.length,
-          workoutSessions: dayMetrics.workouts.length,
-          steps: dayMetrics.steps,
-          currentHour,
-          remainingDayPercent,
-          estimatedMealsLeft,
-          mealDetails,
-          workoutDetails,
-          appLocale: context.user.preferences?.appLocale,
-        });
+      const openaiModel = (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+      const dashboardFingerprint = fingerprintDashboardInsight({
+        dateKey: dayMetrics.dateKey,
+        currentHour,
+        remainingDayPercent,
+        estimatedMealsLeft,
+        primaryGoal,
+        userName: String(context.user.name || ''),
+        coachingTone: context.user.preferences?.coachingTone,
+        proactivityLevel: context.user.preferences?.proactivityLevel,
+        appLocale: context.user.preferences?.appLocale,
+        consumedCalories: dayMetrics.totals.calories,
+        consumedProtein: dayMetrics.totals.protein,
+        consumedCarbs: dayMetrics.totals.carbs,
+        consumedFat: dayMetrics.totals.fat,
+        calorieGoal: dayMetrics.dynamicTargets.calorieBudget,
+        proteinGoal: dayMetrics.dynamicTargets.proteinGoal,
+        caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
+        remainingCalories: dayMetrics.remainingCalories,
+        remainingProtein: dayMetrics.remainingProtein,
+        mealsCount: dayMetrics.meals.length,
+        workoutSessions: dayMetrics.workouts.length,
+        steps: dayMetrics.steps,
+        mealDetails,
+        workoutDetails,
+        openaiModel,
+      });
 
-        const summary = hasConcreteDataReference(aiInsight.summary, dayMetrics)
-          ? aiInsight.summary
-          : concreteInsight.summary;
-        const tips = (Array.isArray(aiInsight.tips) ? aiInsight.tips : [])
-          .slice(0, 3)
-          .map((tip: string, index: number) =>
-            hasConcreteDataReference(tip, dayMetrics) ? tip : concreteInsight.tips[index]
+      let aiInsight = await getDashboardInsightFromCache(
+        context.user.id,
+        dayMetrics.dateKey,
+        dashboardFingerprint
+      );
+
+      if (!aiInsight) {
+        try {
+          aiInsight = await openAIService.generateDashboardInsights({
+            date: dayMetrics.dateKey,
+            calorieGoal: dayMetrics.dynamicTargets.calorieBudget,
+            proteinGoal: dayMetrics.dynamicTargets.proteinGoal,
+            primaryGoal,
+            userName: context.user.name,
+            coachingTone: context.user.preferences?.coachingTone,
+            proactivityLevel: context.user.preferences?.proactivityLevel,
+            consumedCalories: dayMetrics.totals.calories,
+            consumedProtein: dayMetrics.totals.protein,
+            consumedCarbs: dayMetrics.totals.carbs,
+            consumedFat: dayMetrics.totals.fat,
+            caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
+            remainingCalories: dayMetrics.remainingCalories,
+            remainingProtein: dayMetrics.remainingProtein,
+            mealsCount: dayMetrics.meals.length,
+            workoutSessions: dayMetrics.workouts.length,
+            steps: dayMetrics.steps,
+            currentHour,
+            remainingDayPercent,
+            estimatedMealsLeft,
+            mealDetails,
+            workoutDetails,
+            appLocale: context.user.preferences?.appLocale,
+          });
+          await saveDashboardInsightToCache(
+            context.user.id,
+            dayMetrics.dateKey,
+            dashboardFingerprint,
+            aiInsight
           );
-
-        return {
-          date: dayMetrics.dateKey,
-          summary,
-          tips,
-          caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
-          steps: dayMetrics.steps,
-          stepsCalories: dayMetrics.stepsCalories,
-          calorieBudget: dayMetrics.dynamicTargets.calorieBudget,
-          netCalories: dayMetrics.netCalories,
-          remainingCalories: dayMetrics.remainingCalories,
-          remainingProtein: dayMetrics.remainingProtein,
-        };
-      } catch (error) {
-        return {
-          date: dayMetrics.dateKey,
-          summary: concreteInsight.summary,
-          tips: concreteInsight.tips,
-          caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
-          steps: dayMetrics.steps,
-          stepsCalories: dayMetrics.stepsCalories,
-          calorieBudget: dayMetrics.dynamicTargets.calorieBudget,
-          netCalories: dayMetrics.netCalories,
-          remainingCalories: dayMetrics.remainingCalories,
-          remainingProtein: dayMetrics.remainingProtein,
-        };
+        } catch (error) {
+          console.error('dashboardInsight AI error:', error);
+          return {
+            date: dayMetrics.dateKey,
+            summary: concreteInsight.summary,
+            tips: concreteInsight.tips,
+            caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
+            steps: dayMetrics.steps,
+            stepsCalories: dayMetrics.stepsCalories,
+            calorieBudget: dayMetrics.dynamicTargets.calorieBudget,
+            netCalories: dayMetrics.netCalories,
+            remainingCalories: dayMetrics.remainingCalories,
+            remainingProtein: dayMetrics.remainingProtein,
+          };
+        }
       }
+
+      const summary = hasConcreteDataReference(aiInsight.summary, dayMetrics)
+        ? aiInsight.summary
+        : concreteInsight.summary;
+      const tips = (Array.isArray(aiInsight.tips) ? aiInsight.tips : [])
+        .slice(0, 3)
+        .map((tip: string, index: number) =>
+          hasConcreteDataReference(tip, dayMetrics) ? tip : concreteInsight.tips[index]
+        );
+
+      return {
+        date: dayMetrics.dateKey,
+        summary,
+        tips,
+        caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
+        steps: dayMetrics.steps,
+        stepsCalories: dayMetrics.stepsCalories,
+        calorieBudget: dayMetrics.dynamicTargets.calorieBudget,
+        netCalories: dayMetrics.netCalories,
+        remainingCalories: dayMetrics.remainingCalories,
+        remainingProtein: dayMetrics.remainingProtein,
+      };
     },
 
     weeklyEvoReview: async (_: any, { endDate }: { endDate?: string }, context: Context) => {
@@ -701,10 +769,7 @@ export const workoutResolvers = {
       const totalStepsTracked = activityDays.reduce((acc, day) => acc + Number(day.steps || 0), 0);
 
       if (trackedDays === 0) {
-        const directTone = String(prefs?.coachingTone || 'SUPPORTIVE').toUpperCase() === 'DIRECT';
-        const emptyProTip = directTone
-          ? 'No data this window: log one meal and one training block before the week rolls—Evo cannot optimize ghosts.'
-          : 'Start tiny: one honest meal log and one movement log unlocks a weekly story worth optimizing next Sunday.';
+        const emptyProTip = emptyWeeklyProTipForTone(normalizeCoachingToneKey(prefs?.coachingTone));
         return {
           startDate: startDate.toISOString().split('T')[0],
           endDate: endKey,
