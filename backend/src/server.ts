@@ -15,12 +15,6 @@ import { createContext, onConnect } from './graphql/context';
 const app = express();
 const httpServer = createServer(app);
 
-function mongooseConnectionLabel(): string {
-  const labels = ['disconnected', 'connected', 'connecting', 'disconnecting'];
-  const rs = mongoose.connection.readyState;
-  return rs >= 0 && rs < labels.length ? labels[rs] : 'unknown';
-}
-
 // Middleware
 app.use(helmet({
   contentSecurityPolicy: false,
@@ -35,14 +29,9 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health check (always 200 for load balancers; `mongodb` shows driver state)
+// Health check
 app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    mongodb: mongooseConnectionLabel(),
-    mongodbReadyState: mongoose.connection.readyState,
-    timestamp: new Date().toISOString(),
-  });
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
 // Create GraphQL schema
