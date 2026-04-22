@@ -13,6 +13,9 @@ export const appShellStrings: Record<
     navCoachPro: string;
     loggedInAs: string;
     logout: string;
+    collapseSidebar: string;
+    expandSidebar: string;
+    userMenuHint: string;
   }
 > = {
   en: {
@@ -26,6 +29,9 @@ export const appShellStrings: Record<
     navCoachPro: 'Evo Coach Pro',
     loggedInAs: 'Logged in as',
     logout: 'Logout',
+    collapseSidebar: 'Collapse sidebar',
+    expandSidebar: 'Expand sidebar',
+    userMenuHint: 'Account and logout',
   },
   pl: {
     navDashboard: 'Pulpit',
@@ -38,5 +44,8 @@ export const appShellStrings: Record<
     navCoachPro: 'Evo Coach Pro',
     loggedInAs: 'Zalogowany jako',
     logout: 'Wyloguj',
+    collapseSidebar: 'Zwiń menu boczne',
+    expandSidebar: 'Rozwiń menu boczne',
+    userMenuHint: 'Konto i wylogowanie',
   },
 };

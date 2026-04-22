@@ -83,6 +83,11 @@ export const WEEKLY_MEALS_NUTRITION_QUERY = gql`
         carbs
         fat
         mealCount
+        meals {
+          name
+          mealType
+          calories
+        }
       }
     }
   }
@@ -163,6 +168,7 @@ export const DAILY_STATS_QUERY = gql`
       steps
       stepsCalories
       workoutCalories
+      activityBonusKcal
       calorieBudget
       meals {
         id
@@ -290,6 +296,7 @@ export const DAILY_ACTIVITY_QUERY = gql`
       date
       steps
       estimatedCalories
+      activityBonusKcal
     }
   }
 `;

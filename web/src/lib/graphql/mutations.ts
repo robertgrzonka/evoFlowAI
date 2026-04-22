@@ -192,6 +192,7 @@ export const UPSERT_DAILY_ACTIVITY_MUTATION = gql`
       date
       steps
       estimatedCalories
+      activityBonusKcal
     }
   }
 `;
