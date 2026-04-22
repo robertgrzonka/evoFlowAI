@@ -47,8 +47,10 @@ export const typeDefs = gql`
   }
 
   enum CoachingTone {
+    GENTLE
     SUPPORTIVE
     DIRECT
+    STRICT
   }
 
   enum ProactivityLevel {
@@ -379,6 +381,8 @@ export const typeDefs = gql`
     planDifficulty: String!
     expectedPace: String!
     flexibilityLevel: String!
+    """Long-form Evo narrative for the dashboard header; ties goals to overview pills."""
+    evoDashboardInsight: String
   }
 
   type CoachProMeal {
