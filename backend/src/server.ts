@@ -46,20 +46,14 @@ const apolloServer = new ApolloServer({
   context: createContext as any,
 });
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/evoflowai')
-  .then(() => {
-    console.log('✅ Connected to MongoDB');
-  })
-  .catch((error) => {
-    console.error('❌ MongoDB connection error:', error);
-    process.exit(1);
-  });
-
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Start server
 async function startServer() {
+  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/evoflowai');
+  console.log('✅ Connected to MongoDB');
+
   await apolloServer.start();
   apolloServer.applyMiddleware({ app: app as any, path: '/graphql' });
 
@@ -71,10 +65,14 @@ async function startServer() {
 
   useServer({ schema }, wsServer);
 
-  httpServer.listen(PORT, () => {
-    console.log(`🚀 evoFlowAI server running on port ${PORT}`);
-    console.log(`📊 GraphQL endpoint: http://localhost:${PORT}${apolloServer.graphqlPath}`);
-    console.log(`🔌 WebSocket endpoint: ws://localhost:${PORT}/graphql`);
+  await new Promise<void>((resolve, reject) => {
+    httpServer.listen(PORT, HOST, () => {
+      console.log(`🚀 evoFlowAI server listening on http://${HOST}:${PORT}`);
+      console.log(`📊 GraphQL endpoint: http://${HOST}:${PORT}${apolloServer.graphqlPath}`);
+      console.log(`🔌 WebSocket endpoint: ws://${HOST}:${PORT}/graphql`);
+      resolve();
+    });
+    httpServer.on('error', reject);
   });
 }
 
