@@ -269,6 +269,10 @@ export const coachProPageCopy: Record<
     generationOverlayTitle: string;
     generationOverlayBody: string;
     generationOverlayProcessing: string;
+    generationStartedToastTitle: string;
+    generationStartedToastBody: string;
+    generationBannerMinutesNote: string;
+    generationOverlayStayWarning: string;
     generationSkeletonOverview: string;
     generationSkeletonNutrition: string;
     generationSkeletonTraining: string;
@@ -538,6 +542,13 @@ export const coachProPageCopy: Record<
     generationOverlayBody:
       'Evo is building your weekly meals, training structure, substitutions, and execution guidance.',
     generationOverlayProcessing: 'Processing profile, preferences, and week structure...',
+    generationStartedToastTitle: 'Coach Pro is generating',
+    generationStartedToastBody:
+      'This often takes several minutes. Stay on this tab and do not navigate away until it finishes.',
+    generationBannerMinutesNote:
+      'Evo is building your full weekly plan (meals, training, shopping list, and the detail pass). With GPT-5 class models this often takes several minutes.',
+    generationOverlayStayWarning:
+      'Stay on this page and keep this tab open until generation finishes. Navigating elsewhere or closing the tab will interrupt the request and the plan may not be saved.',
     generationSkeletonOverview: 'Plan overview skeleton',
     generationSkeletonNutrition: 'Weekly nutrition skeleton',
     generationSkeletonTraining: 'Weekly training skeleton',
@@ -815,6 +826,13 @@ export const coachProPageCopy: Record<
     generationOverlayBody:
       'Evo układa posiłki, strukturę treningu, zamienniki i wskazówki wykonania na tydzień.',
     generationOverlayProcessing: 'Przetwarzanie profilu, preferencji i struktury tygodnia…',
+    generationStartedToastTitle: 'Evo generuje plan Coach Pro',
+    generationStartedToastBody:
+      'To często kilka minut. Zostań na tej karcie i nie przechodź nigdzie indziej, dopóki się nie skończy.',
+    generationBannerMinutesNote:
+      'Evo układa pełny plan tygodnia (posiłki, trening, lista zakupów i drugi etap szczegółów). Przy modelach z rodziny GPT-5 bywa to kilka minut.',
+    generationOverlayStayWarning:
+      'Zostań na tej stronie i nie zamykaj karty, dopóki generowanie się nie zakończy. Przejście w inne miejsce aplikacji lub zamknięcie karty przerwie żądanie — plan może się nie zapisać.',
     generationSkeletonOverview: 'Szkic przeglądu planu',
     generationSkeletonNutrition: 'Szkic żywienia tygodnia',
     generationSkeletonTraining: 'Szkic treningu tygodnia',

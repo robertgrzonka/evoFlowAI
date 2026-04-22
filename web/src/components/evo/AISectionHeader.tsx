@@ -25,7 +25,9 @@ export default function AISectionHeader({
           <h3 className="text-lg font-semibold tracking-tight text-text-primary">{title}</h3>
           {status}
         </div>
-        {subtitle ? <p className="text-sm text-text-secondary mt-1">{subtitle}</p> : null}
+        {subtitle ? (
+          <p className="text-sm text-text-secondary mt-1 whitespace-pre-line leading-relaxed">{subtitle}</p>
+        ) : null}
       </div>
       {rightAction ? <div className="shrink-0">{rightAction}</div> : null}
     </div>

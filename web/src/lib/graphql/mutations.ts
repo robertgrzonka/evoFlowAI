@@ -248,6 +248,7 @@ export const ADAPT_COACH_PRO_PLAN_MUTATION = gql`
         planDifficulty
         expectedPace
         flexibilityLevel
+        evoDashboardInsight
       }
       weeklyNutrition {
         dayLabel
@@ -344,6 +345,7 @@ export const REFRESH_COACH_PRO_PLAN_BY_TODAY_SIGNALS_MUTATION = gql`
         planDifficulty
         expectedPace
         flexibilityLevel
+        evoDashboardInsight
       }
       weeklyNutrition {
         dayLabel
@@ -464,6 +466,7 @@ export const APPLY_COACH_PRO_MEAL_SMART_ACTION_MUTATION = gql`
           planDifficulty
           expectedPace
           flexibilityLevel
+          evoDashboardInsight
         }
         weeklyNutrition {
           dayLabel

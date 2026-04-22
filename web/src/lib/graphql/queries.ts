@@ -352,6 +352,7 @@ export const GENERATE_COACH_PRO_PLAN_QUERY = gql`
         planDifficulty
         expectedPace
         flexibilityLevel
+        evoDashboardInsight
       }
       weeklyNutrition {
         dayLabel
@@ -448,6 +449,7 @@ export const MY_COACH_PRO_PLAN_QUERY = gql`
         planDifficulty
         expectedPace
         flexibilityLevel
+        evoDashboardInsight
       }
       weeklyNutrition {
         dayLabel

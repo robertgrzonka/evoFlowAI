@@ -205,6 +205,17 @@ export default function EvoCoachProPage() {
     GENERATE_COACH_PRO_PLAN_QUERY,
     { fetchPolicy: 'no-cache' }
   );
+
+  useEffect(() => {
+    if (!generatingPlan) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [generatingPlan]);
+
   const [loadMealDrawerDetails, { loading: mealDrawerLoading, data: mealDrawerData }] = useLazyQuery(
     COACH_PRO_MEAL_DRAWER_DETAILS_QUERY,
     { fetchPolicy: 'no-cache' }
@@ -450,6 +461,7 @@ export default function EvoCoachProPage() {
       },
     };
     setSetup(nextSetup);
+    appToast.info(t.generationStartedToastTitle, t.generationStartedToastBody);
     await generatePlan({ variables: { input: nextSetup } });
   };
 
@@ -773,7 +785,8 @@ export default function EvoCoachProPage() {
   };
 
   return (
-    <AppShell>
+    <>
+      <AppShell>
       <div className="space-y-5">
         <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">{t.pageTitle}</h1>} />
 
@@ -859,7 +872,7 @@ export default function EvoCoachProPage() {
               <AISectionHeader
                 eyebrow={t.planOverviewEyebrow}
                 title={t.dashboardTitle}
-                subtitle={t.dashboardSubtitle}
+                subtitle={plan.overview.evoDashboardInsight?.trim() || t.dashboardSubtitle}
                 rightAction={
                   <button type="button" className="btn-secondary" onClick={() => setPlan(null)}>
                     {t.reconfigureSetup}
@@ -1155,8 +1168,6 @@ export default function EvoCoachProPage() {
           </div>
         )}
 
-        {generatingPlan ? <CoachProGenerationOverlay copy={t} /> : null}
-
         {!plan && !generatingPlan && step > 3 ? (
           <InsightEmptyState title={t.emptySetupTitle} description={t.emptySetupDescription} />
         ) : null}
@@ -1186,6 +1197,10 @@ export default function EvoCoachProPage() {
         />
       </div>
     </AppShell>
+      {generatingPlan && typeof document !== 'undefined'
+        ? createPortal(<CoachProGenerationOverlay copy={t} />, document.body)
+        : null}
+    </>
   );
 }
 
@@ -1926,61 +1941,61 @@ function NotesList({ title, items }: { title: string; items: string[] }) {
 }
 
 function CoachProGenerationOverlay({ copy }: { copy: CoachProPageCopy }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-[200]">
-      <div className="absolute inset-0 bg-background/55 backdrop-blur-md" aria-hidden />
-      <div className="relative z-[1] flex min-h-[100dvh] flex-col items-center overflow-y-auto p-4 sm:p-6">
-        <section className="my-auto w-full max-w-2xl shrink-0 rounded-2xl border border-primary-300/25 bg-surface/95 p-5 sm:p-6 shadow-[0_24px_70px_rgba(0,0,0,0.5)]">
-          <div className="flex items-start gap-3">
-            <AICoachAvatar size="md" />
-            <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.12em] text-primary-200">{copy.generationOverlayEyebrow}</p>
-              <h3 className="text-lg font-semibold text-text-primary mt-1">{copy.generationOverlayTitle}</h3>
-              <p className="text-sm text-text-secondary mt-1">{copy.generationOverlayBody}</p>
-              <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-primary-300/30 bg-primary-500/10 px-3 py-1.5 text-xs text-primary-100">
-                <ButtonSpinner />
-                {copy.generationOverlayProcessing}
-              </div>
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-background/90 p-4 backdrop-blur-md"
+      role="alertdialog"
+      aria-modal="true"
+      aria-busy="true"
+      aria-labelledby="coach-pro-gen-title"
+      aria-describedby="coach-pro-gen-desc"
+    >
+      <div className="relative max-h-[min(90vh,40rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-primary-300/35 bg-surface/98 p-5 shadow-2xl sm:p-6">
+        <div className="flex min-w-0 items-start gap-3">
+          <AICoachAvatar size="sm" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs uppercase tracking-[0.12em] text-primary-200">{copy.generationOverlayEyebrow}</p>
+            <h3 id="coach-pro-gen-title" className="text-lg font-semibold text-text-primary mt-0.5">
+              {copy.generationOverlayTitle}
+            </h3>
+            <div id="coach-pro-gen-desc" className="mt-2 space-y-2 text-sm text-text-secondary">
+              <p>{copy.generationOverlayBody}</p>
+              <p>{copy.generationBannerMinutesNote}</p>
+            </div>
+            <div
+              className="mt-4 flex gap-3 rounded-xl border border-amber-300/40 bg-amber-300/10 p-3"
+              role="status"
+              aria-live="assertive"
+            >
+              <ShieldAlert className="h-5 w-5 shrink-0 text-amber-200" aria-hidden />
+              <p className="text-sm font-medium text-amber-50 leading-snug">{copy.generationOverlayStayWarning}</p>
+            </div>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-primary-300/25 bg-primary-500/10 px-2.5 py-1.5 text-xs text-primary-100">
+              <ButtonSpinner />
+              {copy.generationOverlayProcessing}
             </div>
           </div>
-
-          <div className="mt-5 space-y-3">
-            <div className="rounded-xl border border-border bg-surface-elevated p-3">
-              <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-2">{copy.generationSkeletonOverview}</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <Skeleton className="h-12 w-full rounded-md" />
-                <Skeleton className="h-12 w-full rounded-md" />
-                <Skeleton className="h-12 w-full rounded-md" />
-                <Skeleton className="h-12 w-full rounded-md" />
-              </div>
-            </div>
-            <div className="rounded-xl border border-border bg-surface-elevated p-3">
-              <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-2">{copy.generationSkeletonNutrition}</p>
-              <div className="space-y-2">
-                <Skeleton className="h-14 w-full rounded-md" />
-                <Skeleton className="h-14 w-full rounded-md" />
-                <Skeleton className="h-14 w-full rounded-md" />
-              </div>
-            </div>
-            <div className="rounded-xl border border-border bg-surface-elevated p-3">
-              <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-2">{copy.generationSkeletonTraining}</p>
-              <div className="space-y-2">
-                <Skeleton className="h-12 w-full rounded-md" />
-                <Skeleton className="h-12 w-full rounded-md" />
-              </div>
+        </div>
+        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-border bg-surface-elevated/80 p-2">
+            <p className="text-[10px] uppercase tracking-[0.08em] text-text-muted mb-1.5">{copy.generationSkeletonOverview}</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              <Skeleton className="h-8 rounded" />
+              <Skeleton className="h-8 rounded" />
+              <Skeleton className="h-8 rounded" />
+              <Skeleton className="h-8 rounded" />
             </div>
           </div>
-        </section>
+          <div className="rounded-lg border border-border bg-surface-elevated/80 p-2">
+            <p className="text-[10px] uppercase tracking-[0.08em] text-text-muted mb-1.5">{copy.generationSkeletonNutrition}</p>
+            <Skeleton className="h-9 w-full rounded" />
+          </div>
+          <div className="rounded-lg border border-border bg-surface-elevated/80 p-2">
+            <p className="text-[10px] uppercase tracking-[0.08em] text-text-muted mb-1.5">{copy.generationSkeletonTraining}</p>
+            <Skeleton className="h-9 w-full rounded" />
+          </div>
+        </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }

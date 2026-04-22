@@ -92,6 +92,8 @@ export type CoachProPlan = {
     planDifficulty: string;
     expectedPace: string;
     flexibilityLevel: string;
+    /** Long dashboard narrative from AI details pass; optional for legacy plans. */
+    evoDashboardInsight?: string | null;
   };
   weeklyNutrition: Array<{
     dayLabel: string;
