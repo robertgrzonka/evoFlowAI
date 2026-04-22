@@ -2,7 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery, useSubscription } from '@apollo/client';
+import { useApolloClient, useMutation, useQuery, useSubscription } from '@apollo/client';
 import { clsx } from 'clsx';
 import { ChevronDown, Dumbbell, FileUp, Flame, Timer, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
@@ -14,13 +14,19 @@ import {
   LOG_WORKOUT_MUTATION,
   UPSERT_DAILY_ACTIVITY_MUTATION,
 } from '@/lib/graphql/mutations';
-import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION, WEEKLY_WORKOUTS_COACH_QUERY, WEEKLY_WORKOUTS_TRAINING_QUERY } from '@/lib/graphql/queries';
+import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION } from '@/lib/graphql/queries';
 import { appToast } from '@/lib/app-toast';
-import { buildDayRefetchQueries, dateKeyToNoonUtcIso } from '@/lib/day-data';
+import {
+  buildDayRefetchQueriesAfterLog,
+  dateKeyToNoonUtcIso,
+  kickDeferredAfterWorkoutLog,
+  kickDeferredDashboardAndWeeklyEvo,
+} from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import {
   AISectionHeader,
   EvoHintCard,
+  EvoThinkingOverlay,
   InsightEmptyState,
   SmartSuggestionChips,
 } from '@/components/evo';
@@ -31,6 +37,7 @@ import { workoutsPageCopy } from '@/lib/i18n/copy/workouts-page';
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export default function WorkoutsPage() {
+  const client = useApolloClient();
   const locale = useAppUiLocale();
   const w = workoutsPageCopy[locale];
   const router = useRouter();
@@ -67,6 +74,7 @@ export default function WorkoutsPage() {
     onCompleted: () => {
       setTitle('');
       setNotes('');
+      kickDeferredAfterWorkoutLog(client);
       appToast.success(
         'Workout saved',
         selectedDate === today ? 'Session was added to today.' : `Session was added to ${selectedDate}.`
@@ -75,37 +83,36 @@ export default function WorkoutsPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save workout.');
     },
-    refetchQueries: [
-      ...buildDayRefetchQueries(selectedDate),
-      { query: WEEKLY_WORKOUTS_TRAINING_QUERY, variables: { endDate: today } },
-      { query: WEEKLY_WORKOUTS_COACH_QUERY, variables: { endDate: today } },
-    ],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    awaitRefetchQueries: true,
   });
 
   const [deleteWorkout, { loading: deletingWorkout }] = useMutation(DELETE_WORKOUT_MUTATION, {
+    onCompleted: () => {
+      kickDeferredAfterWorkoutLog(client);
+    },
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete workout.');
     },
-    refetchQueries: [
-      ...buildDayRefetchQueries(selectedDate),
-      { query: WEEKLY_WORKOUTS_TRAINING_QUERY, variables: { endDate: today } },
-      { query: WEEKLY_WORKOUTS_COACH_QUERY, variables: { endDate: today } },
-    ],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    awaitRefetchQueries: true,
   });
   const [upsertDailyActivity, { loading: savingActivityBonus }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
     onCompleted: () => {
+      kickDeferredDashboardAndWeeklyEvo(client);
       appToast.success(w.activityBonusSaved, w.activityBudgetHint);
     },
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save.');
     },
-    refetchQueries: buildDayRefetchQueries(selectedDate),
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
     awaitRefetchQueries: true,
   });
 
   const [importWorkoutFile, { loading: importingWorkoutFile }] = useMutation(IMPORT_WORKOUT_FILE_MUTATION, {
     onCompleted: () => {
       setImportNotes('');
+      kickDeferredAfterWorkoutLog(client);
       appToast.success(
         'Workout imported',
         selectedDate === today ? 'File was parsed and added to today.' : `File was parsed and added to ${selectedDate}.`
@@ -114,11 +121,8 @@ export default function WorkoutsPage() {
     onError: (error) => {
       appToast.error('Import failed', error.message || 'Could not import workout file.');
     },
-    refetchQueries: [
-      ...buildDayRefetchQueries(selectedDate),
-      { query: WEEKLY_WORKOUTS_TRAINING_QUERY, variables: { endDate: today } },
-      { query: WEEKLY_WORKOUTS_COACH_QUERY, variables: { endDate: today } },
-    ],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    awaitRefetchQueries: true,
   });
 
   const handleSubmit = async (event: FormEvent) => {
@@ -220,6 +224,11 @@ export default function WorkoutsPage() {
 
   return (
     <AppShell>
+      <EvoThinkingOverlay
+        open={loggingWorkout || importingWorkoutFile}
+        locale={locale}
+        intent="workout"
+      />
       <div className="space-y-5">
         <PageTopBar
           rightContent={

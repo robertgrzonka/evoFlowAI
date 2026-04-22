@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 import { motion } from 'framer-motion';
-import { useMutation, useQuery } from '@apollo/client';
+import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import {
   ME_QUERY,
   WEEKLY_EVO_REVIEW_QUERY,
@@ -28,13 +28,19 @@ import {
   UPSERT_DAILY_ACTIVITY_MUTATION,
 } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
-import { buildDayRefetchQueries } from '@/lib/day-data';
+import {
+  buildDayRefetchQueriesAfterLog,
+  kickDeferredAfterMealLog,
+  kickDeferredAfterWorkoutLog,
+  kickDeferredDashboardAndWeeklyEvo,
+} from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import { formatPrimaryGoal } from '@/lib/formatters';
 import {
   AISectionHeader,
   EvoHintCard,
   EvoStatusBadge,
+  EvoThinkingOverlay,
   HeroInsightCard,
   InsightEmptyState,
   NextBestActionCard,
@@ -54,6 +60,7 @@ type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 type ActionTone = 'brand' | 'info' | 'success';
 
 export default function DashboardPage() {
+  const client = useApolloClient();
   const router = useRouter();
   const { sidebarCollapsed } = useAppShellLayout();
   const [mounted, setMounted] = useState(false);
@@ -76,29 +83,37 @@ export default function DashboardPage() {
   });
 
   const [deleteFoodItem, { loading: deletingMeal }] = useMutation(DELETE_FOOD_ITEM_MUTATION, {
+    onCompleted: () => {
+      kickDeferredAfterMealLog(client);
+    },
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
+    awaitRefetchQueries: true,
   });
   const [logWorkout, { loading: quickWorkoutSaving }] = useMutation(LOG_WORKOUT_MUTATION, {
     onCompleted: () => {
       setQuickWorkoutTitle('');
+      kickDeferredAfterWorkoutLog(client);
       appToast.success('Workout added', 'New session was saved to your day.');
     },
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not add workout.');
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
+    awaitRefetchQueries: true,
   });
   const [upsertDailyActivity, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
     onCompleted: () => {
+      kickDeferredDashboardAndWeeklyEvo(client);
       appToast.success('Activity updated', 'Steps were saved for daily tracking.');
     },
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not update daily activity.');
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
+    awaitRefetchQueries: true,
   });
 
   useEffect(() => {
@@ -235,6 +250,11 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
+      <EvoThinkingOverlay
+        open={daySnapshot.insightBootstrapping || quickWorkoutSaving}
+        locale={locale}
+        intent={daySnapshot.insightBootstrapping ? 'default' : 'workout'}
+      />
       <div className="space-y-5">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

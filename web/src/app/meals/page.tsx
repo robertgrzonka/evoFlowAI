@@ -2,20 +2,21 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from '@apollo/client';
+import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { clsx } from 'clsx';
 import { ChevronDown, ImagePlus, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import { ButtonSpinner, ListRowSkeleton, PageLoader } from '@/components/ui/loading';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
-import { DAILY_STATS_QUERY, WEEKLY_MEALS_COACH_QUERY, WEEKLY_MEALS_NUTRITION_QUERY } from '@/lib/graphql/queries';
+import { DAILY_STATS_QUERY } from '@/lib/graphql/queries';
 import { DELETE_FOOD_ITEM_MUTATION, LOG_MEAL_WITH_AI_MUTATION } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
 import ChatMarkdown from '@/components/ChatMarkdown';
-import { buildDayRefetchQueries } from '@/lib/day-data';
+import { buildDayRefetchQueriesAfterLog, kickDeferredAfterMealLog } from '@/lib/day-data';
 import {
   AISectionHeader,
   EvoHintCard,
+  EvoThinkingOverlay,
   InsightEmptyState,
   SmartSuggestionChips,
 } from '@/components/evo';
@@ -39,6 +40,7 @@ type MealEntry = {
 const mealOptions: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 export default function MealsPage() {
+  const client = useApolloClient();
   const locale = useAppUiLocale();
   const m = mealsPageCopy[locale];
   const mealTypes = mealTypeLabels[locale];
@@ -56,13 +58,13 @@ export default function MealsPage() {
   const [todayListOpen, setTodayListOpen] = useState(true);
   const [addMealOpen, setAddMealOpen] = useState(true);
 
-  const { data, loading, refetch } = useQuery(DAILY_STATS_QUERY, {
+  const { data, loading } = useQuery(DAILY_STATS_QUERY, {
     variables: { date: selectedDate },
     fetchPolicy: 'cache-and-network',
   });
 
   const [logMealWithAI, { loading: savingMeal }] = useMutation(LOG_MEAL_WITH_AI_MUTATION, {
-    onCompleted: async (result) => {
+    onCompleted: (result) => {
       setContent('');
       setImageBase64('');
       setImagePreview(null);
@@ -71,29 +73,25 @@ export default function MealsPage() {
       if (message) {
         setLastInsight(message);
       }
-      await refetch({ date: selectedDate });
+      kickDeferredAfterMealLog(client);
       appToast.success('Meal saved', 'Meal entry was added to your day.');
     },
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save meal.');
     },
-    refetchQueries: [
-      ...buildDayRefetchQueries(selectedDate),
-      { query: WEEKLY_MEALS_NUTRITION_QUERY, variables: { endDate: today } },
-      { query: WEEKLY_MEALS_COACH_QUERY, variables: { endDate: today } },
-    ],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
     awaitRefetchQueries: true,
   });
 
   const [deleteFoodItem, { loading: deletingMeal }] = useMutation(DELETE_FOOD_ITEM_MUTATION, {
+    onCompleted: () => {
+      kickDeferredAfterMealLog(client);
+    },
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: [
-      ...buildDayRefetchQueries(selectedDate),
-      { query: WEEKLY_MEALS_NUTRITION_QUERY, variables: { endDate: today } },
-      { query: WEEKLY_MEALS_COACH_QUERY, variables: { endDate: today } },
-    ],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    awaitRefetchQueries: true,
   });
 
   const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -177,6 +175,7 @@ export default function MealsPage() {
 
   return (
     <AppShell>
+      <EvoThinkingOverlay open={savingMeal} locale={locale} intent="meal" />
       <div className="space-y-5">
         <PageTopBar
           rightContent={

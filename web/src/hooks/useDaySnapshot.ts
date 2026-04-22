@@ -44,6 +44,9 @@ export const useDaySnapshot = ({ date, enabled = true, includeInsight = false }:
     skip: shouldSkip || !includeInsight,
     fetchPolicy: 'cache-and-network',
   });
+  const insightBootstrapping = Boolean(
+    includeInsight && insightQuery.loading && !insightQuery.data?.dashboardInsight
+  );
 
   const stats = statsQuery.data?.dailyStats;
   const workouts = workoutsQuery.data?.myWorkouts || [];
@@ -99,6 +102,7 @@ export const useDaySnapshot = ({ date, enabled = true, includeInsight = false }:
   return {
     date,
     loading,
+    insightBootstrapping,
     stats,
     workouts,
     activity,

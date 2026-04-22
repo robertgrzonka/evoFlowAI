@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from '@apollo/client';
+import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { Camera, Dumbbell, Flame, Trash2 } from 'lucide-react';
 import {
   ME_QUERY,
@@ -17,7 +17,12 @@ import { ListRowSkeleton, PageLoader, Skeleton, StatCardSkeleton } from '@/compo
 import { DELETE_FOOD_ITEM_MUTATION, DELETE_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
 import { UPSERT_DAILY_ACTIVITY_MUTATION } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
-import { buildDayRefetchQueries } from '@/lib/day-data';
+import {
+  buildDayRefetchQueriesAfterLog,
+  kickDeferredAfterMealLog,
+  kickDeferredAfterWorkoutLog,
+  kickDeferredDashboardAndWeeklyEvo,
+} from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import { formatPrimaryGoal } from '@/lib/formatters';
 import {
@@ -32,6 +37,7 @@ type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type AnalysisMode = 'combined' | 'nutrition' | 'training';
 
 export default function StatsPage() {
+  const client = useApolloClient();
   const router = useRouter();
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [selectedDate, setSelectedDate] = useState(today);
@@ -50,26 +56,36 @@ export default function StatsPage() {
   });
 
   const [deleteFoodItem, { loading: deletingMeal }] = useMutation(DELETE_FOOD_ITEM_MUTATION, {
+    onCompleted: () => {
+      kickDeferredAfterMealLog(client);
+    },
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: buildDayRefetchQueries(selectedDate),
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    awaitRefetchQueries: true,
   });
 
   const [deleteWorkout, { loading: deletingWorkout }] = useMutation(DELETE_WORKOUT_MUTATION, {
+    onCompleted: () => {
+      kickDeferredAfterWorkoutLog(client);
+    },
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete workout.');
     },
-    refetchQueries: buildDayRefetchQueries(selectedDate),
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    awaitRefetchQueries: true,
   });
   const [upsertDailyActivity, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
     onCompleted: () => {
+      kickDeferredDashboardAndWeeklyEvo(client);
       appToast.success('Steps updated', 'Daily activity has been saved.');
     },
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not update steps.');
     },
-    refetchQueries: buildDayRefetchQueries(selectedDate),
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    awaitRefetchQueries: true,
   });
 
   useEffect(() => {
