@@ -1,151 +1,153 @@
 # evoFlowAI
 
-AI-powered nutrition and training tracker with a unified coaching flow:
-- log meals (image or text),
-- log workouts,
-- track calorie/macronutrient progress,
-- get contextual day-level guidance from Evo Coach.
+AI-powered nutrition and training tracker with a unified coaching flow: log meals (image or text), log workouts, track calorie and macro progress, and get contextual guidance from **Evo** (dashboard, chat, and **Evo Coach Pro** weekly plans).
 
-The repository is a TypeScript monorepo with web, backend, and shared packages.
+The repository is a **TypeScript monorepo** (`npm` workspaces): `web`, `backend`, and `shared`.
 
-## What Is Included
+## What is included
 
-- `web` (Next.js 14 + Apollo Client): dashboard, chat, goals, stats, workouts
-- `backend` (Apollo GraphQL + MongoDB): auth, food/workout logging, AI services
-- `shared` (TypeScript): shared domain types
-- `ios` (SwiftUI): early mobile client structure
+| Package | Role |
+|--------|------|
+| **`web`** | Next.js 15 (App Router), React, Tailwind, Apollo Client — dashboard, chat, goals, stats, meals, workouts, **Coach Pro**, settings (EN/PL UI) |
+| **`backend`** | Apollo Server GraphQL + MongoDB (Mongoose), JWT auth, OpenAI-backed food analysis, Coach Pro generation, subscriptions for chat |
+| **`shared`** | Shared TypeScript types (`@evoflowai/shared`) consumed by web and backend |
+| **`ios`** | SwiftUI client (early / WIP structure) |
 
-## Core Product Flows
+## Core product flows
 
-- **Meal Logging**: user describes a meal or uploads an image; AI estimates nutrition and stores it.
-- **Workout Logging**: user logs training sessions (duration, calories burned, intensity).
-- **Daily Brief**: dashboard combines nutrition + goals + workouts and returns actionable next steps.
-- **Goals**: calorie/macro goals plus weekly training goals.
-- **Coach Experience**: Evo persona with contextual coaching tips and encouragement.
+- **Meal logging** — Describe a meal or upload a photo; AI estimates nutrition and stores `FoodItem` records.
+- **Workout logging** — Sessions with duration, calories, intensity.
+- **Dashboard** — Day snapshot: remaining calories/macros, workouts, cached AI insights where applicable.
+- **Goals** — Calorie/macro targets and weekly training goals.
+- **Chat** — Evo thread with optional meal-log shortcuts from natural language.
+- **Evo Coach Pro** — Multi-step setup, long-running **weekly** nutrition + training plan (GraphQL), AI-enriched recipes and drawers; plan is stored per user until regenerated.
 
-## Tech Stack
+## Tech stack
 
-- **Frontend**: Next.js, React, TypeScript, Tailwind CSS, Apollo Client, Framer Motion
-- **Backend**: Node.js, Apollo Server, GraphQL Subscriptions, Mongoose, JWT
-- **AI**: OpenAI API
-- **Infra**: Docker Compose (optional), MongoDB
+- **Frontend**: Next.js 15, React 18, TypeScript, Tailwind CSS, Apollo Client, Framer Motion  
+- **Backend**: Node.js, Apollo Server, GraphQL (HTTP + WebSocket subscriptions), Mongoose, JWT  
+- **AI**: OpenAI Chat Completions (JSON / vision); GPT-5 family supported with documented env tuning  
+- **Data**: MongoDB (local or Atlas)  
+- **Optional**: Docker Compose for local Mongo + API wiring (`docker-compose.local.yml`)
 
-## Repository Structure
+## Repository layout
 
 ```text
 evoFlowAI/
-├── backend/         # GraphQL API, resolvers, models, services
-├── web/             # Next.js app (App Router)
-├── shared/          # Shared TypeScript types
-├── ios/             # SwiftUI project (WIP)
-├── docs/            # Setup and product docs
-└── scripts/         # Utility scripts
+├── backend/          # GraphQL schema, resolvers, models, services (OpenAI, caches)
+├── web/              # Next.js app (src/app, components, lib/graphql, i18n)
+├── shared/           # Shared types → build before backend/web in CI
+├── ios/              # SwiftUI (WIP)
+├── docs/             # SETUP, Evo personality, etc.
+├── scripts/          # Utility scripts (see scripts/README.md)
+└── package.json      # Root workspaces + dev scripts
 ```
 
 ## Prerequisites
 
-- Node.js 18+ (recommended: latest LTS)
-- npm 9+
-- MongoDB (local or Atlas)
-- OpenAI API key (required for AI features)
+- **Node.js** 18+ (LTS recommended)  
+- **npm** 9+  
+- **MongoDB** — local instance or [Atlas](https://www.mongodb.com/atlas) (connection string with **database name** in the path, e.g. `…/evoflowai`)  
+- **OpenAI API key** — required for AI features (meal analysis, chat, Coach Pro)
 
-## Quick Start (Local)
+## Quick start (local)
 
-1. Install dependencies:
+1. **Install** (workspace hoists dependencies from root):
 
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
 
-2. Create environment files:
+2. **Environment files**
 
-```bash
-cp backend/.env.example backend/.env
-cp web/.env.local.example web/.env.local
-```
+   ```bash
+   cp backend/.env.example backend/.env
+   cp web/.env.local.example web/.env.local
+   ```
 
-3. Build shared package (types consumed by backend/web):
+   Edit `backend/.env`: `MONGODB_URI`, `JWT_SECRET`, `OPENAI_API_KEY`, and optionally `OPENAI_MODEL`.  
+   Edit `web/.env.local`: `NEXT_PUBLIC_GRAPHQL_URL`, `NEXT_PUBLIC_GRAPHQL_WS_URL` (see `web/.env.local.example`).
 
-```bash
-npm run build:shared
-```
+   **GPT-5 / latency:** `backend/.env.example` documents `OPENAI_REASONING_EFFORT`, `OPENAI_VERBOSITY`, `OPENAI_COACH_PRO_GPT5_COMPLETION_BUDGET`, and related knobs.
 
-4. Run apps:
+3. **Build shared package** (types for backend and web):
 
-```bash
-npm run dev
-```
+   ```bash
+   npm run build:shared
+   ```
 
-This starts:
-- web: [http://localhost:3000](http://localhost:3000)
-- backend GraphQL: [http://localhost:3001/graphql](http://localhost:3001/graphql)
+4. **Run dev** (backend + web in parallel):
+
+   ```bash
+   npm run dev
+   ```
+
+   - Web: [http://localhost:3000](http://localhost:3000)  
+   - GraphQL HTTP: [http://localhost:3001/graphql](http://localhost:3001/graphql)  
+   - GraphQL WS: same host, path configured for subscriptions (see web env example).
+
+5. **Optional — backend on GPT-5 without editing `.env`:**
+
+   ```bash
+   npm run dev:gpt5
+   ```
+
+   Runs `OPENAI_MODEL=gpt-5` for the backend process (see `backend/package.json` script `dev:gpt5`).
 
 ## Docker
 
-Use one of the compose files in project root:
+From the repo root (pick the compose file you use locally):
 
 ```bash
-docker-compose up --build
+docker compose up --build
 # or
-docker-compose -f docker-compose.local.yml up --build
+docker compose -f docker-compose.local.yml up --build
 ```
 
-## Useful Scripts
+Compose can pass `MONGODB_URI` from a root `.env`; details in `docs/SETUP.md`.
 
-From repository root:
+## Useful scripts (root)
 
-- `npm run dev` - run backend + web in parallel
-- `npm run build` - build shared, backend, and web
-- `npm run build:shared` - build shared package only
-- `npm run build:backend` - build backend only
-- `npm run build:web` - build web only
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Backend + web concurrently |
+| `npm run dev:gpt5` | Same, backend uses GPT-5 via env |
+| `npm run build` | `build:shared` → `build:backend` → `build:web` |
+| `npm run build:shared` | Compile `@evoflowai/shared` |
+| `npm run build:backend` | `tsc` backend |
+| `npm run build:web` | `next build` |
 
-Workspace-specific:
+**Package-level checks**
 
-- `cd web && npm run type-check`
-- `cd web && npm run lint`
-- `cd backend && npm run build`
+```bash
+cd web && npm run type-check && npm run lint
+cd backend && npm run build
+```
 
-## Environment Variables
+## Environment variables (summary)
 
-### Backend (`backend/.env`)
+| Location | Keys (non-exhaustive) |
+|----------|------------------------|
+| `backend/.env` | `MONGODB_URI`, `JWT_SECRET`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `ALLOWED_ORIGINS`, optional GPT-5 / Coach Pro budgets — **see `backend/.env.example`** |
+| `web/.env.local` | `NEXT_PUBLIC_GRAPHQL_URL`, `NEXT_PUBLIC_GRAPHQL_WS_URL` |
 
-Important keys:
-- `MONGODB_URI`
-- `JWT_SECRET`
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL` (optional)
-- `OPENAI_TEMPERATURE` (optional)
+Never commit real secrets; `.env` / `.env.local` are gitignored.
 
-### Web (`web/.env.local`)
+## Security
 
-Important keys:
-- `NEXT_PUBLIC_GRAPHQL_URL`
-- `NEXT_PUBLIC_GRAPHQL_WS_URL`
-
-## Security Notes
-
-- Never commit real credentials (`.env`, `.env.local`, private keys, tokens).
-- The repo ignores common env files; keep secrets local.
-- Rotate credentials immediately if they are ever exposed.
-
-## Current Status
-
-Implemented and actively used:
-- JWT auth (+ password reset flow),
-- meal logging with AI analysis,
-- workout logging and day-level energy balance,
-- dashboard brief with coaching tips,
-- goals management (nutrition + weekly training goals),
-- unified app shell/navigation and loading states.
+- Do not commit credentials or private keys.  
+- Rotate any key that was exposed.  
+- Use strong `JWT_SECRET` in production.
 
 ## Documentation
 
-- Setup: `docs/SETUP.md`
-- Contribution process: `CONTRIBUTING.md`
-- Evo personality architecture: `docs/evo-personality-system.md`
-- Frontend atomic audit: `docs/frontend-atomic-audit.md`
+| Doc | Topic |
+|-----|--------|
+| [`docs/SETUP.md`](docs/SETUP.md) | Detailed install, Atlas notes, Jest env, compose |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution process |
+| [`docs/evo-personality-system.md`](docs/evo-personality-system.md) | Evo coaching tone / prompts |
+| [`docs/frontend-atomic-audit.md`](docs/frontend-atomic-audit.md) | Frontend structure notes |
 
 ## License
 
-MIT - see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE).
