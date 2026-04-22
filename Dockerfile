@@ -44,8 +44,8 @@ RUN npm install --only=production
 RUN mkdir -p uploads
 
 EXPOSE 3001
-# Absolute path: some hosts (e.g. Railway startCommand) run without Dockerfile WORKDIR
-CMD ["node", "/app/backend/dist/server.js"]
+# Ensure cwd is backend (uploads, dotenv, relative paths); Railway may not preserve WORKDIR for custom start
+CMD ["sh", "-c", "cd /app/backend && exec node dist/server.js"]
 
 # Stage 5: Production web
 FROM node:18-alpine AS web-production
