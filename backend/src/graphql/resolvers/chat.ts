@@ -33,6 +33,33 @@ const inferMealType = (text: string): MealType => {
   return 'lunch';
 };
 
+const buildLogMealWithAiAssistantContent = (
+  locale: ReturnType<typeof normalizeAppLocale>,
+  analysis: {
+    foodName: string;
+    nutrition: { calories: number; protein: number; carbs: number; fat: number };
+    suggestions?: string[];
+  }
+): string => {
+  const tip =
+    analysis.suggestions?.[0]?.trim() ||
+    (locale === 'pl'
+      ? 'Postaraj się, żeby kolejny posiłek miał białko i warzywa — to ułatwia utrzymanie balansu dnia.'
+      : 'Keep your next meal balanced with protein and veggies to stay on track.');
+  if (locale === 'pl') {
+    return [
+      `Posiłek zapisany: ${analysis.foodName}!`,
+      `Szacowane makro: ${analysis.nutrition.calories.toFixed(0)} kcal, białko ${analysis.nutrition.protein.toFixed(1)} g, węglowodany ${analysis.nutrition.carbs.toFixed(1)} g, tłuszcz ${analysis.nutrition.fat.toFixed(1)} g.`,
+      `Wskazówka: ${tip}`,
+    ].join(' ');
+  }
+  return [
+    `Great job logging your meal: ${analysis.foodName}!`,
+    `Estimated macros: ${analysis.nutrition.calories.toFixed(0)} kcal, ${analysis.nutrition.protein.toFixed(1)}g protein, ${analysis.nutrition.carbs.toFixed(1)}g carbs, ${analysis.nutrition.fat.toFixed(1)}g fat.`,
+    `Coach tip: ${tip}`,
+  ].join(' ');
+};
+
 const extractMealLogRequest = (content: string): { description: string; mealType: MealType } | null => {
   const text = content.trim();
   const patterns = [
@@ -169,9 +196,12 @@ export const chatResolvers = {
 
         const mealLogRequest = extractMealLogRequest(input.content);
         if (mealLogRequest) {
+          const appLocale = normalizeAppLocale(context.user.preferences?.appLocale);
           const analysis = await openAIService.analyzeFoodFromDescription(
             mealLogRequest.description,
-            mealLogRequest.mealType
+            mealLogRequest.mealType,
+            undefined,
+            appLocale
           );
 
           const foodItem = new FoodItem({
@@ -361,9 +391,14 @@ export const chatResolvers = {
       }
 
       const loggedAt = new Date(`${loggedDateKey}T12:00:00.000Z`);
+      const appLocale = normalizeAppLocale(context.user.preferences?.appLocale);
 
       try {
-        const userMessageContent = content || `Analyze this ${mealType} image and save it`;
+        const userMessageContent =
+          content ||
+          (appLocale === 'pl'
+            ? `Przeanalizuj zdjęcie posiłku (${mealType}) i zapisz je`
+            : `Analyze this ${mealType} image and save it`);
 
         const userMessage = new ChatMessage({
           userId: context.user.id,
@@ -381,8 +416,14 @@ export const chatResolvers = {
         });
 
         const analysis = imageBase64
-          ? await openAIService.analyzeFood(imageBase64, mealType, input.additionalContext, imageMimeType)
-          : await openAIService.analyzeFoodFromDescription(content, mealType, input.additionalContext);
+          ? await openAIService.analyzeFood(
+              imageBase64,
+              mealType,
+              input.additionalContext,
+              imageMimeType,
+              appLocale
+            )
+          : await openAIService.analyzeFoodFromDescription(content, mealType, input.additionalContext, appLocale);
 
         const foodItem = new FoodItem({
           userId: context.user.id,
@@ -401,11 +442,7 @@ export const chatResolvers = {
           userId: context.user.id,
         });
 
-        const assistantContent = [
-          `Great job logging your meal: ${analysis.foodName}!`,
-          `Estimated macros: ${analysis.nutrition.calories.toFixed(0)} kcal, ${analysis.nutrition.protein.toFixed(1)}g protein, ${analysis.nutrition.carbs.toFixed(1)}g carbs, ${analysis.nutrition.fat.toFixed(1)}g fat.`,
-          analysis.suggestions?.[0] ? `Coach tip: ${analysis.suggestions[0]}` : 'Coach tip: Keep your next meal balanced with protein and veggies to stay on track.',
-        ].filter(Boolean).join(' ');
+        const assistantContent = buildLogMealWithAiAssistantContent(appLocale, analysis);
 
         const assistantMessage = new ChatMessage({
           userId: context.user.id,

@@ -8,6 +8,7 @@ import {
   saveWeeklyCoachInsightToCache,
 } from '../../services/weeklyCoachInsightCache';
 import { withFilter } from 'graphql-subscriptions';
+import { normalizeAppLocale } from '../../utils/appLocale';
 import { getDailyMetrics } from '../../utils/dailyMetrics';
 import { buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
 
@@ -332,7 +333,13 @@ export const foodResolvers = {
 
       try {
         // OpenAI Vision API integration
-        const analysis = await openAIService.analyzeFood(image, mealType, additionalContext);
+        const analysis = await openAIService.analyzeFood(
+          image,
+          mealType,
+          additionalContext,
+          'image/jpeg',
+          normalizeAppLocale(context.user.preferences?.appLocale)
+        );
         
         return analysis;
       } catch (error) {

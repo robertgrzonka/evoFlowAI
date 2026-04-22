@@ -7,8 +7,10 @@ import {
   EvoUserContext,
   resolveToneAndProactivity,
 } from '../ai/evo';
+import type { EvoTone } from '../ai/evo/types';
 import { resolveCoachProDailyProteinFloor } from '../utils/coachProNutrition';
 import { normalizeAppLocale } from '../utils/appLocale';
+import { coachingToneModelHint, normalizeCoachingToneKey } from '../utils/coachingTone';
 
 /** Allowed values for GPT-5 family Chat Completions — see model pages on platform.openai.com */
 const GPT5_REASONING_EFFORTS = new Set([
@@ -83,6 +85,7 @@ type CoachProPlanJson = {
     planDifficulty: string;
     expectedPace: string;
     flexibilityLevel: string;
+    evoDashboardInsight?: string | null;
   };
   weeklyNutrition: unknown[];
   weeklyTraining: unknown[];
@@ -115,6 +118,8 @@ type CoachProPlanJson = {
 };
 
 type CoachProPlanDetailsJson = {
+  /** Two paragraphs recommended; separate with blank line (\\n\\n). Shown on Coach Pro dashboard. */
+  evoDashboardInsight: string;
   weeklyNutrition: Array<{
     dayLabel: string;
     meals: Array<{
@@ -323,6 +328,7 @@ const COACH_PRO_DETAILS_JSON_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
   required: [
+    'evoDashboardInsight',
     'weeklyNutrition',
     'rationale',
     'smartWarnings',
@@ -334,6 +340,11 @@ const COACH_PRO_DETAILS_JSON_SCHEMA: Record<string, unknown> = {
     'realisticPlan',
   ],
   properties: {
+    evoDashboardInsight: {
+      type: 'string',
+      minLength: 120,
+      maxLength: 3200,
+    },
     weeklyNutrition: {
       type: 'array',
       minItems: 7,
@@ -539,6 +550,102 @@ const COACH_PRO_TRAINING_DRAWER_JSON_SCHEMA: Record<string, unknown> = {
   },
 };
 
+/**
+ * GPT-5+ models often mirror the user-message language; our insight tasks ship English scaffolding + "Return JSON only".
+ * Repeat the locale as an explicit user-message rule so JSON string values stay in the app language.
+ */
+const insightJsonOutputLanguageRule = (locale: ReturnType<typeof normalizeAppLocale>): string =>
+  locale === 'pl'
+    ? 'Output language (required): every string value you write in the JSON (summary, tips, headline, bullets, closingLine, proTip — whichever this schema uses) MUST be Polish. Keep meal/workout titles from the log data verbatim when you refer to them. Do not answer in English.'
+    : 'Output language (required): every string value you write in the JSON must be English. Keep meal/workout titles from the log data verbatim when you refer to them.';
+
+const dashboardInsightEmojiRules = (tone: EvoTone): string => {
+  if (tone === 'gentle') {
+    return '- GENTLE tone — keep the copy lively; use emoji when it genuinely adds warmth (no minimum count — zero is fine if the prose already feels human; avoid emoji walls).';
+  }
+  if (tone === 'strict' || tone === 'direct') {
+    return '- Emoji: do not use any emoji in "summary" or "tips".';
+  }
+  return '- Emoji: optional — at most one subtle emoji per sentence.';
+};
+
+const weeklyCoachJsonEmojiRules = (tone: EvoTone): string => {
+  if (tone === 'gentle') {
+    return '- GENTLE tone — lively, human copy; sprinkle emoji where it fits (headline, summary, bullets, or closing — as natural, not a checklist). No minimum number; avoid repeating the same emoji every line.';
+  }
+  if (tone === 'strict' || tone === 'direct') {
+    return '- Emoji: do not use any emoji in any field of this JSON.';
+  }
+  return '- Optional: at most one subtle emoji in headline OR closingLine, not both.';
+};
+
+const weeklyEvoReviewEmojiRules = (tone: EvoTone): string => {
+  if (tone === 'gentle') {
+    return '- GENTLE tone — warm, vivid language; emoji welcome in "summary" and/or "proTip" when it feels natural (no minimum; proTip stays one sentence, max 240 characters).';
+  }
+  if (tone === 'strict' || tone === 'direct') {
+    return '- Emoji: do not use any emoji in "summary" or "proTip".';
+  }
+  return '- Emoji: optional — at most one subtle emoji in the whole JSON output.';
+};
+
+/** Align Coach Pro JSON copy with global Evo tone + app language (drawers, details, smart actions). */
+const coachProVoiceBlockFromPreferences = (prefs: Record<string, unknown> | undefined): string => {
+  const p = prefs || {};
+  const loc = normalizeAppLocale(String((p as { appLocale?: string }).appLocale));
+  const toneKey = normalizeCoachingToneKey(String((p as { coachingTone?: string }).coachingTone));
+  const lang =
+    loc === 'pl'
+      ? 'Language: all user-visible strings in this JSON must be natural Polish.'
+      : 'Language: all user-visible strings in this JSON must be natural English.';
+  return [
+    'Evo Coach Pro — match the user global coaching tone for warmth vs directness (field text is user-facing):',
+    coachingToneModelHint[toneKey],
+    lang,
+  ].join('\n');
+};
+
+/** Short meal-log JSON: foodName, description, suggestions[] — match app locale (no English labels mixed with Polish body). */
+const foodLogJsonLanguageRule = (locale: ReturnType<typeof normalizeAppLocale>): string =>
+  locale === 'pl'
+    ? 'Output language (required): foodName, description, and every string in suggestions MUST be Polish only. Do not mix English phrases into those fields.'
+    : 'Output language (required): foodName, description, and every string in suggestions must be English only.';
+
+/**
+ * GPT-5 family uses `max_completion_tokens` for the whole completion (incl. internal reasoning).
+ * Low caps often produce `message.content === null` with finish_reason `length`.
+ */
+const GPT5_MIN_COMPLETION_DEFAULT = 16384;
+
+const resolveGpt5MinCompletionTokens = (): number => {
+  const raw = process.env.OPENAI_GPT5_MIN_COMPLETION_TOKENS;
+  if (raw === undefined || String(raw).trim() === '') return GPT5_MIN_COMPLETION_DEFAULT;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return GPT5_MIN_COMPLETION_DEFAULT;
+  return Math.min(128000, Math.max(256, Math.floor(n)));
+};
+
+/**
+ * GPT-5 meal JSON: default high enough that reasoning + output usually fit (3072 often yields empty content).
+ * Override with OPENAI_FOOD_LOG_GPT5_COMPLETION_BUDGET; max clamp allows matching OPENAI_GPT5_MIN_COMPLETION_TOKENS when needed.
+ */
+const resolveFoodAnalysisGpt5CompletionBudget = (): number => {
+  const raw = process.env.OPENAI_FOOD_LOG_GPT5_COMPLETION_BUDGET;
+  if (raw === undefined || String(raw).trim() === '') return 12288;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 12288;
+  return Math.min(65536, Math.max(2048, Math.floor(n)));
+};
+
+/** Coach Pro JSON (plan, details, drawers) — GPT-5 reasoning can consume large budget before visible JSON. */
+const resolveCoachProGpt5CompletionBudget = (): number => {
+  const raw = process.env.OPENAI_COACH_PRO_GPT5_COMPLETION_BUDGET;
+  if (raw === undefined || String(raw).trim() === '') return 65536;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 65536;
+  return Math.min(128000, Math.max(8192, Math.floor(n)));
+};
+
 export class OpenAIService {
   private openai: OpenAI | null = null;
   private readonly model: string;
@@ -549,16 +656,12 @@ export class OpenAIService {
   constructor() {
     this.model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     this.temperature = Number(process.env.OPENAI_TEMPERATURE || '0.3');
-    this.gpt5ReasoningEffort = normalizeOpenAiChoice(
-      process.env.OPENAI_REASONING_EFFORT,
-      GPT5_REASONING_EFFORTS,
-      'OPENAI_REASONING_EFFORT'
-    );
-    this.gpt5Verbosity = normalizeOpenAiChoice(
-      process.env.OPENAI_VERBOSITY,
-      GPT5_VERBOSITY_LEVELS,
-      'OPENAI_VERBOSITY'
-    );
+    // When unset, OpenAI uses model defaults (often higher reasoning) — bad for latency on JSON/recipe paths.
+    this.gpt5ReasoningEffort =
+      normalizeOpenAiChoice(process.env.OPENAI_REASONING_EFFORT, GPT5_REASONING_EFFORTS, 'OPENAI_REASONING_EFFORT') ??
+      'minimal';
+    this.gpt5Verbosity =
+      normalizeOpenAiChoice(process.env.OPENAI_VERBOSITY, GPT5_VERBOSITY_LEVELS, 'OPENAI_VERBOSITY') ?? 'low';
 
     if (process.env.OPENAI_API_KEY) {
       this.openai = new OpenAI({
@@ -593,6 +696,8 @@ export class OpenAIService {
         name: string;
         schema: Record<string, unknown>;
       };
+      /** When set (e.g. meal macro JSON), GPT-5 uses this floor instead of OPENAI_GPT5_MIN_COMPLETION_TOKENS. */
+      gpt5MaxCompletionBudget?: number;
     }
   ): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
     const isGpt5Family = this.isGpt5FamilyCompletionModel();
@@ -600,18 +705,16 @@ export class OpenAIService {
     const jsonSchema = options?.jsonSchema;
 
     if (isGpt5Family) {
+      const gpt5Floor = options?.gpt5MaxCompletionBudget ?? resolveGpt5MinCompletionTokens();
+      const completionBudget = Math.max(maxOutputTokens, gpt5Floor);
       const gpt5Payload = {
         model: this.model,
         messages,
-        max_completion_tokens: maxOutputTokens,
+        max_completion_tokens: completionBudget,
       } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
       const gpt5Extras = gpt5Payload as unknown as Record<string, unknown>;
-      if (this.gpt5ReasoningEffort) {
-        gpt5Extras.reasoning_effort = this.gpt5ReasoningEffort;
-      }
-      if (this.gpt5Verbosity) {
-        gpt5Extras.verbosity = this.gpt5Verbosity;
-      }
+      gpt5Extras.reasoning_effort = this.gpt5ReasoningEffort;
+      gpt5Extras.verbosity = this.gpt5Verbosity;
       if (jsonSchema) {
         (gpt5Payload as any).response_format = {
           type: 'json_schema',
@@ -650,39 +753,88 @@ export class OpenAIService {
     return payload;
   }
 
+  /**
+   * GPT-5 can return null `message.content` when the completion budget is exhausted by reasoning (finish_reason length).
+   * Retry with a larger budget before failing.
+   */
+  private async completeMealAnalysisJson(
+    messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    maxOutputTokens: number
+  ): Promise<string> {
+    this.ensureInitialized();
+    const isGpt5 = this.isGpt5FamilyCompletionModel();
+    let budget = resolveFoodAnalysisGpt5CompletionBudget();
+    const maxAttempts = isGpt5 ? 3 : 1;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const response = await this.openai!.chat.completions.create(
+        this.createCompletionOptions(messages, maxOutputTokens, {
+          forceJsonObject: true,
+          gpt5MaxCompletionBudget: isGpt5 ? budget : undefined,
+        })
+      );
+      const choice = response.choices[0];
+      const content = choice?.message?.content;
+      if (content) return content;
+
+      const reason = choice?.finish_reason ?? 'unknown';
+      const refusal = (choice?.message as { refusal?: string } | undefined)?.refusal;
+
+      if (isGpt5 && reason === 'length' && attempt + 1 < maxAttempts) {
+        const doubled = budget * 2;
+        const globalFloor = resolveGpt5MinCompletionTokens();
+        budget = Math.min(65536, Math.max(doubled, globalFloor));
+        console.warn(
+          `[OpenAI] Meal analysis empty content (finish_reason=${reason}); retry ${attempt + 2}/${maxAttempts} with completion budget ${budget}`
+        );
+        continue;
+      }
+
+      console.error('[OpenAI] Meal analysis empty message', {
+        finish_reason: reason,
+        model: this.model,
+        attempt,
+        budget,
+        refusal,
+      });
+      throw new Error(
+        `No response from OpenAI (finish_reason=${reason}). For GPT-5, raise OPENAI_FOOD_LOG_GPT5_COMPLETION_BUDGET or set OPENAI_REASONING_EFFORT=minimal.`
+      );
+    }
+
+    throw new Error('No response from OpenAI');
+  }
+
   async analyzeFood(
     imageBase64: string,
     mealType: MealType,
     additionalContext?: string,
-    imageMimeType: string = 'image/jpeg'
+    imageMimeType: string = 'image/jpeg',
+    appLocale: ReturnType<typeof normalizeAppLocale> = 'en'
   ): Promise<AnalyzeImageResponse> {
     this.ensureInitialized();
     
     try {
-      const prompt = this.buildAnalysisPrompt(mealType, additionalContext);
-      
-      const response = await this.openai!.chat.completions.create(this.createCompletionOptions([
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: prompt
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${imageMimeType};base64,${imageBase64}`
-                }
-              }
-            ]
-          }
-        ], 1000));
+      const locale = normalizeAppLocale(appLocale);
+      const prompt = this.buildAnalysisPrompt(mealType, additionalContext, locale);
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('No response from OpenAI');
-      }
+      const content = await this.completeMealAnalysisJson(
+        [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${imageMimeType};base64,${imageBase64}`,
+                },
+              },
+            ],
+          },
+        ],
+        1000
+      );
 
       const analysis = this.parseJsonResponse<FoodAnalysisJson>(content);
       
@@ -711,17 +863,21 @@ export class OpenAIService {
   async analyzeFoodFromDescription(
     description: string,
     mealType: MealType,
-    additionalContext?: string
+    additionalContext?: string,
+    appLocale: ReturnType<typeof normalizeAppLocale> = 'en'
   ): Promise<AnalyzeImageResponse> {
     this.ensureInitialized();
 
     try {
+      const locale = normalizeAppLocale(appLocale);
       const prompt = `
         Analyze the meal described by the user and estimate macronutrients.
 
         Meal type: ${mealType}
         User description: ${description}
         ${additionalContext ? `Additional context: ${additionalContext}` : ''}
+
+        ${foodLogJsonLanguageRule(locale)}
 
         Return JSON only in this format:
         {
@@ -741,14 +897,7 @@ export class OpenAIService {
         }
       `;
 
-      const response = await this.openai!.chat.completions.create(
-        this.createCompletionOptions([{ role: 'user', content: prompt }], 800)
-      );
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('No response from OpenAI');
-      }
+      const content = await this.completeMealAnalysisJson([{ role: 'user', content: prompt }], 800);
 
       const analysis = this.parseJsonResponse<FoodAnalysisJson>(content);
 
@@ -958,6 +1107,7 @@ Return ONLY valid JSON:
   }): Promise<{ summary: string; tips: string[] }> {
     this.ensureInitialized();
 
+    const uiLocale = normalizeAppLocale(input.appLocale);
     const { tone, proactivity } = resolveToneAndProactivity({
       coachingTone: input.coachingTone,
       proactivityLevel: input.proactivityLevel,
@@ -972,7 +1122,7 @@ Return ONLY valid JSON:
         primaryGoal: input.primaryGoal,
         dailyCalorieGoal: input.calorieGoal,
         proteinGoal: input.proteinGoal,
-        appLocale: normalizeAppLocale(input.appLocale),
+        appLocale: uiLocale,
         todayStats: {
           calories: input.consumedCalories,
           protein: input.consumedProtein,
@@ -1011,6 +1161,8 @@ ${(input.mealDetails && input.mealDetails.length > 0) ? input.mealDetails.map((l
 Real workouts logged today:
 ${(input.workoutDetails && input.workoutDetails.length > 0) ? input.workoutDetails.map((line) => `- ${line}`).join('\n') : '- none logged'}
 
+${insightJsonOutputLanguageRule(uiLocale)}
+
 Return JSON only:
 {
   "summary": "max 2 concise sentences",
@@ -1025,7 +1177,7 @@ Rules:
 - each tip max 1 sentence
 - practical next steps, no generic fluff
 - mention protein and recovery when relevant
-- optional subtle emoji, max one emoji per sentence
+${dashboardInsightEmojiRules(tone)}
 - in summary, reference at least two concrete numbers from context
 - avoid generic praise and stale templates; sound like a present, intelligent companion
 - if data quality is weak, say it directly instead of guessing
@@ -1060,12 +1212,25 @@ Rules:
     }
 
     while (tips.length < 3) {
-      if (tips.length === 0) tips.push('Plan a protein-rich meal to support your nutrition target.');
-      else if (tips.length === 1) tips.push('Keep your training focused on quality movement and controlled effort.');
-      else tips.push('Prioritize hydration and recovery to stay consistent tomorrow.');
+      if (uiLocale === 'pl') {
+        if (tips.length === 0) tips.push('Zaplanuj posiłek bogaty w białko, żeby lepiej trafić w cel makro.');
+        else if (tips.length === 1) tips.push('Trzymaj trening przy jakości ruchu i kontrolowanym wysiłku.');
+        else tips.push('Zadbaj o nawodnienie i regenerację, żeby jutro iść dalej bez spadku formy.');
+      } else {
+        if (tips.length === 0) tips.push('Plan a protein-rich meal to support your nutrition target.');
+        else if (tips.length === 1) tips.push('Keep your training focused on quality movement and controlled effort.');
+        else tips.push('Prioritize hydration and recovery to stay consistent tomorrow.');
+      }
     }
 
-    const shouldDecorateWithEmoji = this.shouldUseDashboardEmoji(input.date);
+    const toneKey = normalizeCoachingToneKey(input.coachingTone);
+    const parityDecorates = this.shouldUseDashboardEmoji(input.date);
+    const shouldDecorateWithEmoji =
+      toneKey === 'strict' || toneKey === 'direct'
+        ? false
+        : toneKey === 'gentle'
+          ? true
+          : parityDecorates;
     const normalized = this.decorateDashboardInsightWithEmoji({
       summary,
       tips,
@@ -1111,6 +1276,7 @@ Rules:
   }> {
     this.ensureInitialized();
 
+    const uiLocale = normalizeAppLocale(input.appLocale);
     const { tone, proactivity } = resolveToneAndProactivity({
       coachingTone: input.coachingTone,
       proactivityLevel: input.proactivityLevel,
@@ -1128,7 +1294,7 @@ Rules:
         proteinGoal: input.proteinGoal,
         carbsGoal: input.carbsGoal,
         fatGoal: input.fatGoal,
-        appLocale: normalizeAppLocale(input.appLocale),
+        appLocale: uiLocale,
       },
     });
 
@@ -1154,6 +1320,8 @@ Week totals: ${Math.round(input.totals.calories)} kcal, P ${Math.round(input.tot
 7-day averages: ${Math.round(input.averages.calories)} kcal/day, P ${Math.round(input.averages.protein)}g, C ${Math.round(input.averages.carbs)}g, F ${Math.round(input.averages.fat)}g
 Days with at least one meal: ${input.daysWithMeals}/7 · Total meal entries: ${input.totalMealsLogged}
 
+${insightJsonOutputLanguageRule(uiLocale)}
+
 Return JSON only:
 {
   "headline": "short punchy title, max 8 words, no quotes inside",
@@ -1168,7 +1336,7 @@ Rules:
 - If logging is sparse (${input.daysWithMeals} < 4), acknowledge data limits honestly.
 - Do not invent meals; only use rows above.
 - Bullets max 1 sentence each, practical.
-- Optional: at most one subtle emoji in headline OR closingLine, not both.
+${weeklyCoachJsonEmojiRules(tone)}
     `.trim();
 
     const response = await this.openai!.chat.completions.create(
@@ -1246,6 +1414,7 @@ Rules:
   }> {
     this.ensureInitialized();
 
+    const uiLocale = normalizeAppLocale(input.appLocale);
     const { tone, proactivity } = resolveToneAndProactivity({
       coachingTone: input.coachingTone,
       proactivityLevel: input.proactivityLevel,
@@ -1264,7 +1433,7 @@ Rules:
         activityLevel: input.activityLevel,
         weeklyWorkoutsGoal: input.weeklyWorkoutsGoal,
         weeklyActiveMinutesGoal: input.weeklyActiveMinutesGoal,
-        appLocale: normalizeAppLocale(input.appLocale),
+        appLocale: uiLocale,
       },
     });
 
@@ -1290,6 +1459,8 @@ Week totals: ${Math.round(input.totals.minutes)} training minutes, ${Math.round(
 7-day averages: ${Math.round(input.averages.minutes)} min/day, ${Math.round(input.averages.caloriesBurned)} kcal burned/day, ${input.averages.sessions.toFixed(2)} sessions/day
 Days with at least one session: ${input.daysWithWorkouts}/7 · Total sessions logged: ${input.totalSessions}
 
+${insightJsonOutputLanguageRule(uiLocale)}
+
 Return JSON only:
 {
   "headline": "short punchy title, max 8 words, no quotes inside",
@@ -1304,7 +1475,7 @@ Rules:
 - If training logs are sparse (${input.daysWithWorkouts} < 3), acknowledge limits honestly.
 - Do not invent sessions; only use rows above.
 - Bullets max 1 sentence each, practical.
-- Optional: at most one subtle emoji in headline OR closingLine, not both.
+${weeklyCoachJsonEmojiRules(tone)}
     `.trim();
 
     const response = await this.openai!.chat.completions.create(
@@ -1373,6 +1544,7 @@ Rules:
   }): Promise<{ summary: string; proTip: string }> {
     this.ensureInitialized();
 
+    const uiLocale = normalizeAppLocale(input.appLocale);
     const { tone, proactivity } = resolveToneAndProactivity({
       coachingTone: input.coachingTone,
       proactivityLevel: input.proactivityLevel,
@@ -1394,7 +1566,7 @@ Rules:
         weightKg: input.weightKg,
         weeklyWorkoutsGoal: input.weeklyWorkoutsGoal,
         weeklyActiveMinutesGoal: input.weeklyActiveMinutesGoal,
-        appLocale: normalizeAppLocale(input.appLocale),
+        appLocale: uiLocale,
       },
       latestUserMessage: 'Weekly training and nutrition review.',
     });
@@ -1414,9 +1586,11 @@ ${input.highlightLines.map((line) => `- ${line}`).join('\n')}
 
 Fallback summary if you get stuck (do not copy verbatim; improve it): ${input.baselineSummary}
 
+${insightJsonOutputLanguageRule(uiLocale)}
+
 Return JSON only (no markdown inside strings):
 {
-  "summary": "3-5 sentences max. Intriguing, specific, slightly edgy where tone allows. Name the main tension between scores and the highlight data. Match SUPPORTIVE vs DIRECT coaching tone from system instructions.",
+  "summary": "3-5 sentences max. Intriguing, specific; edge level must match coaching tone (gentle / supportive / direct / strict) from system instructions. Name the main tension between scores and the highlight data.",
   "proTip": "Exactly ONE sentence, max 240 characters. Must feel bespoke: weave together (a) primary goal or dietary restrictions if any, (b) the weakest score or clearest gap in highlights, (c) proactivity level — LOW = one micro-habit, HIGH = a bolder stacked habit. Forbidden: clichés like drink more water, believe in yourself, stay consistent without specifics."
 }
 
@@ -1424,6 +1598,7 @@ Rules:
 - Plain text inside JSON only (no **markdown**, no bullet characters).
 - Do not contradict the numeric scores or highlight facts.
 - If dietary restrictions exist, proTip must respect them explicitly.
+${weeklyEvoReviewEmojiRules(tone)}
     `.trim();
 
     const response = await this.openai!.chat.completions.create(
@@ -1436,9 +1611,13 @@ Rules:
       )
     );
 
-    const content = response.choices[0]?.message?.content;
+    const choice0 = response.choices[0];
+    const content = choice0?.message?.content;
     if (!content) {
-      throw new Error('No response from OpenAI');
+      const fr = choice0?.finish_reason ?? 'unknown';
+      throw new Error(
+        `No response from OpenAI (finish_reason=${fr}). With GPT-5 family models, increase OPENAI_GPT5_MIN_COMPLETION_TOKENS (default ${GPT5_MIN_COMPLETION_DEFAULT}) if this persists.`
+      );
     }
 
     const parsed = this.parseJsonResponse<WeeklyEvoReviewAiJson>(content);
@@ -1492,14 +1671,24 @@ Rules:
       appLocale: coachProUiLocale,
     };
 
+    const { tone: coachProTone, proactivity: coachProProactivity } = resolveToneAndProactivity({
+      coachingTone: prefs.coachingTone as string | undefined,
+      proactivityLevel: prefs.proactivityLevel as string | undefined,
+    });
+
     const systemPrompt = composeEvoSystemPrompt({
       mode: 'analysis',
-      tone: 'supportive',
-      proactivity: 'high',
+      tone: coachProTone,
+      proactivity: coachProProactivity,
       includeHumor: false,
       channel: 'insight',
       userContext: systemUserContext,
     });
+
+    const coachProHardRuleLanguage =
+      coachProUiLocale === 'pl'
+        ? '3. Język aplikacji: polski — wszystkie widoczne dla użytkownika stringi w JSON (nazwy posiłków, opisy, etykiety treningów, notatki, listy zakupów itd.) muszą być naturalnym polskim.'
+        : '3. App language: English — all user-visible strings in JSON (meal names, descriptions, training labels, notes, shopping lines, etc.) must be natural English.';
 
     const nutritionMacroContract =
       proteinFloor > 0
@@ -1529,7 +1718,7 @@ ${nutritionMacroContract}
 HARD RULES — NEVER VIOLATE
 1. Return only schema-compliant JSON.
 2. Do not include markdown, commentary, explanations, or text outside schema fields.
-3. The app language is English. All meal names, descriptions, training labels, and helper text must be natural English.
+${coachProHardRuleLanguage}
 4. Never paste raw user preference fragments into output text.
 5. Never use generic placeholder meal names such as:
    - performance bowl
@@ -1626,7 +1815,7 @@ Anti-leak rules (strict):
     return this.generateCoachProPlanWithContract({
       systemPrompt,
       userPrompt: prompt,
-      maxOutputTokens: 12000,
+      maxOutputTokens: 16000,
       context: 'generateCoachProPlan',
       requireFullWeek: true,
       minMealsPerDay,
@@ -1638,14 +1827,44 @@ Anti-leak rules (strict):
     action: string;
     note?: string;
     appLocale?: string;
+    preferences?: Record<string, unknown>;
   }): Promise<CoachProPlanJson> {
     this.ensureInitialized();
 
-    const loc = normalizeAppLocale(input.appLocale);
+    const prefs = input.preferences || {};
+    const loc = normalizeAppLocale(String(input.appLocale ?? (prefs as { appLocale?: string }).appLocale));
     const adaptLangRule =
       loc === 'pl'
         ? '- Utrzymuj spójny język polski; nie wstawiaj surowych fragmentów preferencji użytkownika do opisów posiłków.'
         : '- Keep language clean and in English; never leak raw user preference fragments into meal descriptions.';
+
+    const weightKg =
+      typeof (prefs as { weightKg?: number }).weightKg === 'number' &&
+      Number.isFinite((prefs as { weightKg?: number }).weightKg) &&
+      (prefs as { weightKg?: number }).weightKg! > 0
+        ? (prefs as { weightKg?: number }).weightKg
+        : undefined;
+    const adaptUserContext: EvoUserContext = {
+      primaryGoal: prefs.primaryGoal as string | undefined,
+      coachingTone: prefs.coachingTone as string | undefined,
+      proactivityLevel: prefs.proactivityLevel as string | undefined,
+      dailyCalorieGoal: typeof prefs.dailyCalorieGoal === 'number' ? prefs.dailyCalorieGoal : undefined,
+      proteinGoal: typeof prefs.proteinGoal === 'number' ? prefs.proteinGoal : undefined,
+      weightKg,
+      appLocale: loc,
+    };
+    const { tone: adaptTone, proactivity: adaptProactivity } = resolveToneAndProactivity({
+      coachingTone: adaptUserContext.coachingTone,
+      proactivityLevel: adaptUserContext.proactivityLevel,
+    });
+    const adaptSystemPrompt = composeEvoSystemPrompt({
+      mode: 'analysis',
+      tone: adaptTone,
+      proactivity: adaptProactivity,
+      includeHumor: false,
+      channel: 'insight',
+      userContext: adaptUserContext,
+    });
 
     const prompt = `
 Adjust the existing Evo Coach Pro plan contextually without rebuilding from scratch.
@@ -1666,8 +1885,9 @@ ${adaptLangRule}
     `.trim();
 
     return this.generateCoachProPlanWithContract({
+      systemPrompt: adaptSystemPrompt,
       userPrompt: prompt,
-      maxOutputTokens: 2000,
+      maxOutputTokens: 10000,
       context: 'adaptCoachProPlan',
       requireFullWeek: false,
     });
@@ -1702,6 +1922,7 @@ ${input.corePlanJson}
 Return ONLY valid JSON in the structured-output schema.
 DETAIL RULES
 ${detailRule0}
+0b. evoDashboardInsight (required): a long-form dashboard narrative for the user (not a bullet list). Use two paragraphs separated by a blank line (two newline characters \\n\\n in the JSON string). First paragraph: restate the user's primary goals from setup.goals in plain language and what success looks like this week. Second paragraph: explain how the plan's headline numbers and tone connect to those goals — explicitly reference the meaning of overview fields in the core plan (calorieTargetRange, trainingFrequency, planDifficulty, expectedPace, flexibilityLevel) without copying them verbatim as a list. Stay concrete and encouraging. Avoid meta phrases like "this plan was generated". Total length roughly 400–2200 characters.
 1. Keep meal detail content practical and concise.
 2. Ingredients must be realistic and measurable.
 3. Recipe steps must be scannable and action-based.
@@ -1723,11 +1944,13 @@ ${detailRule0}
   - Never mention that a meal was generated from user preferences.
   - Never say things like "includes user staples", "based on your favorites", or similar meta phrasing.
   - Preference usage must be implicit in dish selection, not explicit in wording.
+
+${coachProVoiceBlockFromPreferences(detailPrefs as Record<string, unknown>)}
     `.trim();
 
     return this.generateCoachProPlanDetailsWithContract({
       userPrompt: prompt,
-      maxOutputTokens: 10000,
+      maxOutputTokens: 16000,
       requireFullWeek: true,
     });
   }
@@ -1769,11 +1992,14 @@ ${JSON.stringify(input.userContext || {}, null, 2)}
 Return ONLY valid JSON in the structured-output schema.
 Rules:
 - Keep the same meal identity (mealType + dish direction).
-- Align ingredients and cooking style with userContext.foodPreferenceSummary when relevant (English only).
+- Align ingredients and cooking style with userContext.foodPreferenceSummary when relevant.
 - Ingredient quantities and preparation flow should support estimated macros.
 - Keep recipe steps practical, concise, and executable.
 - No meta language about generation logic.
-- Use natural English.
+
+${coachProVoiceBlockFromPreferences(
+      (input.userContext as { preferences?: Record<string, unknown> } | undefined)?.preferences
+    )}
     `.trim();
 
     return this.generateCoachProMealDrawerWithContract({
@@ -1834,10 +2060,13 @@ ${JSON.stringify(input.userContext || {}, null, 2)}
 
 Return ONLY valid JSON in the structured-output schema (same shape as meal drawer enrichment).
 Rules:
-- Natural English only for all user-visible strings.
 - Ingredients and recipe steps must stay practical and realistic.
 - Honor userContext food preferences and exclusions when relevant.
 - No meta phrases about "the model" or "generation".
+
+${coachProVoiceBlockFromPreferences(
+      (input.userContext as { preferences?: Record<string, unknown> } | undefined)?.preferences
+    )}
     `.trim();
 
     return this.generateCoachProMealDrawerWithContract({
@@ -1882,7 +2111,10 @@ Rules:
 - whyThisSession should be concise and coaching-oriented.
 - painSubstitution should be practical and safe.
 - Every block in session.structure must include: name, sets, reps, durationMinutes, notes.
-- Use natural English.
+
+${coachProVoiceBlockFromPreferences(
+      (input.userContext as { preferences?: Record<string, unknown> } | undefined)?.preferences
+    )}
     `.trim();
 
     return this.generateCoachProTrainingDrawerWithContract({
@@ -1949,6 +2181,7 @@ Rules:
     const candidate = (details || {}) as Record<string, any>;
     const context = options?.context || 'coachProDetails';
     const requiredTopLevel = [
+      'evoDashboardInsight',
       'weeklyNutrition',
       'rationale',
       'smartWarnings',
@@ -1964,6 +2197,11 @@ Rules:
         issues.push(`missing field: ${field}`);
       }
     });
+
+    const dashInsight = candidate.evoDashboardInsight;
+    if (typeof dashInsight !== 'string' || dashInsight.trim().length < 120) {
+      issues.push('evoDashboardInsight missing or too short');
+    }
 
     const weeklyNutrition = Array.isArray(candidate.weeklyNutrition) ? candidate.weeklyNutrition : [];
     if (!Array.isArray(candidate.weeklyNutrition)) {
@@ -2089,6 +2327,7 @@ Rules:
             name: 'coach_pro_plan',
             schema: COACH_PRO_PLAN_JSON_SCHEMA,
           },
+          gpt5MaxCompletionBudget: resolveCoachProGpt5CompletionBudget(),
         })
       );
       const content = response.choices[0]?.message?.content;
@@ -2158,6 +2397,7 @@ Rules:
             name: 'coach_pro_details',
             schema: COACH_PRO_DETAILS_JSON_SCHEMA,
           },
+          gpt5MaxCompletionBudget: resolveCoachProGpt5CompletionBudget(),
         })
       );
       const content = response.choices[0]?.message?.content;
@@ -2215,6 +2455,7 @@ Rules:
             name: 'coach_pro_meal_drawer',
             schema: COACH_PRO_MEAL_DRAWER_JSON_SCHEMA,
           },
+          gpt5MaxCompletionBudget: resolveCoachProGpt5CompletionBudget(),
         }
       )
     );
@@ -2244,6 +2485,7 @@ Rules:
             name: 'coach_pro_training_drawer',
             schema: COACH_PRO_TRAINING_DRAWER_JSON_SCHEMA,
           },
+          gpt5MaxCompletionBudget: resolveCoachProGpt5CompletionBudget(),
         }
       )
     );
@@ -2252,12 +2494,18 @@ Rules:
     return this.ensureCoachProTrainingDrawerContract(this.parseJsonResponse<CoachProTrainingDrawerJson>(content));
   }
 
-  private buildAnalysisPrompt(mealType: MealType, additionalContext?: string): string {
+  private buildAnalysisPrompt(
+    mealType: MealType,
+    additionalContext: string | undefined,
+    locale: ReturnType<typeof normalizeAppLocale>
+  ): string {
     return `
       Analyze this food image and return detailed macronutrient information.
       
       Meal type: ${mealType}
       ${additionalContext ? `Additional context: ${additionalContext}` : ''}
+
+      ${foodLogJsonLanguageRule(locale)}
       
       Return response in JSON format:
       {
