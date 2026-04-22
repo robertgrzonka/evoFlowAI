@@ -722,6 +722,7 @@ const buildFallbackCoachProPlan = (input: {
       planDifficulty: input.setup?.goals?.aggressiveness || 'BALANCED',
       expectedPace: 'Steady 1-2% weekly progress markers',
       flexibilityLevel: input.setup?.training?.strictOrFlexible || 'Flexible',
+      evoDashboardInsight: null,
     },
     weeklyNutrition,
     weeklyTraining,
@@ -853,6 +854,10 @@ const ensureCoachProPlanShape = (plan: any) => {
       planDifficulty: String(safeOverview.planDifficulty || ''),
       expectedPace: String(safeOverview.expectedPace || ''),
       flexibilityLevel: String(safeOverview.flexibilityLevel || ''),
+      evoDashboardInsight:
+        typeof safeOverview.evoDashboardInsight === 'string' && safeOverview.evoDashboardInsight.trim().length > 0
+          ? String(safeOverview.evoDashboardInsight).trim()
+          : null,
     },
     weeklyNutrition: weeklyNutrition.map((day: any) => ({
       dayLabel: String(day?.dayLabel || ''),
@@ -1623,8 +1628,17 @@ const mergeCoachProPlanWithAiDetails = (basePlan: any, details: any) => {
     };
   });
 
+  const baseOverview = basePlan?.overview && typeof basePlan.overview === 'object' ? basePlan.overview : {};
+  const detailInsightRaw = details?.evoDashboardInsight;
+  const detailInsight =
+    typeof detailInsightRaw === 'string' && String(detailInsightRaw).trim().length > 0 ? String(detailInsightRaw).trim() : null;
+
   return {
     ...basePlan,
+    overview: {
+      ...baseOverview,
+      ...(detailInsight ? { evoDashboardInsight: detailInsight } : {}),
+    },
     weeklyNutrition: mergedNutrition,
     rationale: Array.isArray(details?.rationale) ? details.rationale : basePlan?.rationale,
     smartWarnings: Array.isArray(details?.smartWarnings) ? details.smartWarnings : basePlan?.smartWarnings,
@@ -2294,12 +2308,30 @@ export const coachProResolvers = {
 
       try {
         const proteinFloor = resolveCoachProDailyProteinFloor(context.user.preferences);
-        const adapted = await openAIService.adaptCoachProPlan({
+        let adapted = await openAIService.adaptCoachProPlan({
           currentPlanJson: planJson,
           action: input.action,
           note: input.note,
           appLocale: context.user.preferences?.appLocale,
+          preferences: context.user.preferences as unknown as Record<string, unknown>,
         });
+        try {
+          const prevPlan = JSON.parse(planJson) as { overview?: { evoDashboardInsight?: string } };
+          const keep = typeof prevPlan?.overview?.evoDashboardInsight === 'string' ? prevPlan.overview.evoDashboardInsight.trim() : '';
+          const currentOverview = adapted?.overview && typeof adapted.overview === 'object' ? adapted.overview : null;
+          const currentInsight =
+            currentOverview && typeof (currentOverview as { evoDashboardInsight?: string }).evoDashboardInsight === 'string'
+              ? String((currentOverview as { evoDashboardInsight?: string }).evoDashboardInsight).trim()
+              : '';
+          if (keep && !currentInsight && currentOverview) {
+            adapted = {
+              ...adapted,
+              overview: { ...currentOverview, evoDashboardInsight: keep },
+            };
+          }
+        } catch {
+          // ignore invalid client JSON
+        }
         const { plan: normalizedPlan, trace } = normalizePlanWithTrace(adapted, normalizationOptions);
         const nutritionRebalance = rebalanceNutritionPlanToTargets({
           plan: normalizedPlan,
