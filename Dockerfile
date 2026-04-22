@@ -44,7 +44,8 @@ RUN npm install --only=production
 RUN mkdir -p uploads
 
 EXPOSE 3001
-CMD ["node", "dist/server.js"]
+# Absolute path: some hosts (e.g. Railway startCommand) run without Dockerfile WORKDIR
+CMD ["node", "/app/backend/dist/server.js"]
 
 # Stage 5: Production web
 FROM node:18-alpine AS web-production
