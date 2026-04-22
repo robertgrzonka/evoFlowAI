@@ -49,11 +49,8 @@ const apolloServer = new ApolloServer({
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
-// Start server
+// Start server — HTTP must listen before Mongo so platform healthchecks (e.g. Railway) see /health quickly.
 async function startServer() {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/evoflowai');
-  console.log('✅ Connected to MongoDB');
-
   await apolloServer.start();
   apolloServer.applyMiddleware({ app: app as any, path: '/graphql' });
 
@@ -74,6 +71,9 @@ async function startServer() {
     });
     httpServer.on('error', reject);
   });
+
+  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/evoflowai');
+  console.log('✅ Connected to MongoDB');
 }
 
 startServer().catch((error) => {
