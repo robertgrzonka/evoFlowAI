@@ -40,6 +40,18 @@ export type EvoTodayActivity = {
   steps: number;
   stepsCalories: number;
   calorieBudget: number;
+  /** Extra manual kcal allowance for that calendar day (if any). */
+  activityBonusKcal?: number;
+};
+
+/** One logged meal line for coach chat (from DB). */
+export type EvoDayMealLine = {
+  name: string;
+  mealType: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
 };
 
 export type EvoUserContext = {
@@ -61,6 +73,10 @@ export type EvoUserContext = {
   todayStats?: EvoTodayStats;
   todayWorkouts?: EvoTodayWorkouts;
   todayActivity?: EvoTodayActivity;
+  /** YYYY-MM-DD for which todayStats / dayMeals / workouts below were loaded (may differ from "today"). */
+  statsDateKey?: string;
+  /** Logged meals for statsDateKey (names + macros). */
+  dayMeals?: EvoDayMealLine[];
   /** Stored preference: UI + default Evo language (beta). */
   appLocale?: 'en' | 'pl';
 };

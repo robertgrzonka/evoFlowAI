@@ -48,21 +48,46 @@ const formatUserContext = (userContext?: EvoUserContext): string => {
     );
   }
 
+  if (userContext.statsDateKey) {
+    sections.push(`Reference calendar date for logged data below: ${userContext.statsDateKey}`);
+  }
+
+  const intakeLabel = userContext.statsDateKey
+    ? `Logged intake totals for ${userContext.statsDateKey}`
+    : 'Logged intake totals (today)';
   if (userContext.todayStats) {
     sections.push(
-      `Today intake: ${userContext.todayStats.calories} kcal; protein ${userContext.todayStats.protein}g; carbs ${userContext.todayStats.carbs}g; fat ${userContext.todayStats.fat}g`
+      `${intakeLabel}: ${userContext.todayStats.calories} kcal; protein ${userContext.todayStats.protein}g; carbs ${userContext.todayStats.carbs}g; fat ${userContext.todayStats.fat}g`
     );
   }
 
+  if (userContext.dayMeals && userContext.dayMeals.length > 0) {
+    sections.push('Per-meal log from the app (use these lines for nutrition reviews; do not ask the user to re-type them):');
+    userContext.dayMeals.forEach((m, i) => {
+      sections.push(
+        `  ${i + 1}. ${m.name} (${m.mealType}): ${Math.round(m.calories)} kcal, P ${m.protein.toFixed(1)}g, C ${m.carbs.toFixed(1)}g, F ${m.fat.toFixed(1)}g`
+      );
+    });
+  } else if (userContext.statsDateKey && userContext.todayStats) {
+    sections.push(`Per-meal log: no individual meal entries in the app for ${userContext.statsDateKey} (totals above reflect that day).`);
+  }
+
   if (userContext.todayWorkouts) {
+    const wLabel = userContext.statsDateKey ? `Workouts on ${userContext.statsDateKey}` : 'Today workouts';
     sections.push(
-      `Today workouts: ${userContext.todayWorkouts.sessions} sessions; ${userContext.todayWorkouts.minutes} min; ${userContext.todayWorkouts.caloriesBurned} kcal burned`
+      `${wLabel}: ${userContext.todayWorkouts.sessions} sessions; ${userContext.todayWorkouts.minutes} min; ${userContext.todayWorkouts.caloriesBurned} kcal burned`
     );
   }
 
   if (userContext.todayActivity) {
+    const bonus =
+      typeof userContext.todayActivity.activityBonusKcal === 'number' &&
+      userContext.todayActivity.activityBonusKcal > 0
+        ? `; manual activity bonus +${Math.round(userContext.todayActivity.activityBonusKcal)} kcal (already in budget)`
+        : '';
+    const aLabel = userContext.statsDateKey ? `Activity / budget (${userContext.statsDateKey})` : 'Today steps/activity';
     sections.push(
-      `Today steps/activity: ${userContext.todayActivity.steps} steps tracked; dynamic daily calorie budget ${Math.round(userContext.todayActivity.calorieBudget)} kcal`
+      `${aLabel}: ${userContext.todayActivity.steps} steps tracked; dynamic daily calorie budget ${Math.round(userContext.todayActivity.calorieBudget)} kcal${bonus}`
     );
   }
 
@@ -155,8 +180,8 @@ export const composeEvoSystemPrompt = (input: EvoPromptComposeInput): string => 
     input.channel === 'chat' && input.conversationChannel === 'coach'
       ? [
           'Conversation behavior (coach channel):',
-          '- Prioritize today context (calories, macros, workouts, budget).',
-          '- Act like an attentive performance companion who knows current numbers.',
+          '- Prioritize the day snapshot in User context (date line, intake totals, per-meal list if present, workouts, budget).',
+          '- Act like an attentive performance companion who already sees what is logged in the app for that date.',
           '- End with one concrete next move for the next 2-4 hours.',
         ].join('\n')
       : input.channel === 'chat' && input.conversationChannel === 'general'
@@ -211,6 +236,7 @@ ${formatUserContext(input.userContext)}
 Output quality contract:
 - Keep response concise unless user asks for deeper detail.
 - If data is missing, say it explicitly and ask one focused question.
+- If User context already includes logged intake totals and/or a per-meal list for the reference date, analyze that data directly; do not ask the user to paste the same meals again unless nothing was logged (zeros and no meal lines).
 - Insight first, action second.
 - If user behavior is counterproductive, call it out politely and concretely.
 - Avoid repeated templates and generic filler.

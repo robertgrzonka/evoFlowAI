@@ -2,11 +2,18 @@ import { AuthenticationError, UserInputError } from 'apollo-server-express';
 import { FoodItem } from '../../models/FoodItem';
 import { Context } from '../context';
 import { OpenAIService } from '../../services/openaiService';
+import {
+  fingerprintWeeklyMealsCoach,
+  getWeeklyCoachInsightFromCache,
+  saveWeeklyCoachInsightToCache,
+} from '../../services/weeklyCoachInsightCache';
 import { withFilter } from 'graphql-subscriptions';
 import { getDailyMetrics } from '../../utils/dailyMetrics';
-import { toWeekRange } from '../../utils/weekRange';
+import { buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
 
 const openAIService = new OpenAIService();
+
+type WeeklyDayLoggedMeal = { name: string; mealType: string; calories: number; sortKey: number };
 
 type WeeklyDayRow = {
   date: string;
@@ -15,6 +22,7 @@ type WeeklyDayRow = {
   carbs: number;
   fat: number;
   mealCount: number;
+  meals: { name: string; mealType: string; calories: number }[];
 };
 
 type WeeklyNutritionPayload = {
@@ -29,23 +37,20 @@ type WeeklyNutritionPayload = {
 };
 
 const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string | null): Promise<WeeklyNutritionPayload> => {
-  const { startDate, endDate, nextDay } = toWeekRange(endDateInput || undefined);
+  const { startDate, nextDay, endKey, startKey } = toWeekRange(endDateInput || undefined);
+  const dateKeys = buildWeekDateKeys(endKey);
 
   const meals = await FoodItem.find({
     userId: context.user.id,
     createdAt: { $gte: startDate, $lt: nextDay },
   }).lean();
 
-  const dateKeys: string[] = [];
-  const cursor = new Date(startDate);
-  for (let i = 0; i < 7; i++) {
-    dateKeys.push(cursor.toISOString().split('T')[0]);
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  const byKey = new Map<string, { calories: number; protein: number; carbs: number; fat: number; mealCount: number }>();
+  const byKey = new Map<
+    string,
+    { calories: number; protein: number; carbs: number; fat: number; mealCount: number; mealAcc: WeeklyDayLoggedMeal[] }
+  >();
   for (const key of dateKeys) {
-    byKey.set(key, { calories: 0, protein: 0, carbs: 0, fat: 0, mealCount: 0 });
+    byKey.set(key, { calories: 0, protein: 0, carbs: 0, fat: 0, mealCount: 0, mealAcc: [] });
   }
 
   for (const meal of meals) {
@@ -57,10 +62,19 @@ const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string 
     bucket.carbs += Number(meal.nutrition?.carbs || 0);
     bucket.fat += Number(meal.nutrition?.fat || 0);
     bucket.mealCount += 1;
+    bucket.mealAcc.push({
+      name: String(meal.name || '').trim() || 'Meal',
+      mealType: String(meal.mealType || 'snack'),
+      calories: Number(meal.nutrition?.calories || 0),
+      sortKey: new Date(meal.createdAt as Date).getTime(),
+    });
   }
 
   const days: WeeklyDayRow[] = dateKeys.map((date) => {
     const b = byKey.get(date)!;
+    const mealsSorted = [...b.mealAcc]
+      .sort((a, z) => a.sortKey - z.sortKey)
+      .map(({ name, mealType, calories }) => ({ name, mealType, calories }));
     return {
       date,
       calories: b.calories,
@@ -68,6 +82,7 @@ const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string 
       carbs: b.carbs,
       fat: b.fat,
       mealCount: b.mealCount,
+      meals: mealsSorted,
     };
   });
 
@@ -101,8 +116,8 @@ const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string 
   };
 
   return {
-    weekStart: dateKeys[0] || startDate.toISOString().split('T')[0],
-    weekEnd: dateKeys[6] || endDate.toISOString().split('T')[0],
+    weekStart: dateKeys[0] || startKey,
+    weekEnd: dateKeys[6] || endKey,
     days,
     daysWithMeals,
     totalMealsLogged,
@@ -245,6 +260,7 @@ export const foodResolvers = {
         steps: dayMetrics.steps,
         stepsCalories: dayMetrics.stepsCalories,
         workoutCalories: dayMetrics.workoutTotals.caloriesBurned,
+        activityBonusKcal: dayMetrics.activityBonusKcal,
         calorieBudget: dayMetrics.dynamicTargets.calorieBudget,
         meals: dayMetrics.meals,
         goalProgress: dayMetrics.goalProgress,
@@ -270,8 +286,14 @@ export const foodResolvers = {
         return buildFallbackWeeklyCoach(payload, prefs);
       }
 
+      const fingerprint = fingerprintWeeklyMealsCoach(payload, prefs, context.user.name);
+      const cached = await getWeeklyCoachInsightFromCache(context.user.id, 'meals', payload.weekEnd, fingerprint);
+      if (cached) {
+        return cached;
+      }
+
       try {
-        return await openAIService.generateWeeklyMealsCoachInsight({
+        const insight = await openAIService.generateWeeklyMealsCoachInsight({
           weekStart: payload.weekStart,
           weekEnd: payload.weekEnd,
           userName: context.user.name,
@@ -289,9 +311,13 @@ export const foodResolvers = {
           totals: payload.totals,
           appLocale: prefs?.appLocale,
         });
+        await saveWeeklyCoachInsightToCache(context.user.id, 'meals', payload.weekEnd, fingerprint, insight);
+        return insight;
       } catch (error) {
         console.error('weeklyMealsCoachInsight AI error:', error);
-        return buildFallbackWeeklyCoach(payload, prefs);
+        const fallback = buildFallbackWeeklyCoach(payload, prefs);
+        await saveWeeklyCoachInsightToCache(context.user.id, 'meals', payload.weekEnd, fingerprint, fallback);
+        return fallback;
       }
     },
   },

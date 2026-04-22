@@ -19,13 +19,18 @@ export const buildDynamicTargets = (input: {
   primaryGoal: string | undefined | null;
   workoutCalories: number;
   stepCalories: number;
+  /** User-entered planned extra allowance (same day); capped to avoid absurd budgets. */
+  manualActivityBonusKcal?: number;
   manualProtein?: number;
   manualCarbs?: number;
   manualFat?: number;
 }) => {
   const base = Number.isFinite(input.baseCalories) ? Math.max(800, Math.round(input.baseCalories)) : 2000;
   const delta = getCalorieDeltaByPrimaryGoal(input.primaryGoal);
-  const activityCalories = Math.max(0, input.workoutCalories) + Math.max(0, input.stepCalories);
+  const bonusRaw = Number(input.manualActivityBonusKcal ?? 0);
+  const manualBonus = Number.isFinite(bonusRaw) ? Math.max(0, Math.min(1500, Math.round(bonusRaw))) : 0;
+  const activityCalories =
+    Math.max(0, input.workoutCalories) + Math.max(0, input.stepCalories) + manualBonus;
   const calorieBudget = Math.max(800, Math.round(base + delta + activityCalories));
 
   const fallbackBaseMacros = calculateMacroGoals(base, input.activityLevel);
@@ -41,5 +46,6 @@ export const buildDynamicTargets = (input: {
     fatGoal,
     baseCalories: base,
     goalDelta: delta,
+    manualActivityBonusKcal: manualBonus,
   };
 };

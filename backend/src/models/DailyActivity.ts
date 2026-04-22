@@ -4,6 +4,8 @@ export interface DailyActivityDocument extends Document {
   userId: string;
   date: string; // YYYY-MM-DD
   steps: number;
+  /** Planned / manual extra calorie budget for this day (walk you intend, etc.) — additive to base goal + logged workout burn. */
+  activityBonusKcal: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +23,12 @@ const dailyActivitySchema = new Schema<DailyActivityDocument>(
       index: true,
     },
     steps: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
+    activityBonusKcal: {
       type: Number,
       required: true,
       min: 0,

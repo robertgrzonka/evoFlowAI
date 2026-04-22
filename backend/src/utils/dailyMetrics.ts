@@ -1,4 +1,5 @@
 import { FoodItem } from '../models/FoodItem';
+import { addDaysToDateKey } from './weekRange';
 import { Workout } from '../models/Workout';
 import { DailyActivity } from '../models/DailyActivity';
 import { buildDynamicTargets } from './activityBudget';
@@ -28,9 +29,8 @@ export const normalizeDateKey = (input?: string): string => {
 
 export const getDayRangeByDateKey = (dateKey: string): { startDate: Date; endDate: Date } => {
   const normalized = normalizeDateKey(dateKey);
-  const startDate = new Date(normalized);
-  const endDate = new Date(normalized);
-  endDate.setDate(endDate.getDate() + 1);
+  const startDate = new Date(`${normalized}T00:00:00.000Z`);
+  const endDate = new Date(`${addDaysToDateKey(normalized, 1)}T00:00:00.000Z`);
   return { startDate, endDate };
 };
 
@@ -77,6 +77,7 @@ export const getDailyMetrics = async (input: {
   );
 
   const steps = Math.max(0, Number(dayActivity?.steps || 0));
+  const activityBonusKcal = Math.max(0, Math.round(Number(dayActivity?.activityBonusKcal ?? 0)));
   const stepsCalories = 0;
   const dynamicTargets = buildDynamicTargets({
     baseCalories: input.preferences?.dailyCalorieGoal || 2000,
@@ -84,6 +85,7 @@ export const getDailyMetrics = async (input: {
     primaryGoal: input.preferences?.primaryGoal,
     workoutCalories: workoutTotals.caloriesBurned,
     stepCalories: stepsCalories,
+    manualActivityBonusKcal: activityBonusKcal,
     manualProtein: input.preferences?.proteinGoal,
     manualCarbs: input.preferences?.carbsGoal,
     manualFat: input.preferences?.fatGoal,
@@ -107,6 +109,7 @@ export const getDailyMetrics = async (input: {
     workouts,
     steps,
     stepsCalories,
+    activityBonusKcal,
     totals,
     workoutTotals,
     dynamicTargets,

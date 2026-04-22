@@ -101,6 +101,8 @@ export const typeDefs = gql`
     steps: Int!
     stepsCalories: Float!
     workoutCalories: Float!
+    """Extra kcal allowance you set for this day (planned walk, etc.); already included in calorieBudget."""
+    activityBonusKcal: Float!
     calorieBudget: Float!
     meals: [FoodItem!]!
     goalProgress: GoalProgress!
@@ -221,6 +223,7 @@ export const typeDefs = gql`
     date: String!
     steps: Int!
     estimatedCalories: Float!
+    activityBonusKcal: Int!
   }
 
   type WeeklyEvoReview {
@@ -238,6 +241,12 @@ export const typeDefs = gql`
     consistencyScore: Int!
   }
 
+  type WeeklyMealsDayLoggedMeal {
+    name: String!
+    mealType: String!
+    calories: Float!
+  }
+
   type WeeklyMealsDayRow {
     date: String!
     calories: Float!
@@ -245,6 +254,7 @@ export const typeDefs = gql`
     carbs: Float!
     fat: Float!
     mealCount: Int!
+    meals: [WeeklyMealsDayLoggedMeal!]!
   }
 
   type WeeklyMealsMacroTotals {
@@ -644,6 +654,8 @@ export const typeDefs = gql`
   input UpsertDailyActivityInput {
     date: String!
     steps: Int!
+    """Optional: 0–1500 kcal added to today's budget (planned activity). Omit to leave unchanged."""
+    activityBonusKcal: Int
   }
 
   input ConnectGarminStepSyncInput {

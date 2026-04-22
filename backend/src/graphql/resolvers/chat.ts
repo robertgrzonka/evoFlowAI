@@ -258,26 +258,42 @@ export const chatResolvers = {
           appLocale: normalizeAppLocale(context.user.preferences?.appLocale as string | undefined),
         };
 
-        // Always enrich chat with daily stats (selected date or today)
-        const statsReference = normalizeDateKey(String(input.context?.statsReference || getTodayDateKey()));
-          const dayMetrics = await getDailyMetrics({
-            userId: context.user.id,
-            dateKey: statsReference,
-            preferences: context.user.preferences,
-          });
+        // Daily snapshot: explicit context from UI (e.g. Stats), else first YYYY-MM-DD in the message, else today.
+        const explicitStatsRef = input.context?.statsReference;
+        const dateInMessage = String(input.content || '').match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1];
+        const statsReference = normalizeDateKey(
+          explicitStatsRef != null && String(explicitStatsRef).trim() !== ''
+            ? String(explicitStatsRef)
+            : dateInMessage || getTodayDateKey()
+        );
+        const dayMetrics = await getDailyMetrics({
+          userId: context.user.id,
+          dateKey: statsReference,
+          preferences: context.user.preferences,
+        });
 
-          // Ensure chat uses today's dynamic targets as single source of truth.
-          userContext.dailyCalorieGoal = dayMetrics.dynamicTargets.calorieBudget;
-          userContext.proteinGoal = dayMetrics.dynamicTargets.proteinGoal;
-          userContext.carbsGoal = dayMetrics.dynamicTargets.carbsGoal;
-          userContext.fatGoal = dayMetrics.dynamicTargets.fatGoal;
-          userContext.todayStats = dayMetrics.totals;
-          userContext.todayWorkouts = dayMetrics.workoutTotals;
-          userContext.todayActivity = {
-            steps: dayMetrics.steps,
-            stepsCalories: dayMetrics.stepsCalories,
-            calorieBudget: dayMetrics.dynamicTargets.calorieBudget,
-          };
+        // Ensure chat uses dynamic targets for that calendar day as single source of truth.
+        userContext.dailyCalorieGoal = dayMetrics.dynamicTargets.calorieBudget;
+        userContext.proteinGoal = dayMetrics.dynamicTargets.proteinGoal;
+        userContext.carbsGoal = dayMetrics.dynamicTargets.carbsGoal;
+        userContext.fatGoal = dayMetrics.dynamicTargets.fatGoal;
+        userContext.todayStats = dayMetrics.totals;
+        userContext.todayWorkouts = dayMetrics.workoutTotals;
+        userContext.todayActivity = {
+          steps: dayMetrics.steps,
+          stepsCalories: dayMetrics.stepsCalories,
+          calorieBudget: dayMetrics.dynamicTargets.calorieBudget,
+          activityBonusKcal: dayMetrics.activityBonusKcal,
+        };
+        userContext.statsDateKey = statsReference;
+        userContext.dayMeals = dayMetrics.meals.map((m: { name?: string; mealType?: string; nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number } }) => ({
+          name: String(m.name || '').trim() || 'Meal',
+          mealType: String(m.mealType || 'snack'),
+          calories: Number(m.nutrition?.calories || 0),
+          protein: Number(m.nutrition?.protein || 0),
+          carbs: Number(m.nutrition?.carbs || 0),
+          fat: Number(m.nutrition?.fat || 0),
+        }));
 
         // Generate AI response
         const aiResponse = await openAIService.chat(

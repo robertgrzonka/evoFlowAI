@@ -6,10 +6,15 @@ import { DailyActivity } from '../../models/DailyActivity';
 import { StepSyncConnection } from '../../models/StepSyncConnection';
 import { Context } from '../context';
 import { OpenAIService } from '../../services/openaiService';
+import {
+  fingerprintWeeklyWorkoutsCoach,
+  getWeeklyCoachInsightFromCache,
+  saveWeeklyCoachInsightToCache,
+} from '../../services/weeklyCoachInsightCache';
 import { GarminStepService } from '../../services/garminStepService';
 import { parseWorkoutFile } from '../../services/workoutImportService';
 import { getDailyMetrics, getDayRangeByDateKey, normalizeDateKey } from '../../utils/dailyMetrics';
-import { toWeekRange } from '../../utils/weekRange';
+import { buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
 
 const parseIntensity = (value: string) => value.toLowerCase();
 const openAIService = new OpenAIService();
@@ -283,19 +288,13 @@ const bucketIntensityMinutes = (intensityRaw: string | undefined, minutes: numbe
 };
 
 const loadWeeklyWorkoutsTraining = async (context: Context, endDateInput?: string | null): Promise<WeeklyWorkoutsPayload> => {
-  const { startDate, endDate, nextDay } = toWeekRange(endDateInput || undefined);
+  const { startDate, nextDay, endKey, startKey } = toWeekRange(endDateInput || undefined);
+  const dateKeys = buildWeekDateKeys(endKey);
 
   const sessions = await Workout.find({
     userId: context.user.id,
     performedAt: { $gte: startDate, $lt: nextDay },
   }).lean();
-
-  const dateKeys: string[] = [];
-  const cursor = new Date(startDate);
-  for (let i = 0; i < 7; i++) {
-    dateKeys.push(cursor.toISOString().split('T')[0]);
-    cursor.setDate(cursor.getDate() + 1);
-  }
 
   type Bucket = {
     sessionCount: number;
@@ -369,8 +368,8 @@ const loadWeeklyWorkoutsTraining = async (context: Context, endDateInput?: strin
   };
 
   return {
-    weekStart: dateKeys[0] || startDate.toISOString().split('T')[0],
-    weekEnd: dateKeys[6] || endDate.toISOString().split('T')[0],
+    weekStart: dateKeys[0] || startKey,
+    weekEnd: dateKeys[6] || endKey,
     days,
     daysWithWorkouts,
     totalSessions,
@@ -498,6 +497,7 @@ export const workoutResolvers = {
         date,
         steps,
         estimatedCalories: 0,
+        activityBonusKcal: Math.max(0, Math.round(Number(record?.activityBonusKcal ?? 0))),
       };
     },
 
@@ -644,7 +644,7 @@ export const workoutResolvers = {
         throw new AuthenticationError('You must be logged in');
       }
 
-      const { startDate, endDate: weekEndDate, nextDay } = toWeekRange(endDate);
+      const { startDate, nextDay, startKey, endKey, weekEndLastInstant } = toWeekRange(endDate);
       const [meals, workouts, activityDays] = await Promise.all([
         FoodItem.find({
           userId: context.user.id,
@@ -657,8 +657,8 @@ export const workoutResolvers = {
         DailyActivity.find({
           userId: context.user.id,
           date: {
-            $gte: startDate.toISOString().split('T')[0],
-            $lte: weekEndDate.toISOString().split('T')[0],
+            $gte: startKey,
+            $lte: endKey,
           },
         }),
       ]);
@@ -691,7 +691,7 @@ export const workoutResolvers = {
       const availableStartDate = userCreatedAtRaw > startDate ? userCreatedAtRaw : startDate;
       const availableDays = Math.min(
         7,
-        Math.max(1, Math.floor((weekEndDate.getTime() - availableStartDate.getTime()) / (24 * 60 * 60 * 1000)) + 1)
+        Math.max(1, Math.floor((weekEndLastInstant.getTime() - availableStartDate.getTime()) / (24 * 60 * 60 * 1000)) + 1)
       );
       const isCompleteWeek = availableDays >= 7;
       const periodDays = availableDays;
@@ -707,7 +707,7 @@ export const workoutResolvers = {
           : 'Start tiny: one honest meal log and one movement log unlocks a weekly story worth optimizing next Sunday.';
         return {
           startDate: startDate.toISOString().split('T')[0],
-          endDate: weekEndDate.toISOString().split('T')[0],
+          endDate: endKey,
           trackedDays,
           availableDays,
           isCompleteWeek,
@@ -798,8 +798,8 @@ export const workoutResolvers = {
           trainingScore,
           consistencyScore,
           highlightLines: highlights,
-          weekStart: startDate.toISOString().split('T')[0],
-          weekEnd: weekEndDate.toISOString().split('T')[0],
+          weekStart: startKey,
+          weekEnd: endKey,
           baselineSummary,
           appLocale: prefs?.appLocale,
         });
@@ -810,8 +810,8 @@ export const workoutResolvers = {
       }
 
       return {
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: weekEndDate.toISOString().split('T')[0],
+        startDate: startKey,
+        endDate: endKey,
         trackedDays,
         availableDays,
         isCompleteWeek,
@@ -843,8 +843,14 @@ export const workoutResolvers = {
         return buildFallbackWeeklyWorkoutsCoach(prefs, payload);
       }
 
+      const fingerprint = fingerprintWeeklyWorkoutsCoach(payload, prefs, context.user.name);
+      const cached = await getWeeklyCoachInsightFromCache(context.user.id, 'workouts', payload.weekEnd, fingerprint);
+      if (cached) {
+        return cached;
+      }
+
       try {
-        return await openAIService.generateWeeklyWorkoutsCoachInsight({
+        const insight = await openAIService.generateWeeklyWorkoutsCoachInsight({
           weekStart: payload.weekStart,
           weekEnd: payload.weekEnd,
           userName: context.user.name,
@@ -861,9 +867,13 @@ export const workoutResolvers = {
           totals: payload.totals,
           appLocale: prefs?.appLocale,
         });
+        await saveWeeklyCoachInsightToCache(context.user.id, 'workouts', payload.weekEnd, fingerprint, insight);
+        return insight;
       } catch (error) {
         console.error('weeklyWorkoutsCoachInsight AI error:', error);
-        return buildFallbackWeeklyWorkoutsCoach(prefs, payload);
+        const fallback = buildFallbackWeeklyWorkoutsCoach(prefs, payload);
+        await saveWeeklyCoachInsightToCache(context.user.id, 'workouts', payload.weekEnd, fingerprint, fallback);
+        return fallback;
       }
     },
 
@@ -987,7 +997,11 @@ export const workoutResolvers = {
       return workout;
     },
 
-    upsertDailyActivity: async (_: any, { input }: { input: { date: string; steps: number } }, context: Context) => {
+    upsertDailyActivity: async (
+      _: any,
+      { input }: { input: { date: string; steps: number; activityBonusKcal?: number | null } },
+      context: Context
+    ) => {
       if (!context.user) {
         throw new AuthenticationError('You must be logged in');
       }
@@ -1002,9 +1016,17 @@ export const workoutResolvers = {
         throw new UserInputError('Date must be in YYYY-MM-DD format');
       }
 
+      const existing = await DailyActivity.findOne({ userId: context.user.id, date }).lean();
+      const prevBonus = Math.max(0, Math.round(Number((existing as { activityBonusKcal?: number })?.activityBonusKcal ?? 0)));
+      const bonusRaw = input.activityBonusKcal;
+      const activityBonusKcal =
+        bonusRaw === undefined || bonusRaw === null
+          ? prevBonus
+          : Math.max(0, Math.min(1500, Math.round(Number(bonusRaw))));
+
       const record = await DailyActivity.findOneAndUpdate(
         { userId: context.user.id, date },
-        { $set: { steps: Math.round(steps) } },
+        { $set: { steps: Math.round(steps), activityBonusKcal } },
         { upsert: true, new: true }
       );
 
@@ -1012,6 +1034,7 @@ export const workoutResolvers = {
         date,
         steps: Number(record?.steps || 0),
         estimatedCalories: 0,
+        activityBonusKcal: Math.max(0, Math.round(Number(record?.activityBonusKcal ?? 0))),
       };
     },
 
