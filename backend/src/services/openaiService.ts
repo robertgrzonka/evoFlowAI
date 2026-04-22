@@ -10,6 +10,32 @@ import {
 import { resolveCoachProDailyProteinFloor } from '../utils/coachProNutrition';
 import { normalizeAppLocale } from '../utils/appLocale';
 
+/** Allowed values for GPT-5 family Chat Completions — see model pages on platform.openai.com */
+const GPT5_REASONING_EFFORTS = new Set([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+]);
+
+const GPT5_VERBOSITY_LEVELS = new Set(['low', 'medium', 'high', 'auto']);
+
+function normalizeOpenAiChoice(
+  raw: string | undefined,
+  allowed: Set<string>,
+  envName: string
+): string | undefined {
+  if (!raw?.trim()) return undefined;
+  const v = raw.trim().toLowerCase();
+  if (allowed.has(v)) return v;
+  console.warn(
+    `[OpenAI] Ignoring ${envName}="${raw}" (allowed: ${[...allowed].join(', ')})`
+  );
+  return undefined;
+}
+
 type FoodAnalysisJson = {
   foodName: string;
   description: string;
@@ -517,10 +543,22 @@ export class OpenAIService {
   private openai: OpenAI | null = null;
   private readonly model: string;
   private readonly temperature: number;
+  private readonly gpt5ReasoningEffort: string | undefined;
+  private readonly gpt5Verbosity: string | undefined;
 
   constructor() {
     this.model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     this.temperature = Number(process.env.OPENAI_TEMPERATURE || '0.3');
+    this.gpt5ReasoningEffort = normalizeOpenAiChoice(
+      process.env.OPENAI_REASONING_EFFORT,
+      GPT5_REASONING_EFFORTS,
+      'OPENAI_REASONING_EFFORT'
+    );
+    this.gpt5Verbosity = normalizeOpenAiChoice(
+      process.env.OPENAI_VERBOSITY,
+      GPT5_VERBOSITY_LEVELS,
+      'OPENAI_VERBOSITY'
+    );
 
     if (process.env.OPENAI_API_KEY) {
       this.openai = new OpenAI({
@@ -537,6 +575,15 @@ export class OpenAIService {
     }
   }
 
+  /**
+   * GPT-5.x models use `max_completion_tokens` (not `max_tokens`) and omit classic sampling params.
+   * Docs: https://platform.openai.com/docs/models/gpt-5 — Chat Completions `v1/chat/completions` supported.
+   */
+  private isGpt5FamilyCompletionModel(): boolean {
+    if (process.env.OPENAI_USE_GPT5_CHAT_PARAMS === 'true') return true;
+    return this.model.trim().toLowerCase().startsWith('gpt-5');
+  }
+
   private createCompletionOptions(
     messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     maxOutputTokens: number,
@@ -548,7 +595,7 @@ export class OpenAIService {
       };
     }
   ): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
-    const isGpt5Family = this.model.startsWith('gpt-5');
+    const isGpt5Family = this.isGpt5FamilyCompletionModel();
     const forceJsonObject = Boolean(options?.forceJsonObject);
     const jsonSchema = options?.jsonSchema;
 
@@ -558,6 +605,13 @@ export class OpenAIService {
         messages,
         max_completion_tokens: maxOutputTokens,
       } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
+      const gpt5Extras = gpt5Payload as unknown as Record<string, unknown>;
+      if (this.gpt5ReasoningEffort) {
+        gpt5Extras.reasoning_effort = this.gpt5ReasoningEffort;
+      }
+      if (this.gpt5Verbosity) {
+        gpt5Extras.verbosity = this.gpt5Verbosity;
+      }
       if (jsonSchema) {
         (gpt5Payload as any).response_format = {
           type: 'json_schema',
