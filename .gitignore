@@ -47,6 +47,9 @@ yarn-error.log*
 lerna-debug.log*
 pnpm-debug.log*
 
+# Local MongoDB dumps (may contain user data)
+mongo-dump/
+
 # Runtime data
 pids/
 *.pid
