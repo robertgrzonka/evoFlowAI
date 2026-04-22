@@ -4,6 +4,7 @@ import { Context } from '../context';
 import { OpenAIService } from '../../services/openaiService';
 import { calculateMacroGoals, normalizeActivityLevel } from '../../utils/nutritionGoals';
 import { normalizeAppLocale } from '../../utils/appLocale';
+import { normalizeCoachingToneKey } from '../../utils/coachingTone';
 
 const openAIService = new OpenAIService();
 
@@ -98,7 +99,7 @@ export const userResolvers = {
         updateData['preferences.primaryGoal'] = String(primaryGoal || 'MAINTENANCE').toLowerCase();
       }
       if (coachingTone !== undefined) {
-        updateData['preferences.coachingTone'] = String(coachingTone || 'SUPPORTIVE').toLowerCase();
+        updateData['preferences.coachingTone'] = normalizeCoachingToneKey(String(coachingTone));
       }
       if (proactivityLevel !== undefined) {
         updateData['preferences.proactivityLevel'] = String(proactivityLevel || 'MEDIUM').toLowerCase();

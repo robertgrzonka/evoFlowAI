@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from '@apollo/client';
+import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import {
   Bell,
   Cable,
@@ -30,21 +30,25 @@ import { clearAuthToken } from '@/lib/auth-token';
 import { clearApolloClientCache } from '@/lib/apollo-client';
 import { ButtonSpinner, PageLoader } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
-import { buildDayRefetchQueries } from '@/lib/day-data';
+import { buildDayRefetchQueriesAfterLog, kickDeferredDashboardAndWeeklyEvo } from '@/lib/day-data';
 import { formatPrimaryGoal } from '@/lib/formatters';
 import { AISectionHeader, EvoHintCard } from '@/components/evo';
 import { settingsPageStrings } from '@/lib/i18n/settings-strings';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { persistPublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
 
+const COACHING_TONE_OPTIONS = ['GENTLE', 'SUPPORTIVE', 'DIRECT', 'STRICT'] as const;
+type CoachingToneUi = (typeof COACHING_TONE_OPTIONS)[number];
+
 export default function SettingsPage() {
+  const client = useApolloClient();
   const router = useRouter();
   const today = new Date().toISOString().split('T')[0];
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [evoDockEnabled, setEvoDockEnabled] = useState(true);
   const [weightKg, setWeightKg] = useState('');
   const [heightCm, setHeightCm] = useState('');
-  const [coachingTone, setCoachingTone] = useState<'SUPPORTIVE' | 'DIRECT'>('SUPPORTIVE');
+  const [coachingTone, setCoachingTone] = useState<CoachingToneUi>('SUPPORTIVE');
   const [proactivityLevel, setProactivityLevel] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
   const [appLocale, setAppLocale] = useState<'EN' | 'PL'>('EN');
   const [garminToken, setGarminToken] = useState('');
@@ -54,7 +58,10 @@ export default function SettingsPage() {
     variables: { provider: 'GARMIN' },
   });
   const [updatePreferences, { loading: saving }] = useMutation(UPDATE_PREFERENCES_MUTATION, {
-    refetchQueries: [{ query: ME_QUERY }, ...buildDayRefetchQueries(today)],
+    onCompleted: () => {
+      kickDeferredDashboardAndWeeklyEvo(client);
+    },
+    refetchQueries: [{ query: ME_QUERY }, ...buildDayRefetchQueriesAfterLog(today)],
     awaitRefetchQueries: true,
   });
   const [connectGarminStepSync, { loading: connectingGarmin }] = useMutation(CONNECT_GARMIN_STEP_SYNC_MUTATION);
@@ -66,7 +73,9 @@ export default function SettingsPage() {
     setNotificationsEnabled(Boolean(data.me.preferences.notifications));
     setWeightKg(data.me.preferences.weightKg ? String(data.me.preferences.weightKg) : '');
     setHeightCm(data.me.preferences.heightCm ? String(data.me.preferences.heightCm) : '');
-    setCoachingTone(String(data.me.preferences.coachingTone || 'SUPPORTIVE').toUpperCase() as 'SUPPORTIVE' | 'DIRECT');
+    const raw = String(data.me.preferences.coachingTone || 'SUPPORTIVE').toUpperCase();
+    const next = COACHING_TONE_OPTIONS.includes(raw as CoachingToneUi) ? (raw as CoachingToneUi) : 'SUPPORTIVE';
+    setCoachingTone(next);
     setProactivityLevel(String(data.me.preferences.proactivityLevel || 'MEDIUM').toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH');
     setAppLocale(data.me.preferences.appLocale === 'PL' ? 'PL' : 'EN');
   }, [data]);
@@ -271,28 +280,26 @@ export default function SettingsPage() {
                   <p className="text-sm font-semibold text-text-primary mb-1.5">{s.coachingToneTitle}</p>
                   <p className="text-xs text-text-secondary mb-3">{s.coachingToneSubtitle}</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCoachingTone('SUPPORTIVE')}
-                      className={`rounded-md border px-3 py-2 text-sm transition-colors ${
-                        coachingTone === 'SUPPORTIVE'
-                          ? 'border-primary-500/40 bg-primary-500/10 text-text-primary'
-                          : 'border-border text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      {s.toneSupportive}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCoachingTone('DIRECT')}
-                      className={`rounded-md border px-3 py-2 text-sm transition-colors ${
-                        coachingTone === 'DIRECT'
-                          ? 'border-primary-500/40 bg-primary-500/10 text-text-primary'
-                          : 'border-border text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      {s.toneDirect}
-                    </button>
+                    {COACHING_TONE_OPTIONS.map((tone) => (
+                      <button
+                        key={tone}
+                        type="button"
+                        onClick={() => setCoachingTone(tone)}
+                        className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                          coachingTone === tone
+                            ? 'border-primary-500/40 bg-primary-500/10 text-text-primary'
+                            : 'border-border text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        {tone === 'GENTLE'
+                          ? s.toneGentle
+                          : tone === 'SUPPORTIVE'
+                            ? s.toneSupportive
+                            : tone === 'DIRECT'
+                              ? s.toneDirect
+                              : s.toneStrict}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
@@ -318,7 +325,15 @@ export default function SettingsPage() {
                 <EvoHintCard
                   title={s.previewToneTitle}
                   tone="notice"
-                  content={coachingTone === 'DIRECT' ? s.previewToneDirect : s.previewToneSupportive}
+                  content={
+                    coachingTone === 'GENTLE'
+                      ? s.previewToneGentle
+                      : coachingTone === 'SUPPORTIVE'
+                        ? s.previewToneSupportive
+                        : coachingTone === 'DIRECT'
+                          ? s.previewToneDirect
+                          : s.previewToneStrict
+                  }
                 />
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
                   <p className="text-sm font-semibold text-text-primary mb-1.5">{s.bodyMetricsTitle}</p>
@@ -618,7 +633,11 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
 }
 
 function formatCoachingTone(value: string, s: (typeof settingsPageStrings)['en']) {
-  return String(value || '').toUpperCase() === 'DIRECT' ? s.coachingToneDisplayDirect : s.coachingToneDisplaySupportive;
+  const u = String(value || '').toUpperCase();
+  if (u === 'GENTLE') return s.coachingToneDisplayGentle;
+  if (u === 'DIRECT') return s.coachingToneDisplayDirect;
+  if (u === 'STRICT') return s.coachingToneDisplayStrict;
+  return s.coachingToneDisplaySupportive;
 }
 
 function formatProactivity(value: string, s: (typeof settingsPageStrings)['en']) {

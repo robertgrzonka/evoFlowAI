@@ -1,4 +1,4 @@
-export type EvoTone = 'supportive' | 'direct';
+export type EvoTone = 'gentle' | 'supportive' | 'direct' | 'strict';
 
 export type EvoResponseMode =
   | 'coach'

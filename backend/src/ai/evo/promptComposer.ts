@@ -11,9 +11,9 @@ import {
   EvoUserContext,
 } from './types';
 import { normalizeAppLocale } from '../../utils/appLocale';
+import { coachingToneModelHint, normalizeCoachingToneKey } from '../../utils/coachingTone';
 
-const normalizeTone = (value: string | undefined): EvoTone =>
-  String(value || 'supportive').toLowerCase() === 'direct' ? 'direct' : 'supportive';
+const normalizeTone = (value: string | undefined): EvoTone => normalizeCoachingToneKey(value);
 
 const normalizeProactivity = (value: string | undefined): EvoProactivity => {
   const normalized = String(value || 'medium').toLowerCase();
@@ -29,11 +29,12 @@ const formatUserContext = (userContext?: EvoUserContext): string => {
     return 'User context: unavailable.';
   }
 
+  const toneKey = normalizeCoachingToneKey(userContext.coachingTone);
   const sections = [
     `User name: ${userContext.userName || 'unknown'}`,
     `Body metrics: weight ${userContext.weightKg ?? 'n/a'} kg, height ${userContext.heightCm ?? 'n/a'} cm`,
     `Primary goal: ${userContext.primaryGoal || 'maintenance'}`,
-    `Coaching tone preference: ${normalizeTone(userContext.coachingTone)}`,
+    `Coaching tone preference (${toneKey}): ${coachingToneModelHint[toneKey]}`,
     `Proactivity preference: ${normalizeProactivity(userContext.proactivityLevel)}`,
     `Daily calorie goal: ${userContext.dailyCalorieGoal ?? 'n/a'}`,
     `Macro goals: protein ${userContext.proteinGoal ?? 'n/a'}g, carbs ${userContext.carbsGoal ?? 'n/a'}g, fat ${userContext.fatGoal ?? 'n/a'}g`,
@@ -93,7 +94,7 @@ const formatUserContext = (userContext?: EvoUserContext): string => {
 
   if (userContext.appLocale) {
     sections.push(
-      `App UI language (beta): ${userContext.appLocale === 'pl' ? 'Polish' : 'English'} — match this for insight-style outputs when applicable.`
+      `App UI language: ${userContext.appLocale === 'pl' ? 'Polish' : 'English'} — every line you generate for this user must be in that language (except verbatim quotes of meal/workout titles from logs).`
     );
   }
 

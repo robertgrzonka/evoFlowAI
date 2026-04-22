@@ -32,16 +32,20 @@ export const settingsPageStrings: Record<
     evoDockDesc: string;
     coachingToneTitle: string;
     coachingToneSubtitle: string;
+    toneGentle: string;
     toneSupportive: string;
     toneDirect: string;
+    toneStrict: string;
     proactivityTitle: string;
     proactivitySubtitle: string;
     proactivityLow: string;
     proactivityMedium: string;
     proactivityHigh: string;
     previewToneTitle: string;
-    previewToneDirect: string;
+    previewToneGentle: string;
     previewToneSupportive: string;
+    previewToneDirect: string;
+    previewToneStrict: string;
     bodyMetricsTitle: string;
     bodyMetricsSubtitle: string;
     weightLabel: string;
@@ -107,8 +111,10 @@ export const settingsPageStrings: Record<
     securityTitle: string;
     resetPassword: string;
     logout: string;
+    coachingToneDisplayGentle: string;
     coachingToneDisplaySupportive: string;
     coachingToneDisplayDirect: string;
+    coachingToneDisplayStrict: string;
     proactivityDisplayLow: string;
     proactivityDisplayMedium: string;
     proactivityDisplayHigh: string;
@@ -145,16 +151,24 @@ export const settingsPageStrings: Record<
     evoDockDesc: 'Show minimized Evo messenger dock across authenticated pages.',
     coachingToneTitle: 'Evo coaching tone',
     coachingToneSubtitle: 'This changes communication style, not Evo personality.',
+    toneGentle: 'Gentle',
     toneSupportive: 'Supportive',
     toneDirect: 'Direct',
+    toneStrict: 'Strict',
     proactivityTitle: 'Evo proactivity',
     proactivitySubtitle: 'How often Evo should interrupt with next-step suggestions.',
     proactivityLow: 'Low',
     proactivityMedium: 'Medium',
     proactivityHigh: 'High',
     previewToneTitle: 'Preview tone',
-    previewToneDirect: 'Direct: Evo keeps feedback tight and task-focused.',
-    previewToneSupportive: 'Supportive: Evo stays warm, but still practical and concrete.',
+    previewToneGentle:
+      'Gentle: maximum patience — lively, human wording with emoji when it fits (no fixed count); small steps, no guilt, validation first.',
+    previewToneSupportive:
+      'Supportive: warm and collaborative, a touch of feeling language and rare emoji, then concrete next moves.',
+    previewToneDirect:
+      'Direct: tight, task-focused, almost no emotion or emoji — polite accountability, flat affect.',
+    previewToneStrict:
+      'Strict: high standards, zero emoji, no sentimental padding — blunt about gaps, never insulting you as a person.',
     bodyMetricsTitle: 'Body metrics for AI guidance',
     bodyMetricsSubtitle: 'Evo uses this to suggest protein intake (default: about 2.0 g per kg body weight).',
     weightLabel: 'Weight (kg)',
@@ -223,8 +237,10 @@ export const settingsPageStrings: Record<
     securityTitle: 'Security',
     resetPassword: 'Reset password',
     logout: 'Logout',
+    coachingToneDisplayGentle: 'Gentle',
     coachingToneDisplaySupportive: 'Supportive',
     coachingToneDisplayDirect: 'Direct',
+    coachingToneDisplayStrict: 'Strict',
     proactivityDisplayLow: 'Low',
     proactivityDisplayMedium: 'Medium',
     proactivityDisplayHigh: 'High',
@@ -260,16 +276,24 @@ export const settingsPageStrings: Record<
     evoDockDesc: 'Minimalizowany dock czatu Evo na stronach po zalogowaniu.',
     coachingToneTitle: 'Ton coachowania Evo',
     coachingToneSubtitle: 'Zmienia styl komunikacji, nie „osobowość” Evo.',
+    toneGentle: 'Łagodny',
     toneSupportive: 'Wspierający',
     toneDirect: 'Bezpośredni',
+    toneStrict: 'Wymagający',
     proactivityTitle: 'Proaktywność Evo',
     proactivitySubtitle: 'Jak często Evo ma proponować kolejne kroki.',
     proactivityLow: 'Niska',
     proactivityMedium: 'Średnia',
     proactivityHigh: 'Wysoka',
     previewToneTitle: 'Podgląd tonu',
-    previewToneDirect: 'Bezpośredni: Evo zwięźle i konkretnie.',
-    previewToneSupportive: 'Wspierający: Evo ciepło, ale praktycznie.',
+    previewToneGentle:
+      'Łagodny: żywy, ludzki język i emoji, gdy pasują (bez narzuconej liczby); małe kroki, bez wstydu; najpierw uznanie.',
+    previewToneSupportive:
+      'Wspierający: ciepło i współdecyzja, odrobina uczucia i rzadkie emoji, potem konkretne następne ruchy.',
+    previewToneDirect:
+      'Bezpośredni: zwięźle i rzeczowo, prawie bez emocji i bez emoji — grzeczna odpowiedzialność za wynik.',
+    previewToneStrict:
+      'Wymagający: zero emoji i bez sentymentalnych wstępów — twardo o lukach w danych, bez obrażania Ciebie jako osoby.',
     bodyMetricsTitle: 'Metryki ciała dla AI',
     bodyMetricsSubtitle: 'Evo używa tego m.in. do sugestii białka (domyślnie ok. 2 g na kg masy).',
     weightLabel: 'Masa (kg)',
@@ -338,8 +362,10 @@ export const settingsPageStrings: Record<
     securityTitle: 'Bezpieczeństwo',
     resetPassword: 'Reset hasła',
     logout: 'Wyloguj',
+    coachingToneDisplayGentle: 'Łagodny',
     coachingToneDisplaySupportive: 'Wspierający',
     coachingToneDisplayDirect: 'Bezpośredni',
+    coachingToneDisplayStrict: 'Wymagający',
     proactivityDisplayLow: 'Niski',
     proactivityDisplayMedium: 'Średni',
     proactivityDisplayHigh: 'Wysoki',

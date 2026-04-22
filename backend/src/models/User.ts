@@ -25,7 +25,7 @@ const userPreferencesSchema = new Schema<UserPreferences>({
   },
   coachingTone: {
     type: String,
-    enum: ['supportive', 'direct'],
+    enum: ['gentle', 'supportive', 'direct', 'strict'],
     default: 'supportive'
   },
   proactivityLevel: {
