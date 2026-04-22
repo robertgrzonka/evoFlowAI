@@ -1,6 +1,9 @@
-# Docker Compose configuration with LOCAL MongoDB
-# Use this if you want to run MongoDB locally instead of using Atlas
-# Command: docker-compose -f docker-compose.local.yml up
+# Docker Compose configuration with LOCAL MongoDB by default.
+# Command: docker compose -f docker-compose.local.yml up
+#
+# To use MongoDB Atlas for the backend container instead, set MONGODB_URI in a `.env` file
+# in this same directory (repo root). Compose substitutes it into the backend service.
+# Keep the database segment in the URI (e.g. ...mongodb.net/evoflowai?...).
 
 services:
   # MongoDB Database (Local)
@@ -35,7 +38,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      MONGODB_URI: mongodb://evoflowai:evoflowai123@mongodb:27017/evoflowai?authSource=admin
+      MONGODB_URI: ${MONGODB_URI:-mongodb://evoflowai:evoflowai123@mongodb:27017/evoflowai?authSource=admin}
       JWT_SECRET: KPCzErmAHTxg/gjnl82F4whUA7xgB1r8m1zkh3yBWEI=
       JWT_EXPIRES_IN: 7d
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

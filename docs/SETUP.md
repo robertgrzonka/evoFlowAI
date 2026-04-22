@@ -49,6 +49,14 @@ Edit the `.env` file and configure:
 - `JWT_SECRET` - JWT secret key
 - `OPENAI_API_KEY` - OpenAI API key
 
+**MongoDB Atlas (local dev or tests)**  
+Set `MONGODB_URI` in `backend/.env` to your Atlas SRV string and **include the database name** in the path (this project uses `evoflowai`, same as `mongodb://localhost:27017/evoflowai`). Example shape: `mongodb+srv://USER:PASSWORD@cluster.mongodb.net/evoflowai?appName=...`  
+URL-encode special characters in the password (for example `!` as `%21`). In Atlas **Network Access**, allow your current IP (or temporarily `0.0.0.0/0` for local-only experiments).  
+`npm run dev:backend` loads `backend/.env` via `dotenv` in `src/server.ts`. `npm test` in `backend/` loads the same file from `jest.setup.cjs` so tests use the same `MONGODB_URI` (and other vars) as local dev.
+
+**Docker Compose (`docker-compose.local.yml`)**  
+You can set `MONGODB_URI` in a **repo root** `.env` file; Compose will pass it to the backend service (see variable default in the compose file). The local `mongodb` service still starts unless you change the file; it is unused when the backend points at Atlas.
+
 #### Web
 ```bash
 cd web
