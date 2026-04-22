@@ -26,6 +26,8 @@ WORKDIR /app/web
 COPY web/package*.json ./
 RUN npm install
 COPY web/ ./
+# Next.js may have no tracked `public/`; Docker COPY requires the path to exist
+RUN mkdir -p public
 RUN npm run build
 
 # Stage 4: Production backend
