@@ -10,7 +10,9 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:web\"",
+    "dev:gpt5": "concurrently \"npm run dev:backend:gpt5\" \"npm run dev:web\"",
     "dev:backend": "cd backend && npm run dev",
+    "dev:backend:gpt5": "cd backend && npm run dev:gpt5",
     "dev:web": "cd web && npm run dev",
     "build": "npm run build:shared && npm run build:backend && npm run build:web",
     "build:shared": "cd shared && npm run build",
