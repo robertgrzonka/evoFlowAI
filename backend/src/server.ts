@@ -21,10 +21,19 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
-  credentials: true
-}));
+const parsedOrigins =
+  process.env.ALLOWED_ORIGINS?.split(',')
+    .map((o) => o.trim())
+    .filter(Boolean) ?? [];
+const allowedOrigins =
+  parsedOrigins.length > 0 ? parsedOrigins : ['http://localhost:3000'];
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
