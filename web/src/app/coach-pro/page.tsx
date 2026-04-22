@@ -41,6 +41,7 @@ import {
   MY_COACH_PRO_PLAN_QUERY,
 } from '@/lib/graphql/queries';
 import type { CoachProPlan, CoachProSetupInput } from '@/lib/coach-pro/types';
+import { rotateWeekFromToday } from '@/lib/coach-pro/plan-week-from-today';
 import { appToast } from '@/lib/app-toast';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
@@ -137,34 +138,6 @@ type TrainingDrawerDetails = {
   whyThisSession: string;
   painSubstitution: string;
 };
-
-/** Mon=0 … Sun=6 — match dayLabel prefixes (Mon / Monday, etc.) */
-function dayLabelToMondayIndex(dayLabel: string): number {
-  const s = dayLabel.trim().toLowerCase();
-  if (s.startsWith('mon')) return 0;
-  if (s.startsWith('tue')) return 1;
-  if (s.startsWith('wed')) return 2;
-  if (s.startsWith('thu')) return 3;
-  if (s.startsWith('fri')) return 4;
-  if (s.startsWith('sat')) return 5;
-  if (s.startsWith('sun')) return 6;
-  return 0;
-}
-
-function getMondayBasedTodayIndex(): number {
-  const d = new Date().getDay();
-  return d === 0 ? 6 : d - 1;
-}
-
-/** Order from today: sort Mon→Sun, then rotate so the first item is the current weekday. */
-function rotateWeekFromToday<T extends { dayLabel: string }>(items: T[]): T[] {
-  if (items.length === 0) return items;
-  const sorted = [...items].sort((a, b) => dayLabelToMondayIndex(a.dayLabel) - dayLabelToMondayIndex(b.dayLabel));
-  const todayIdx = getMondayBasedTodayIndex();
-  const startAt = sorted.findIndex((d) => dayLabelToMondayIndex(d.dayLabel) === todayIdx);
-  const start = startAt >= 0 ? startAt : 0;
-  return [...sorted.slice(start), ...sorted.slice(0, start)];
-}
 
 export default function EvoCoachProPage() {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
