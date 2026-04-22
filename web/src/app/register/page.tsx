@@ -12,38 +12,42 @@ import { resetApolloClientAfterAuthChange } from '@/lib/apollo-client';
 import { ButtonSpinner } from '@/components/ui/loading';
 import EvoMark from '@/components/EvoMark';
 import { appToast } from '@/lib/app-toast';
+import { authPagesCopy } from '@/lib/i18n/copy/auth-pages';
+import { usePublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const locale = usePublicUiLocale();
+  const c = authPagesCopy[locale].register;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  
+
   const [register, { loading }] = useMutation(REGISTER_MUTATION, {
     onCompleted: async (data) => {
       setAuthToken(data.register.token, true);
       await resetApolloClientAfterAuthChange();
-      appToast.success('Account created', 'Welcome to evoFlowAI. Let us build your momentum.');
+      appToast.success(c.toastCreatedTitle, c.toastCreatedBody);
       router.push('/dashboard');
     },
     onError: (error) => {
-      appToast.error('Registration failed', error.message || 'Could not create account.');
+      appToast.error(c.toastRegisterFailTitle, error.message || c.toastRegisterFailBody);
     },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (password !== confirmPassword) {
-      appToast.warning('Password mismatch', 'Please make sure both password fields are identical.');
+      appToast.warning(c.toastMismatchTitle, c.toastMismatchBody);
       return;
     }
 
     if (password.length < 6) {
-      appToast.warning('Password too short', 'Use at least 6 characters.');
+      appToast.warning(c.toastShortPasswordTitle, c.toastShortPasswordBody);
       return;
     }
 
@@ -58,7 +62,6 @@ export default function RegisterPage() {
         },
       });
     } catch (error) {
-      // Error handled by onError callback
       console.error('Registration error:', error);
     }
   };
@@ -71,29 +74,24 @@ export default function RegisterPage() {
         transition={{ duration: 0.35, ease: 'easeOut' }}
         className="w-full max-w-[420px]"
       >
-        {/* Back to home */}
         <Link href="/" className="inline-flex items-center text-text-secondary hover:text-text-primary mb-8 transition-colors">
           <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
-          Back to home
+          {c.backHome}
         </Link>
 
-        {/* Logo */}
         <div className="flex items-center justify-center space-x-2 mb-7">
           <EvoMark className="h-6 w-6 text-primary-500" />
           <span className="text-xl font-semibold tracking-tight text-gradient">evoFlowAI</span>
         </div>
 
-        {/* Card */}
         <div className="card-elevated">
-          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-2 text-center">Create account</h1>
-          <p className="text-sm text-text-secondary text-center mb-6">
-            Start your journey to better nutrition
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-2 text-center">{c.title}</h1>
+          <p className="text-sm text-text-secondary text-center mb-6">{c.subtitle}</p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-text-primary mb-2">
-                Full Name
+                {c.fullName}
               </label>
               <div className="auth-input-wrap">
                 <User className="auth-input-icon" />
@@ -105,14 +103,14 @@ export default function RegisterPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="auth-input-control"
-                  placeholder="John Doe"
+                  placeholder={c.namePlaceholder}
                 />
               </div>
             </div>
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-text-primary mb-2">
-                Email
+                {c.email}
               </label>
               <div className="auth-input-wrap">
                 <Mail className="auth-input-icon" />
@@ -131,7 +129,7 @@ export default function RegisterPage() {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-text-primary mb-2">
-                Password
+                {c.password}
               </label>
               <div className="auth-input-wrap">
                 <Lock className="auth-input-icon" />
@@ -150,17 +148,17 @@ export default function RegisterPage() {
                   type="button"
                   className="auth-input-action"
                   onClick={() => setShowPassword((prev) => !prev)}
-                  title={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? c.hidePassword : c.showPassword}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              <p className="mt-1 text-xs text-text-muted">At least 6 characters</p>
+              <p className="mt-1 text-xs text-text-muted">{c.passwordHint}</p>
             </div>
 
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-text-primary mb-2">
-                Confirm Password
+                {c.confirmPassword}
               </label>
               <div className="auth-input-wrap">
                 <Lock className="auth-input-icon" />
@@ -178,7 +176,7 @@ export default function RegisterPage() {
                   type="button"
                   className="auth-input-action"
                   onClick={() => setShowConfirmPassword((prev) => !prev)}
-                  title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  title={showConfirmPassword ? c.hidePassword : c.showPassword}
                 >
                   {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -193,17 +191,19 @@ export default function RegisterPage() {
               {loading ? (
                 <>
                   <ButtonSpinner />
-                  Creating account...
+                  {c.submitting}
                 </>
-              ) : 'Create account'}
+              ) : (
+                c.submit
+              )}
             </button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-text-secondary">
-              Already have an account?{' '}
+              {c.hasAccount}{' '}
               <Link href="/login" className="text-primary-500 hover:text-primary-400 font-medium transition-colors">
-                Log in
+                {c.logIn}
               </Link>
             </p>
           </div>
@@ -212,4 +212,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-

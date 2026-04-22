@@ -14,6 +14,12 @@ import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries } from '@/lib/day-data';
 import { formatPrimaryGoal } from '@/lib/formatters';
 import { AISectionHeader, EvoHintCard, SmartSuggestionChips } from '@/components/evo';
+import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
+import {
+  getGoalMicrocopyLocalized,
+  goalsPageCopy,
+  primaryGoalOptionLabels,
+} from '@/lib/i18n/copy/goals-page';
 
 export default function GoalsPage() {
   const router = useRouter();
@@ -62,15 +68,15 @@ export default function GoalsPage() {
     const parsedWeeklyWorkouts = Number(weeklyWorkoutsGoal);
     const parsedWeeklyMinutes = Number(weeklyActiveMinutesGoal);
     if (!Number.isFinite(parsedGoal) || parsedGoal < 800 || parsedGoal > 5000) {
-      appToast.warning('Invalid calorie target', 'Daily calorie goal must be between 800 and 5000.');
+      appToast.warning('Invalid calorie target', g.invalidCalories);
       return;
     }
     if (!Number.isFinite(parsedWeeklyWorkouts) || parsedWeeklyWorkouts < 0 || parsedWeeklyWorkouts > 14) {
-      appToast.warning('Invalid workouts target', 'Weekly workouts goal must be between 0 and 14.');
+      appToast.warning('Invalid workouts target', g.invalidWorkouts);
       return;
     }
     if (!Number.isFinite(parsedWeeklyMinutes) || parsedWeeklyMinutes < 0 || parsedWeeklyMinutes > 2000) {
-      appToast.warning('Invalid active minutes', 'Weekly active minutes goal must be between 0 and 2000.');
+      appToast.warning('Invalid active minutes', g.invalidMinutes);
       return;
     }
 
@@ -97,7 +103,7 @@ export default function GoalsPage() {
   const handleSetGoalsWithAI = async () => {
     const prompt = aiGoalPrompt.trim();
     if (!prompt) {
-      appToast.info('Add some context', 'Describe your routine so Evo can suggest better goals.');
+      appToast.info('Add some context', g.addContext);
       return;
     }
 
@@ -118,6 +124,10 @@ export default function GoalsPage() {
     return <PageLoader />;
   }
 
+  const locale = graphqlAppLocaleToUi(data?.me?.preferences?.appLocale);
+  const g = goalsPageCopy[locale];
+  const goalOpts = primaryGoalOptionLabels[locale];
+
   return (
     <AppShell>
         <div className="mb-6">
@@ -126,20 +136,17 @@ export default function GoalsPage() {
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-8 bg-surface rounded-xl border border-border p-5 space-y-5">
-            <h1 className="text-xl font-semibold tracking-tight text-text-primary">Goal Settings</h1>
-            <p className="text-text-secondary text-sm">
-              Set your resting calorie baseline and activity goals manually.
-              Daily calorie budget scales dynamically with logged workouts.
-            </p>
+            <h1 className="text-xl font-semibold tracking-tight text-text-primary">{g.pageTitle}</h1>
+            <p className="text-text-secondary text-sm">{g.pageSubtitle}</p>
             <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
-              <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1.5">Strategy note</p>
-              <p className="text-sm text-text-secondary">{getGoalMicrocopy(primaryGoal)}</p>
+              <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1.5">{g.strategyNote}</p>
+              <p className="text-sm text-text-secondary">{getGoalMicrocopyLocalized(primaryGoal, locale)}</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
                 <label htmlFor="daily-goal" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
-                  Resting calories (base)
+                  {g.restingCalories}
                 </label>
                 <input
                   id="daily-goal"
@@ -153,7 +160,7 @@ export default function GoalsPage() {
               </div>
               <div>
                 <label htmlFor="weekly-workouts-goal" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
-                  Weekly workouts
+                  {g.weeklyWorkouts}
                 </label>
                 <input
                   id="weekly-workouts-goal"
@@ -167,7 +174,7 @@ export default function GoalsPage() {
               </div>
               <div>
                 <label htmlFor="weekly-active-minutes-goal" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
-                  Weekly active minutes
+                  {g.weeklyActiveMinutes}
                 </label>
                 <input
                   id="weekly-active-minutes-goal"
@@ -181,7 +188,7 @@ export default function GoalsPage() {
               </div>
               <div>
                 <label htmlFor="activity-level" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
-                  Activity level
+                  {g.activityLevel}
                 </label>
                 <select
                   id="activity-level"
@@ -189,16 +196,16 @@ export default function GoalsPage() {
                   onChange={(event) => setActivityLevel(event.target.value)}
                   className="input-field w-full"
                 >
-                  <option value="SEDENTARY">Sedentary</option>
-                  <option value="LIGHT">Light</option>
-                  <option value="MODERATE">Moderate</option>
-                  <option value="ACTIVE">Active</option>
-                  <option value="VERY_ACTIVE">Very Active</option>
+                  <option value="SEDENTARY">{g.activitySedentary}</option>
+                  <option value="LIGHT">{g.activityLight}</option>
+                  <option value="MODERATE">{g.activityModerate}</option>
+                  <option value="ACTIVE">{g.activityActive}</option>
+                  <option value="VERY_ACTIVE">{g.activityVeryActive}</option>
                 </select>
               </div>
               <div>
                 <label htmlFor="primary-goal" className="mb-2 flex h-10 items-end text-sm text-text-secondary leading-tight">
-                  Primary goal
+                  {g.primaryGoal}
                 </label>
                 <select
                   id="primary-goal"
@@ -206,31 +213,27 @@ export default function GoalsPage() {
                   onChange={(event) => setPrimaryGoal(event.target.value)}
                   className="input-field w-full"
                 >
-                  <option value="FAT_LOSS">Fat loss</option>
-                  <option value="MAINTENANCE">Maintenance</option>
-                  <option value="MUSCLE_GAIN">Muscle gain</option>
-                  <option value="STRENGTH">Strength</option>
+                  <option value="FAT_LOSS">{goalOpts.FAT_LOSS}</option>
+                  <option value="MAINTENANCE">{goalOpts.MAINTENANCE}</option>
+                  <option value="MUSCLE_GAIN">{goalOpts.MUSCLE_GAIN}</option>
+                  <option value="STRENGTH">{goalOpts.STRENGTH}</option>
                 </select>
               </div>
             </div>
 
             <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
-              <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1">Goal-based suggestion</p>
+              <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1">{g.goalBasedTitle}</p>
               <p className="text-sm text-text-secondary mb-2">
-                For <span className="font-semibold text-text-primary">{formatPrimaryGoal(primaryGoal)}</span>, suggested base is{' '}
-                <span className="font-semibold text-text-primary">{suggestedDailyCalories} kcal</span>
-                {' '}({renderGoalDeltaText(primaryGoal)} vs maintenance baseline).
+                {g.goalBasedLine(formatPrimaryGoal(primaryGoal), suggestedDailyCalories, renderGoalDeltaText(primaryGoal))}
               </p>
               <button
                 type="button"
                 onClick={() => setDailyCalorieGoal(String(suggestedDailyCalories))}
                 className="btn-secondary"
               >
-                Apply suggested base calories
+                {g.applySuggested}
               </button>
-              <p className="text-xs text-text-muted mt-2">
-                Evo note: calories can be dynamic by day, but your macro goals below stay stable.
-              </p>
+              <p className="text-xs text-text-muted mt-2">{g.evoNoteCalories}</p>
             </div>
 
             <button
@@ -241,39 +244,41 @@ export default function GoalsPage() {
               {savingGoals ? (
                 <>
                   <ButtonSpinner />
-                  Saving goals...
+                  {g.savingGoals}
                 </>
-              ) : 'Save goals'}
+              ) : (
+                g.saveGoals
+              )}
             </button>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <MacroGoalCard
-                label="Protein Goal"
+                label={g.proteinGoal}
                 value={data?.me?.preferences?.proteinGoal || 0}
               />
               <MacroGoalCard
-                label="Carbs Goal"
+                label={g.carbsGoal}
                 value={data?.me?.preferences?.carbsGoal || 0}
               />
               <MacroGoalCard
-                label="Fat Goal"
+                label={g.fatGoal}
                 value={data?.me?.preferences?.fatGoal || 0}
               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <MacroGoalCard
-                label="Primary Goal"
+                label={g.primaryGoalCard}
                 value={formatPrimaryGoal(String(data?.me?.preferences?.primaryGoal || primaryGoal))}
                 unit=""
               />
               <MacroGoalCard
-                label="Workouts / Week"
+                label={g.workoutsPerWeek}
                 value={data?.me?.preferences?.weeklyWorkoutsGoal || 0}
                 unit=""
               />
               <MacroGoalCard
-                label="Active Minutes / Week"
+                label={g.activeMinPerWeek}
                 value={data?.me?.preferences?.weeklyActiveMinutesGoal || 0}
                 unit="min"
               />
@@ -281,31 +286,27 @@ export default function GoalsPage() {
           </section>
 
           <aside className="xl:col-span-4 bg-surface rounded-xl border border-border p-5 space-y-4 h-fit">
-            <AISectionHeader
-              eyebrow="Evo guidance"
-              title="Evo Goal Coach"
-              subtitle="Set direction manually, then let Evo shape details around your routine."
-            />
+            <AISectionHeader eyebrow={g.eyebrow} title={g.aiTitle} subtitle={g.aiSubtitle} />
 
             <SmartSuggestionChips
-              title="Try one of these contexts"
+              title={g.chipsTitle}
               suggestions={[
-                { id: 'goal-1', label: 'I work at a desk and walk around 6k steps daily. I want gradual fat loss.' },
-                { id: 'goal-2', label: 'I train strength 4 times per week and want to build muscle with minimal fat gain.' },
-                { id: 'goal-3', label: 'I do cardio 5x weekly and need goals that keep energy high.' },
+                { id: 'goal-1', label: g.chip1 },
+                { id: 'goal-2', label: g.chip2 },
+                { id: 'goal-3', label: g.chip3 },
               ]}
               onSelect={(value) => setAiGoalPrompt(value)}
             />
 
             <label htmlFor="ai-goal-prompt" className="block text-sm text-text-secondary">
-              Your context
+              {g.yourContext}
             </label>
             <textarea
               id="ai-goal-prompt"
               value={aiGoalPrompt}
               onChange={(event) => setAiGoalPrompt(event.target.value)}
               className="input-field w-full min-h-28 resize-y"
-              placeholder="Example: I train 4 times a week and want to lose fat slowly while keeping muscle."
+              placeholder={g.aiPlaceholder}
             />
             <button
               onClick={handleSetGoalsWithAI}
@@ -315,14 +316,16 @@ export default function GoalsPage() {
               {applyingAiGoals ? (
                 <>
                   <ButtonSpinner />
-                  AI is setting goals...
+                  {g.aiSetting}
                 </>
-              ) : 'Set goals with AI coach'}
+              ) : (
+                g.setWithAi
+              )}
             </button>
 
             {lastAiMessage ? (
               <EvoHintCard
-                title="Latest Evo update"
+                title={g.latestEvo}
                 tone="notice"
                 content={lastAiMessage}
               />
@@ -348,20 +351,6 @@ function MacroGoalCard({ label, value, unit = 'g' }: { label: string; value: num
       </p>
     </div>
   );
-}
-
-function getGoalMicrocopy(goal: string) {
-  switch (String(goal || '').toUpperCase()) {
-    case 'FAT_LOSS':
-      return 'Keep a moderate deficit and prioritize protein + satiety meals to preserve performance.';
-    case 'MUSCLE_GAIN':
-      return 'Use a controlled surplus, hit protein targets daily, and keep training progression consistent.';
-    case 'STRENGTH':
-      return 'Fuel around sessions, keep carbs around harder workouts, and monitor recovery quality.';
-    case 'MAINTENANCE':
-    default:
-      return 'Aim for stable intake and consistent training rhythm to maintain composition and performance.';
-  }
 }
 
 function goalDeltaByType(goal: string) {

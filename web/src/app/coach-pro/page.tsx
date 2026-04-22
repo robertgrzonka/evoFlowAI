@@ -40,29 +40,23 @@ import {
   ME_QUERY,
   MY_COACH_PRO_PLAN_QUERY,
 } from '@/lib/graphql/queries';
-import type { CoachProPlan, CoachProSetupInput, ProMealStyle, ProTrainingType } from '@/lib/coach-pro/types';
+import type { CoachProPlan, CoachProSetupInput } from '@/lib/coach-pro/types';
 import { appToast } from '@/lib/app-toast';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
-
-const mealStyles: { value: ProMealStyle; label: string }[] = [
-  { value: 'HIGH_PROTEIN', label: 'High protein' },
-  { value: 'LOW_CARB', label: 'Low carb' },
-  { value: 'BALANCED', label: 'Balanced' },
-  { value: 'QUICK_EASY', label: 'Quick & easy' },
-  { value: 'BUDGET_FRIENDLY', label: 'Budget-friendly' },
-  { value: 'COMFORT_HEALTHY', label: 'Comfort but healthy' },
-];
-
-const trainingTypes: { value: ProTrainingType; label: string }[] = [
-  { value: 'GYM', label: 'Gym' },
-  { value: 'RUNNING', label: 'Running' },
-  { value: 'WALKING', label: 'Walking' },
-  { value: 'CYCLING', label: 'Cycling' },
-  { value: 'CALISTHENICS', label: 'Calisthenics' },
-  { value: 'MOBILITY', label: 'Mobility' },
-  { value: 'STRETCHING', label: 'Stretching' },
-  { value: 'HIIT', label: 'HIIT' },
-];
+import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
+import {
+  aggressivenessSelectOptions,
+  coachProPageCopy,
+  coachingStyleSelectOptions,
+  displayCoachingStyleLabel,
+  mealSmartActionLabel,
+  mealStyleOptions,
+  MEAL_SMART_ACTION_KEYS,
+  trainingTypeOptions,
+  type CoachProPageCopy,
+  type MealSmartActionKey,
+} from '@/lib/i18n/copy/coach-pro-page';
+import type { UiLocale } from '@/lib/i18n/ui-locale';
 
 const splitCsv = (value: string) =>
   value
@@ -195,6 +189,12 @@ export default function EvoCoachProPage() {
   const [showAllNutritionDays, setShowAllNutritionDays] = useState(false);
   const [showAllTrainingDays, setShowAllTrainingDays] = useState(false);
   const lastSignalSyncRef = useRef<string>('');
+  const uiLocale = useAppUiLocale();
+  const t = coachProPageCopy[uiLocale];
+  const mealStyleOpts = useMemo(() => mealStyleOptions(uiLocale), [uiLocale]);
+  const trainingTypeOpts = useMemo(() => trainingTypeOptions(uiLocale), [uiLocale]);
+  const coachingStyleOpts = useMemo(() => coachingStyleSelectOptions(uiLocale), [uiLocale]);
+  const aggressivenessOpts = useMemo(() => aggressivenessSelectOptions(uiLocale), [uiLocale]);
 
   const { data: meData, loading: meLoading } = useQuery(ME_QUERY);
   const { data: savedPlanData, loading: savedPlanLoading, refetch: refetchSavedPlan } = useQuery(MY_COACH_PRO_PLAN_QUERY, {
@@ -249,9 +249,10 @@ export default function EvoCoachProPage() {
   useEffect(() => {
     if (!generateData?.generateEvoCoachProPlan) return;
     setPlan(generateData.generateEvoCoachProPlan);
-    appToast.success('Evo Coach Pro ready', 'Premium weekly strategy generated.');
+    const copy = coachProPageCopy[uiLocale];
+    appToast.success(copy.toastReadyTitle, copy.toastReadyBody);
     refetchSavedPlan();
-  }, [generateData, refetchSavedPlan]);
+  }, [generateData, refetchSavedPlan, uiLocale]);
 
   useEffect(() => {
     if (!savedPlanData?.myEvoCoachProPlan) return;
@@ -363,9 +364,14 @@ export default function EvoCoachProPage() {
 
   const prefilledContext = useMemo(() => {
     const preferences = meData?.me?.preferences;
-    if (!preferences) return 'No user profile context available yet.';
-    return `Profile context active: ${preferences.dailyCalorieGoal} kcal, ${preferences.proteinGoal}g protein, ${preferences.weeklyWorkoutsGoal} workouts/week.`;
-  }, [meData]);
+    const copy = coachProPageCopy[uiLocale];
+    if (!preferences) return copy.prefilledNone;
+    return copy.prefilledActive(
+      preferences.dailyCalorieGoal,
+      preferences.proteinGoal,
+      preferences.weeklyWorkoutsGoal
+    );
+  }, [meData, uiLocale]);
 
   const nutritionWeekFromToday = useMemo(
     () => (plan ? rotateWeekFromToday(plan.weeklyNutrition) : []),
@@ -447,13 +453,8 @@ export default function EvoCoachProPage() {
     await generatePlan({ variables: { input: nextSetup } });
   };
 
-  const handleMealAction = async (actionLabel: string) => {
+  const handleMealAction = async (action: MealSmartActionKey) => {
     if (!selectedMeal || mealActionLoading || mealDrawerLoading) return;
-    const action = MEAL_SMART_ACTION_MAP[actionLabel];
-    if (!action) {
-      appToast.error('Unsupported action', actionLabel);
-      return;
-    }
     const slot = selectedMeal.meal;
     const detail = mealDrawerDetails || slot;
     try {
@@ -491,46 +492,39 @@ export default function EvoCoachProPage() {
         setMealDrawerDetails(payload.meal as PlanMeal);
       }
       if (payload?.notice) {
-        appToast.success('Smart action', payload.notice);
+        appToast.success(t.toastSmartActionTitle, payload.notice);
       }
       void refetchSavedPlan();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Could not apply this action.';
-      appToast.error('Action failed', message);
+      const message = error instanceof Error ? error.message : t.toastActionFailBody;
+      appToast.error(t.toastActionFailTitle, message);
     }
   };
 
   const mealDays = plan?.weeklyNutrition?.length || 0;
   const trainingDays = plan?.weeklyTraining?.length || 0;
   const hasHistorySignals = daySnapshot.derived.workoutCount > 0 || Number(daySnapshot.stats?.meals?.length || 0) > 0;
-  const confidenceLevel = mealDays >= 7 && trainingDays >= 7 && hasHistorySignals ? 'High' : mealDays >= 5 ? 'Medium' : 'Foundational';
+  const confidenceTier = mealDays >= 7 && trainingDays >= 7 && hasHistorySignals ? 'high' : mealDays >= 5 ? 'medium' : 'foundational';
+  const confidenceDisplay =
+    confidenceTier === 'high' ? t.confidenceHigh : confidenceTier === 'medium' ? t.confidenceMedium : t.confidenceFoundational;
   const weeklySuccessMarkers = plan
-    ? [
-        'Hit protein target on at least 5 of 7 days',
-        `Complete ${Math.max(3, Number(setup.training.realisticDaysPerWeek || 4) - 1)} of ${setup.training.realisticDaysPerWeek} planned sessions`,
-        'Lock one meal-prep block before mid-week',
-        'Keep recovery day low-intensity with full cooldown',
-      ]
+    ? t.weeklySuccessMarkers(Number(setup.training.realisticDaysPerWeek || 4))
     : [];
 
   const renderSetupStep = () => {
     if (step === 0) {
       return (
         <section className="bg-surface rounded-xl border border-border p-5 space-y-4">
-          <AISectionHeader
-            eyebrow="Step 1/4"
-            title="Nutrition preferences"
-            subtitle="Define hard exclusions, soft dislikes, style, and practical cooking constraints."
-          />
-          <TextAreaRow label="Hard exclusions (never use)" value={hardExclusionsText} onChange={setHardExclusionsText} />
-          <TextAreaRow label="Soft dislikes (avoid when possible)" value={softDislikesText} onChange={setSoftDislikesText} />
-          <TextAreaRow label="Allergies / intolerances" value={allergiesText} onChange={setAllergiesText} />
-          <TextAreaRow label="Favorite foods" value={favoriteFoodsText} onChange={setFavoriteFoodsText} />
-          <TextAreaRow label="Staple foods at home" value={stapleFoodsText} onChange={setStapleFoodsText} />
-          <TextAreaRow label="Ingredients to use up this week" value={useUpIngredientsText} onChange={setUseUpIngredientsText} />
+          <AISectionHeader eyebrow={t.step1Eyebrow} title={t.step1Title} subtitle={t.step1Subtitle} />
+          <TextAreaRow label={t.hardExclusions} value={hardExclusionsText} onChange={setHardExclusionsText} placeholder={t.textareaPlaceholder} />
+          <TextAreaRow label={t.softDislikes} value={softDislikesText} onChange={setSoftDislikesText} placeholder={t.textareaPlaceholder} />
+          <TextAreaRow label={t.allergies} value={allergiesText} onChange={setAllergiesText} placeholder={t.textareaPlaceholder} />
+          <TextAreaRow label={t.favoriteFoods} value={favoriteFoodsText} onChange={setFavoriteFoodsText} placeholder={t.textareaPlaceholder} />
+          <TextAreaRow label={t.stapleFoods} value={stapleFoodsText} onChange={setStapleFoodsText} placeholder={t.textareaPlaceholder} />
+          <TextAreaRow label={t.useUpIngredients} value={useUpIngredientsText} onChange={setUseUpIngredientsText} placeholder={t.textareaPlaceholder} />
           <MultiSelectChips
-            title="Preferred eating style"
-            options={mealStyles}
+            title={t.preferredEatingStyle}
+            options={mealStyleOpts}
             values={setup.nutrition.preferredStyles}
             onToggle={(value) =>
               setSetup((previous) => ({
@@ -544,7 +538,7 @@ export default function EvoCoachProPage() {
           />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <NumberInput
-              label="Meals per day"
+              label={t.mealsPerDay}
               value={setup.nutrition.mealsPerDay}
               onChange={(value) =>
                 setSetup((previous) => ({ ...previous, nutrition: { ...previous.nutrition, mealsPerDay: value } }))
@@ -553,7 +547,7 @@ export default function EvoCoachProPage() {
               max={6}
             />
             <NumberInput
-              label="Cooking time (minutes)"
+              label={t.cookingTime}
               value={setup.nutrition.cookingTimeMinutes}
               onChange={(value) =>
                 setSetup((previous) => ({ ...previous, nutrition: { ...previous.nutrition, cookingTimeMinutes: value } }))
@@ -562,7 +556,7 @@ export default function EvoCoachProPage() {
               max={120}
             />
             <NumberInput
-              label="Weekly food budget"
+              label={t.weeklyFoodBudget}
               value={Number(setup.nutrition.weeklyFoodBudget || 0)}
               onChange={(value) =>
                 setSetup((previous) => ({ ...previous, nutrition: { ...previous.nutrition, weeklyFoodBudget: value } }))
@@ -572,21 +566,21 @@ export default function EvoCoachProPage() {
             />
           </div>
           <BooleanRow
-            label="Allow repeated breakfasts"
+            label={t.allowRepeatedBreakfasts}
             value={setup.nutrition.allowRepeatedBreakfasts}
             onChange={(value) =>
               setSetup((previous) => ({ ...previous, nutrition: { ...previous.nutrition, allowRepeatedBreakfasts: value } }))
             }
           />
           <BooleanRow
-            label="Require lunch/dinner variety"
+            label={t.requireLunchDinnerVariety}
             value={setup.nutrition.requireLunchDinnerVariety}
             onChange={(value) =>
               setSetup((previous) => ({ ...previous, nutrition: { ...previous.nutrition, requireLunchDinnerVariety: value } }))
             }
           />
           <BooleanRow
-            label="Enable meal prep mode"
+            label={t.enableMealPrep}
             value={setup.nutrition.wantsMealPrep}
             onChange={(value) =>
               setSetup((previous) => ({ ...previous, nutrition: { ...previous.nutrition, wantsMealPrep: value } }))
@@ -599,14 +593,10 @@ export default function EvoCoachProPage() {
     if (step === 1) {
       return (
         <section className="bg-surface rounded-xl border border-border p-5 space-y-4">
-          <AISectionHeader
-            eyebrow="Step 2/4"
-            title="Training profile"
-            subtitle="Capture realistic training constraints, equipment, limitations, and preferred intensity."
-          />
+          <AISectionHeader eyebrow={t.step2Eyebrow} title={t.step2Title} subtitle={t.step2Subtitle} />
           <MultiSelectChips
-            title="Training types"
-            options={trainingTypes}
+            title={t.trainingTypesTitle}
+            options={trainingTypeOpts}
             values={setup.training.trainingTypes}
             onToggle={(value) =>
               setSetup((previous) => ({
@@ -620,7 +610,7 @@ export default function EvoCoachProPage() {
           />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <NumberInput
-              label="Realistic training days / week"
+              label={t.trainingDaysPerWeek}
               value={setup.training.realisticDaysPerWeek}
               onChange={(value) =>
                 setSetup((previous) => ({ ...previous, training: { ...previous.training, realisticDaysPerWeek: value } }))
@@ -629,7 +619,7 @@ export default function EvoCoachProPage() {
               max={7}
             />
             <NumberInput
-              label="Preferred duration (minutes)"
+              label={t.preferredDuration}
               value={setup.training.preferredDurationMinutes}
               onChange={(value) =>
                 setSetup((previous) => ({ ...previous, training: { ...previous.training, preferredDurationMinutes: value } }))
@@ -638,22 +628,32 @@ export default function EvoCoachProPage() {
               max={120}
             />
           </div>
-          <TextAreaRow label="Available equipment" value={equipmentText} onChange={setEquipmentText} />
-          <TextAreaRow label="Favorite exercises/styles" value={favoriteExercisesText} onChange={setFavoriteExercisesText} />
-          <TextAreaRow label="Disliked exercises/types" value={dislikedExercisesText} onChange={setDislikedExercisesText} />
-          <TextAreaRow label="Injuries / limitations / sensitive body parts" value={injuriesText} onChange={setInjuriesText} />
+          <TextAreaRow label={t.equipment} value={equipmentText} onChange={setEquipmentText} placeholder={t.textareaPlaceholder} />
+          <TextAreaRow
+            label={t.favoriteExercises}
+            value={favoriteExercisesText}
+            onChange={setFavoriteExercisesText}
+            placeholder={t.textareaPlaceholder}
+          />
+          <TextAreaRow
+            label={t.dislikedExercises}
+            value={dislikedExercisesText}
+            onChange={setDislikedExercisesText}
+            placeholder={t.textareaPlaceholder}
+          />
+          <TextAreaRow label={t.injuries} value={injuriesText} onChange={setInjuriesText} placeholder={t.textareaPlaceholder} />
           <FieldSelect
-            label="Preferred intensity"
+            label={t.preferredIntensity}
             value={setup.training.preferredIntensity}
-            options={['Low', 'Moderate', 'High']}
+            options={t.intensityLowModHigh}
             onChange={(value) =>
               setSetup((previous) => ({ ...previous, training: { ...previous.training, preferredIntensity: value } }))
             }
           />
           <FieldSelect
-            label="Plan strictness"
+            label={t.planStrictness}
             value={setup.training.strictOrFlexible}
-            options={['Strict plan', 'Flexible adaptive plan']}
+            options={t.strictnessOptions}
             onChange={(value) =>
               setSetup((previous) => ({ ...previous, training: { ...previous.training, strictOrFlexible: value } }))
             }
@@ -665,32 +665,33 @@ export default function EvoCoachProPage() {
     if (step === 2) {
       return (
         <section className="bg-surface rounded-xl border border-border p-5 space-y-4">
-          <AISectionHeader
-            eyebrow="Step 3/4"
-            title="Goal setup"
-            subtitle="Set target outcomes, timeline, coaching style, and sustainability/aggressiveness."
-          />
+          <AISectionHeader eyebrow={t.step3Eyebrow} title={t.step3Title} subtitle={t.step3Subtitle} />
           <TextInput
-            label="Primary goal"
+            label={t.primaryGoal}
             value={setup.goals.primaryGoal}
             onChange={(value) => setSetup((previous) => ({ ...previous, goals: { ...previous.goals, primaryGoal: value } }))}
           />
           <TextInput
-            label="Secondary goal"
+            label={t.secondaryGoal}
             value={setup.goals.secondaryGoal || ''}
             onChange={(value) => setSetup((previous) => ({ ...previous, goals: { ...previous.goals, secondaryGoal: value } }))}
           />
           <TextInput
-            label="Target or event date (optional)"
+            label={t.targetDate}
             value={setup.goals.targetDate || ''}
             onChange={(value) => setSetup((previous) => ({ ...previous, goals: { ...previous.goals, targetDate: value } }))}
-            placeholder="YYYY-MM-DD"
+            placeholder={t.targetDatePlaceholder}
           />
-          <TextAreaRow label="Priority focus (comma separated)" value={priorityFocusText} onChange={setPriorityFocusText} />
+          <TextAreaRow
+            label={t.priorityFocus}
+            value={priorityFocusText}
+            onChange={setPriorityFocusText}
+            placeholder={t.textareaPlaceholder}
+          />
           <FieldSelect
-            label="Expected coaching style"
+            label={t.expectedCoachingStyle}
             value={setup.goals.coachingStyle}
-            options={['SUPPORTIVE', 'DIRECT', 'ANALYTICAL', 'MOTIVATING']}
+            options={coachingStyleOpts}
             onChange={(value) =>
               setSetup((previous) => ({
                 ...previous,
@@ -702,9 +703,9 @@ export default function EvoCoachProPage() {
             }
           />
           <FieldSelect
-            label="Plan aggressiveness"
+            label={t.planAggressiveness}
             value={setup.goals.aggressiveness}
-            options={['CONSERVATIVE', 'BALANCED', 'AGGRESSIVE']}
+            options={aggressivenessOpts}
             onChange={(value) =>
               setSetup((previous) => ({
                 ...previous,
@@ -721,54 +722,51 @@ export default function EvoCoachProPage() {
 
     return (
       <section className="bg-surface rounded-xl border border-border p-5 space-y-4">
-        <AISectionHeader
-          eyebrow="Step 4/4"
-          title="Lifestyle and realism"
-          subtitle="Map life constraints so Evo generates practical plans, not idealized fantasy schedules."
-        />
+        <AISectionHeader eyebrow={t.step4Eyebrow} title={t.step4Title} subtitle={t.step4Subtitle} />
         <FieldSelect
-          label="Work schedule intensity"
+          label={t.workScheduleIntensity}
           value={setup.lifestyle.workScheduleIntensity}
-          options={['Low', 'Moderate', 'High']}
+          options={t.lifestyleLowModHigh}
           onChange={(value) => setSetup((previous) => ({ ...previous, lifestyle: { ...previous.lifestyle, workScheduleIntensity: value } }))}
         />
         <FieldSelect
-          label="Sleep quality"
+          label={t.sleepQuality}
           value={setup.lifestyle.sleepQuality}
-          options={['Poor', 'Average', 'Good']}
+          options={t.sleepOptions}
           onChange={(value) => setSetup((previous) => ({ ...previous, lifestyle: { ...previous.lifestyle, sleepQuality: value } }))}
         />
         <FieldSelect
-          label="Stress level"
+          label={t.stressLevel}
           value={setup.lifestyle.stressLevel}
-          options={['Low', 'Medium', 'High']}
+          options={t.stressOptions}
           onChange={(value) => setSetup((previous) => ({ ...previous, lifestyle: { ...previous.lifestyle, stressLevel: value } }))}
         />
         <FieldSelect
-          label="Average daily activity"
+          label={t.averageDailyActivity}
           value={setup.lifestyle.averageDailyActivity}
-          options={['Low', 'Moderate', 'High']}
+          options={t.lifestyleLowModHigh}
           onChange={(value) => setSetup((previous) => ({ ...previous, lifestyle: { ...previous.lifestyle, averageDailyActivity: value } }))}
         />
         <BooleanRow
-          label="Weekends differ from weekdays"
+          label={t.weekendsDiffer}
           value={setup.lifestyle.weekendsDiffer}
           onChange={(value) => setSetup((previous) => ({ ...previous, lifestyle: { ...previous.lifestyle, weekendsDiffer: value } }))}
         />
         <BooleanRow
-          label="I eat out often"
+          label={t.booleanEatsOut}
           value={setup.lifestyle.eatsOutOften}
           onChange={(value) => setSetup((previous) => ({ ...previous, lifestyle: { ...previous.lifestyle, eatsOutOften: value } }))}
         />
         <BooleanRow
-          label="Prefer practical plans over idealized plans"
+          label={t.practicalOverIdeal}
           value={setup.lifestyle.practicalOverIdeal}
           onChange={(value) => setSetup((previous) => ({ ...previous, lifestyle: { ...previous.lifestyle, practicalOverIdeal: value } }))}
         />
         <TextAreaRow
-          label="Extra context for this week"
+          label={t.extraContext}
           value={setup.lifestyle.extraContext || ''}
           onChange={(value) => setSetup((previous) => ({ ...previous, lifestyle: { ...previous.lifestyle, extraContext: value } }))}
+          placeholder={t.textareaPlaceholder}
         />
       </section>
     );
@@ -777,7 +775,7 @@ export default function EvoCoachProPage() {
   return (
     <AppShell>
       <div className="space-y-5">
-        <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">Evo Coach Pro</h1>} />
+        <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">{t.pageTitle}</h1>} />
 
         <section className="rounded-xl border border-amber-300/35 bg-gradient-to-r from-amber-300/10 via-background to-background p-5">
           <div className="flex items-start gap-3">
@@ -785,17 +783,15 @@ export default function EvoCoachProPage() {
               <Crown className="h-5 w-5 text-amber-200" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.12em] text-amber-200">Premium strategist</p>
-              <h2 className="text-xl font-semibold text-text-primary mt-1">Evo Coach Pro</h2>
-              <p className="text-sm text-text-secondary mt-1">
-                Personalized weekly nutrition and training blueprint with rationale, smart warnings, substitutions, and adaptive coaching actions.
-              </p>
+              <p className="text-xs uppercase tracking-[0.12em] text-amber-200">{t.premiumStrategist}</p>
+              <h2 className="text-xl font-semibold text-text-primary mt-1">{t.heroTitle}</h2>
+              <p className="text-sm text-text-secondary mt-1">{t.heroSubtitle}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <MetaPill label="Goal" value={setup.goals.primaryGoal} />
-                <MetaPill label="Coaching style" value={setup.goals.coachingStyle} />
-                <MetaPill label="Flexibility" value={plan?.overview.flexibilityLevel || setup.training.strictOrFlexible} />
-                <MetaPill label="Confidence" value={confidenceLevel} />
-                <MetaPill label="Data sources" value="Profile • Preferences • Activity" />
+                <MetaPill label={t.metaGoal} value={setup.goals.primaryGoal} />
+                <MetaPill label={t.metaCoachingStyle} value={displayCoachingStyleLabel(uiLocale, setup.goals.coachingStyle)} />
+                <MetaPill label={t.metaFlexibility} value={plan?.overview.flexibilityLevel || setup.training.strictOrFlexible} />
+                <MetaPill label={t.metaConfidence} value={confidenceDisplay} />
+                <MetaPill label={t.metaDataSources} value={t.metaDataSourcesValue} />
               </div>
               <p className="text-xs text-amber-100/90 mt-2">{prefilledContext}</p>
             </div>
@@ -813,49 +809,46 @@ export default function EvoCoachProPage() {
                   onClick={() => setStep((current) => Math.max(0, current - 1))}
                   disabled={step === 0 || generatingPlan}
                 >
-                  Back
+                  {t.back}
                 </button>
                 {step < 3 ? (
                   <button type="button" className="btn-primary" onClick={() => setStep((current) => Math.min(3, current + 1))}>
-                    Next step
+                    {t.nextStep}
                   </button>
                 ) : (
                   <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={handleGeneratePlan} disabled={generatingPlan}>
                     {generatingPlan ? (
                       <>
                         <ButtonSpinner />
-                        Generating Pro strategy...
+                        {t.generating}
                       </>
                     ) : (
                       <>
                         <WandSparkles className="h-4 w-4" />
-                        Generate Evo Coach Pro plan
+                        {t.generatePlan}
                       </>
                     )}
                   </button>
                 )}
               </div>
               {generateError ? (
-                <EvoHintCard title="Generation issue" tone="warning" content={generateError.message || 'Could not generate Coach Pro plan.'} />
+                <EvoHintCard title={t.generationIssue} tone="warning" content={generateError.message || t.generationFallback} />
               ) : null}
             </section>
             <aside className="xl:col-span-4 space-y-4">
               <section className="bg-surface rounded-xl border border-border p-4">
-                <h3 className="text-sm font-semibold text-text-primary mb-2">Progress</h3>
+                <h3 className="text-sm font-semibold text-text-primary mb-2">{t.progressTitle}</h3>
                 <div className="w-full rounded-full bg-surface-elevated h-2">
                   <div className="h-2 rounded-full bg-amber-300/70" style={{ width: `${((step + 1) / 4) * 100}%` }} />
                 </div>
-                <p className="text-xs text-text-secondary mt-2">Step {step + 1} of 4</p>
+                <p className="text-xs text-text-secondary mt-2">{t.stepOf(step + 1)}</p>
               </section>
               <section className="bg-surface rounded-xl border border-border p-4 space-y-2">
-                <h3 className="text-sm font-semibold text-text-primary">What Evo Coach Pro will generate</h3>
+                <h3 className="text-sm font-semibold text-text-primary">{t.sidebarGenerateTitle}</h3>
                 <ul className="space-y-1 text-xs text-text-secondary">
-                  <li>- Weekly Nutrition Blueprint</li>
-                  <li>- Weekly Training Blueprint</li>
-                  <li>- AI rationale and constraints</li>
-                  <li>- Smart warnings and tradeoffs</li>
-                  <li>- Shopping list and substitutions</li>
-                  <li>- Adaptive actions for real-world disruptions</li>
+                  {t.sidebarGenerateBullets.map((line) => (
+                    <li key={line}>- {line}</li>
+                  ))}
                 </ul>
               </section>
             </aside>
@@ -864,58 +857,56 @@ export default function EvoCoachProPage() {
           <div className="space-y-4">
             <section className="bg-surface rounded-xl border border-border p-5">
               <AISectionHeader
-                eyebrow="Plan overview"
-                title="Evo Coach Pro dashboard"
-                subtitle="Transparent, adaptive weekly strategy generated from your profile, constraints, and behavior context."
+                eyebrow={t.planOverviewEyebrow}
+                title={t.dashboardTitle}
+                subtitle={t.dashboardSubtitle}
                 rightAction={
                   <button type="button" className="btn-secondary" onClick={() => setPlan(null)}>
-                    Reconfigure setup
+                    {t.reconfigureSetup}
                   </button>
                 }
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
                 <OverviewPill
-                  label="Calories range"
+                  label={t.overviewCaloriesRange}
                   value={plan.overview.calorieTargetRange}
                   icon={<Sparkles className="h-4 w-4 text-amber-200" />}
                   emphasized
                 />
                 <OverviewPill
-                  label="Training frequency"
+                  label={t.overviewTrainingFreq}
                   value={plan.overview.trainingFrequency}
                   icon={<Swords className="h-4 w-4 text-info-300" />}
                   emphasized
                 />
-                <OverviewPill label="Difficulty" value={plan.overview.planDifficulty} icon={<ShieldAlert className="h-4 w-4 text-amber-300" />} />
-                <OverviewPill label="Expected pace" value={plan.overview.expectedPace} icon={<CalendarRange className="h-4 w-4 text-success-300" />} />
+                <OverviewPill label={t.overviewDifficulty} value={plan.overview.planDifficulty} icon={<ShieldAlert className="h-4 w-4 text-amber-300" />} />
+                <OverviewPill label={t.overviewExpectedPace} value={plan.overview.expectedPace} icon={<CalendarRange className="h-4 w-4 text-success-300" />} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                <OverviewPill label="Flexibility" value={plan.overview.flexibilityLevel} icon={<WandSparkles className="h-4 w-4 text-primary-300" />} />
-                <OverviewPill label="Confidence" value={confidenceLevel} icon={<ShieldCheck className="h-4 w-4 text-success-300" />} />
+                <OverviewPill label={t.overviewFlexibility} value={plan.overview.flexibilityLevel} icon={<WandSparkles className="h-4 w-4 text-primary-300" />} />
+                <OverviewPill label={t.overviewConfidence} value={confidenceDisplay} icon={<ShieldCheck className="h-4 w-4 text-success-300" />} />
               </div>
             </section>
 
             <section className="bg-surface rounded-xl border border-border p-5">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-text-primary">Need to adapt today?</h3>
-                <EvoStatusBadge label="In progress" tone="warning" />
+                <h3 className="text-sm font-semibold text-text-primary">{t.adaptTodayTitle}</h3>
+                <EvoStatusBadge label={t.adaptInProgressBadge} tone="warning" />
               </div>
-              <p className="mb-2 text-xs uppercase tracking-[0.12em] text-text-muted">One-tap adjustments (preview)</p>
-              <p className="text-xs text-text-secondary">
-                Quick actions for sleep, training, and meals are coming soon. Fewer options will ship first.
-              </p>
-              {refreshingPlanBySignals ? <p className="text-xs text-text-secondary mt-3">Syncing today signals...</p> : null}
+              <p className="mb-2 text-xs uppercase tracking-[0.12em] text-text-muted">{t.adaptOneTapEyebrow}</p>
+              <p className="text-xs text-text-secondary">{t.adaptOneTapBody}</p>
+              {refreshingPlanBySignals ? <p className="text-xs text-text-secondary mt-3">{t.syncingTodaySignals}</p> : null}
             </section>
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
               <section className="xl:col-span-8 space-y-4">
                 <section className="bg-surface rounded-xl border border-border p-5">
                   <div className="mb-3">
-                    <h3 className="text-base font-semibold text-text-primary">Weekly nutrition plan</h3>
+                    <h3 className="text-base font-semibold text-text-primary">{t.weeklyNutritionPlanTitle}</h3>
                     <p className="text-xs text-text-muted mt-1">
                       {canExpandNutritionWeek && !showAllNutritionDays
-                        ? `From today · showing 3 of ${nutritionWeekFromToday.length} days`
-                        : 'From today · full week in this section'}
+                        ? t.weekNutritionSubtitlePartial(3, nutritionWeekFromToday.length)
+                        : t.weekNutritionSubtitleFull}
                     </p>
                   </div>
                   <div className="space-y-3">
@@ -967,14 +958,14 @@ export default function EvoCoachProPage() {
                                 }
                               }
                               className="h-full rounded-md border border-border/80 bg-background/35 p-2.5 text-left transition-all hover:border-amber-300/50 hover:bg-amber-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                              aria-label={`Open recipe details for ${meal.name}`}
+                              aria-label={t.mealOpenRecipeAria(meal.name)}
                             >
                               <div className="flex h-full flex-col">
                                 <div className="flex items-start justify-between gap-2 shrink-0">
                                   <p className="text-xs uppercase tracking-[0.08em] text-text-muted">{meal.mealType}</p>
                                   <span className="inline-flex items-center gap-1 text-[11px] text-amber-100/90">
                                     <PanelRightOpen className="h-3.5 w-3.5" />
-                                    Details
+                                    {t.mealCardDetails}
                                   </span>
                                 </div>
                                 <p className="text-sm font-semibold text-text-primary mt-3 leading-snug">{meal.name}</p>
@@ -1001,7 +992,7 @@ export default function EvoCoachProPage() {
                                     {meal.estimatedFat}g
                                   </span>
                                   <span className="text-text-muted"> • </span>
-                                  <span className="text-text-secondary">prep {meal.prepTimeMinutes} min</span>
+                                  <span className="text-text-secondary">{t.mealPrepSuffix(meal.prepTimeMinutes)}</span>
                                 </p>
                               </div>
                             </button>
@@ -1017,20 +1008,18 @@ export default function EvoCoachProPage() {
                       onClick={() => setShowAllNutritionDays((previous) => !previous)}
                       className="mt-3 w-full rounded-lg border border-amber-300/35 bg-amber-300/5 px-3 py-2.5 text-sm text-amber-100/95 transition-colors hover:bg-amber-300/10"
                     >
-                      {showAllNutritionDays
-                        ? 'Show only the next 3 nutrition days'
-                        : `Show remaining nutrition days (${remainingNutritionDaysCount})`}
+                      {showAllNutritionDays ? t.showOnlyThreeNutritionDays : t.showRemainingNutritionDays(remainingNutritionDaysCount)}
                     </button>
                   ) : null}
                 </section>
 
                 <section className="bg-surface rounded-xl border border-border p-5">
                   <div className="mb-3">
-                    <h3 className="text-base font-semibold text-text-primary">Weekly training plan</h3>
+                    <h3 className="text-base font-semibold text-text-primary">{t.weeklyTrainingPlanTitle}</h3>
                     <p className="text-xs text-text-muted mt-1">
                       {canExpandTrainingWeek && !showAllTrainingDays
-                        ? `From today · showing 3 of ${trainingWeekFromToday.length} days (same order as nutrition)`
-                        : 'From today · full week · same day order as nutrition'}
+                        ? t.weekTrainingSubtitlePartial(3, trainingWeekFromToday.length)
+                        : t.weekTrainingSubtitleFull}
                     </p>
                   </div>
                   <div className="space-y-2.5">
@@ -1043,7 +1032,7 @@ export default function EvoCoachProPage() {
                           setSelectedTraining({ session });
                         }}
                         className="w-full rounded-lg border border-border bg-surface-elevated p-3.5 text-left transition-all hover:border-info-300/45 hover:bg-info-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-300/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        aria-label={`Open training details for ${session.dayLabel}`}
+                        aria-label={`${t.drawerTrainingSession}: ${session.dayLabel}`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-sm font-semibold text-text-primary">
@@ -1054,17 +1043,17 @@ export default function EvoCoachProPage() {
                         <p className="text-sm text-text-secondary mt-1">{truncateText(session.sessionGoal, 96)}</p>
                         <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
                           <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                            <p className="text-[11px] uppercase tracking-[0.09em] text-text-muted">Fallback</p>
+                            <p className="text-[11px] uppercase tracking-[0.09em] text-text-muted">{t.trainingFallbackLabel}</p>
                             <p className="text-xs text-text-secondary mt-1">{truncateText(session.fallbackVersion, 92)}</p>
                           </div>
                           <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                            <p className="text-[11px] uppercase tracking-[0.09em] text-text-muted">Minimum viable</p>
+                            <p className="text-[11px] uppercase tracking-[0.09em] text-text-muted">{t.trainingMinimumViableLabel}</p>
                             <p className="text-xs text-text-secondary mt-1">{truncateText(session.minimumViableVersion, 92)}</p>
                           </div>
                         </div>
                         <span className="mt-2 inline-flex items-center gap-1 text-[11px] text-info-300">
                           <Activity className="h-3.5 w-3.5" />
-                          View session details
+                          {t.trainingViewSessionDetails}
                           <ChevronRight className="h-3.5 w-3.5" />
                         </span>
                       </button>
@@ -1076,9 +1065,7 @@ export default function EvoCoachProPage() {
                       onClick={() => setShowAllTrainingDays((previous) => !previous)}
                       className="mt-3 w-full rounded-lg border border-info-300/35 bg-info-300/5 px-3 py-2.5 text-sm text-info-200/95 transition-colors hover:bg-info-300/10"
                     >
-                      {showAllTrainingDays
-                        ? 'Show only the next 3 training days'
-                        : `Show remaining training days (${remainingTrainingDaysCount})`}
+                      {showAllTrainingDays ? t.showOnlyThreeTrainingDays : t.showRemainingTrainingDays(remainingTrainingDaysCount)}
                     </button>
                   ) : null}
                 </section>
@@ -1087,20 +1074,20 @@ export default function EvoCoachProPage() {
               <aside className="xl:col-span-4 space-y-4">
                 {plan.smartWarnings.length > 0 ? (
                   <section className="bg-surface rounded-xl border border-amber-300/35 p-4">
-                    <h4 className="text-sm font-semibold text-amber-100 mb-2">Biggest risk this week</h4>
+                    <h4 className="text-sm font-semibold text-amber-100 mb-2">{t.biggestRiskTitle}</h4>
                     <ul className="space-y-1 text-xs text-amber-100/90">
                       {plan.smartWarnings.map((warning) => (
                         <li key={warning}>- {warning}</li>
                       ))}
                     </ul>
                     <p className="mt-2 text-xs text-amber-100/90">
-                      Best mitigation: {plan.executionTips[0] || 'Prepare two anchor meals and lock training slots early.'}
+                      {t.bestMitigationPrefix} {plan.executionTips[0] || t.bestMitigationDefault}
                     </p>
                   </section>
                 ) : null}
 
                 <section className="bg-surface rounded-xl border border-border p-4">
-                  <h4 className="text-sm font-semibold text-amber-100 mb-2">Why this week looks like this</h4>
+                  <h4 className="text-sm font-semibold text-amber-100 mb-2">{t.whyWeekTitle}</h4>
                   <ul className="space-y-1 text-xs text-text-secondary">
                     {plan.rationale.map((item) => (
                       <li key={item}>- {item}</li>
@@ -1110,7 +1097,7 @@ export default function EvoCoachProPage() {
 
                 <section className="bg-surface rounded-xl border border-border p-4">
                   <h4 className="text-sm font-semibold text-text-primary mb-2 inline-flex items-center gap-2">
-                    <Brain className="h-4 w-4 text-primary-300" /> Weekly success markers
+                    <Brain className="h-4 w-4 text-primary-300" /> {t.weeklySuccessTitle}
                   </h4>
                   <ul className="space-y-1 text-xs text-text-secondary">
                     {weeklySuccessMarkers.map((item) => (
@@ -1118,48 +1105,49 @@ export default function EvoCoachProPage() {
                     ))}
                   </ul>
                   <p className="mt-2 text-xs text-success-300 inline-flex items-center gap-1">
-                    <Zap className="h-3.5 w-3.5" /> Next best action: {plan.executionTips[0] || 'Schedule your first two training sessions now.'}
+                    <Zap className="h-3.5 w-3.5" /> {t.nextBestActionPrefix}{' '}
+                    {plan.executionTips[0] || t.nextBestActionFallback}
                   </p>
                 </section>
 
                 <section className="bg-surface rounded-xl border border-border p-4">
                   <h4 className="text-sm font-semibold text-text-primary mb-2 inline-flex items-center gap-2">
-                    <ShoppingCart className="h-4 w-4" /> AI shopping list
+                    <ShoppingCart className="h-4 w-4" /> {t.shoppingListTitle}
                   </h4>
                   <div className="space-y-2 text-xs">
-                    <ShoppingGroup label="Proteins" items={plan.shoppingList.proteins} />
-                    <ShoppingGroup label="Carbs" items={plan.shoppingList.carbs} />
-                    <ShoppingGroup label="Fats" items={plan.shoppingList.fats} />
-                    <ShoppingGroup label="Vegetables" items={plan.shoppingList.vegetables} />
-                    <ShoppingGroup label="Dairy" items={plan.shoppingList.dairy} />
-                    <ShoppingGroup label="Extras" items={plan.shoppingList.extras} />
-                    <ShoppingGroup label="Optional items" items={plan.shoppingList.optionalItems} />
+                    <ShoppingGroup label={t.shopProteins} emptyLabel={t.shoppingListEmpty} items={plan.shoppingList.proteins} />
+                    <ShoppingGroup label={t.shopCarbs} emptyLabel={t.shoppingListEmpty} items={plan.shoppingList.carbs} />
+                    <ShoppingGroup label={t.shopFats} emptyLabel={t.shoppingListEmpty} items={plan.shoppingList.fats} />
+                    <ShoppingGroup label={t.shopVegetables} emptyLabel={t.shoppingListEmpty} items={plan.shoppingList.vegetables} />
+                    <ShoppingGroup label={t.shopDairy} emptyLabel={t.shoppingListEmpty} items={plan.shoppingList.dairy} />
+                    <ShoppingGroup label={t.shopExtras} emptyLabel={t.shoppingListEmpty} items={plan.shoppingList.extras} />
+                    <ShoppingGroup label={t.shopOptional} emptyLabel={t.shoppingListEmpty} items={plan.shoppingList.optionalItems} />
                   </div>
                 </section>
 
                 <section className="bg-surface rounded-xl border border-border p-4">
-                  <h4 className="text-sm font-semibold text-text-primary mb-2">Coach guidance</h4>
-                  <EvoHintCard title="Hardest part this week" content={plan.hardestPartThisWeek} tone="warning" />
-                  <EvoHintCard title="Where to focus" content={plan.focusForBestResults} tone="positive" />
+                  <h4 className="text-sm font-semibold text-text-primary mb-2">{t.coachGuidanceTitle}</h4>
+                  <EvoHintCard title={t.hardestPart} content={plan.hardestPartThisWeek} tone="warning" />
+                  <EvoHintCard title={t.whereToFocus} content={plan.focusForBestResults} tone="positive" />
                 </section>
               </aside>
             </div>
 
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h3 className="text-base font-semibold text-text-primary mb-2">Coach notes and tradeoffs</h3>
+              <h3 className="text-base font-semibold text-text-primary mb-2">{t.coachNotesTradeoffs}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <NotesList title="Coach notes" items={plan.coachNotes} />
-                <NotesList title="Execution tips" items={plan.executionTips} />
-                <NotesList title="Meal prep tips" items={plan.mealPrepTips} />
-                <NotesList title="Substitutions" items={plan.substitutions.ingredientSubstitutions} />
+                <NotesList title={t.notesCoach} items={plan.coachNotes} />
+                <NotesList title={t.notesExecution} items={plan.executionTips} />
+                <NotesList title={t.notesMealPrep} items={plan.mealPrepTips} />
+                <NotesList title={t.notesSubstitutions} items={plan.substitutions.ingredientSubstitutions} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                 <div className="rounded-lg border border-success-300/35 bg-success-300/10 p-3">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Best-case plan</p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{t.bestCasePlan}</p>
                   <p className="text-sm text-text-primary mt-1">{plan.bestCasePlan}</p>
                 </div>
                 <div className="rounded-lg border border-primary-300/35 bg-primary-500/10 p-3">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Realistic plan</p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{t.realisticPlan}</p>
                   <p className="text-sm text-text-primary mt-1">{plan.realisticPlan}</p>
                 </div>
               </div>
@@ -1167,15 +1155,15 @@ export default function EvoCoachProPage() {
           </div>
         )}
 
-        {generatingPlan ? (
-          <CoachProGenerationOverlay />
-        ) : null}
+        {generatingPlan ? <CoachProGenerationOverlay copy={t} /> : null}
 
         {!plan && !generatingPlan && step > 3 ? (
-          <InsightEmptyState title="Start your Pro setup" description="Complete setup steps to generate your premium weekly strategy." />
+          <InsightEmptyState title={t.emptySetupTitle} description={t.emptySetupDescription} />
         ) : null}
 
         <MealDetailsDrawer
+          copy={t}
+          locale={uiLocale}
           selectedMeal={selectedMeal}
           aiMealDetails={mealDrawerDetails}
           aiLoading={mealDrawerLoading}
@@ -1187,6 +1175,7 @@ export default function EvoCoachProPage() {
           onAction={handleMealAction}
         />
         <TrainingDetailsDrawer
+          copy={t}
           selectedTraining={selectedTraining}
           aiDetails={trainingDrawerDetails}
           aiLoading={trainingDrawerLoading}
@@ -1199,28 +1188,6 @@ export default function EvoCoachProPage() {
     </AppShell>
   );
 }
-
-const mealActionButtons = [
-  'Replace meal',
-  'Show substitutions',
-  'Add ingredients to shopping list',
-  'Regenerate recipe',
-  'Make it faster',
-  'Make it cheaper',
-  'Make it vegetarian',
-  'Increase protein',
-];
-
-const MEAL_SMART_ACTION_MAP: Record<string, string> = {
-  'Replace meal': 'REPLACE_MEAL',
-  'Show substitutions': 'SHOW_SUBSTITUTIONS',
-  'Add ingredients to shopping list': 'ADD_INGREDIENTS_TO_SHOPPING_LIST',
-  'Regenerate recipe': 'REGENERATE_RECIPE',
-  'Make it faster': 'MAKE_IT_FASTER',
-  'Make it cheaper': 'MAKE_IT_CHEAPER',
-  'Make it vegetarian': 'MAKE_IT_VEGETARIAN',
-  'Increase protein': 'INCREASE_PROTEIN',
-};
 
 const truncateText = (value: string, maxChars: number) => {
   const text = String(value || '').trim();
@@ -1298,6 +1265,8 @@ function MetaPill({ label, value }: { label: string; value: string }) {
 }
 
 function MealDetailsDrawer({
+  copy,
+  locale,
   selectedMeal,
   aiMealDetails,
   aiLoading,
@@ -1305,12 +1274,14 @@ function MealDetailsDrawer({
   onClose,
   onAction,
 }: {
+  copy: CoachProPageCopy;
+  locale: UiLocale;
   selectedMeal: SelectedPlanMeal | null;
   aiMealDetails: PlanMeal | null;
   aiLoading: boolean;
   actionLoading: boolean;
   onClose: () => void;
-  onAction: (actionLabel: string) => void;
+  onAction: (action: MealSmartActionKey) => void;
 }) {
   const [mounted, setMounted] = useState(false);
   const [isRendered, setIsRendered] = useState(Boolean(selectedMeal));
@@ -1362,7 +1333,7 @@ function MealDetailsDrawer({
         className={`absolute inset-0 bg-background/60 backdrop-blur-[1px] transition-opacity duration-200 ${
           isOpen ? 'opacity-100' : 'opacity-0'
         }`}
-        aria-label="Close meal details"
+        aria-label={copy.drawerCloseMeal}
         onClick={onClose}
       />
       <section
@@ -1377,7 +1348,7 @@ function MealDetailsDrawer({
                 {dayLabel} • {displayMeal.mealType}
               </p>
               <h3 className="text-xl font-semibold text-text-primary mt-1">{displayMeal.name}</h3>
-              {aiLoading ? <p className="text-xs text-amber-200 mt-1">Evo is generating meal instructions...</p> : null}
+              {aiLoading ? <p className="text-xs text-amber-200 mt-1">{copy.drawerGeneratingMeal}</p> : null}
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {tags.map((tag) => (
                   <span
@@ -1393,17 +1364,17 @@ function MealDetailsDrawer({
               type="button"
               onClick={onClose}
               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-text-secondary hover:text-text-primary hover:border-amber-300/40"
-              aria-label="Close panel"
+              aria-label={copy.drawerClosePanel}
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <StatBadge icon={<Flame className="h-3.5 w-3.5" />} label="Calories" value={`${displayMeal.estimatedCalories} kcal`} />
-            <StatBadge icon={<BadgeCheck className="h-3.5 w-3.5" />} label="Protein" value={`${displayMeal.estimatedProtein} g`} />
-            <StatBadge icon={<Leaf className="h-3.5 w-3.5" />} label="Carbs/Fat" value={`${displayMeal.estimatedCarbs} / ${displayMeal.estimatedFat} g`} />
-            <StatBadge icon={<Timer className="h-3.5 w-3.5" />} label="Prep time" value={`${displayMeal.prepTimeMinutes} min`} />
+            <StatBadge icon={<Flame className="h-3.5 w-3.5" />} label={copy.statCalories} value={`${displayMeal.estimatedCalories} kcal`} />
+            <StatBadge icon={<BadgeCheck className="h-3.5 w-3.5" />} label={copy.statProtein} value={`${displayMeal.estimatedProtein} g`} />
+            <StatBadge icon={<Leaf className="h-3.5 w-3.5" />} label={copy.statCarbsFat} value={`${displayMeal.estimatedCarbs} / ${displayMeal.estimatedFat} g`} />
+            <StatBadge icon={<Timer className="h-3.5 w-3.5" />} label={copy.statPrepTime} value={`${displayMeal.prepTimeMinutes} min`} />
           </div>
 
           <div className="mt-5 space-y-5">
@@ -1430,13 +1401,17 @@ function MealDetailsDrawer({
             ) : (
               <>
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Description</p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.sectionDescription}</p>
                   <p className="text-sm text-text-primary mt-2">{displayMeal.description}</p>
-                  {displayMeal.rationale ? <p className="text-xs text-text-secondary mt-2">Why in plan: {displayMeal.rationale}</p> : null}
+                  {displayMeal.rationale ? (
+                    <p className="text-xs text-text-secondary mt-2">
+                      {copy.whyInPlan} {displayMeal.rationale}
+                    </p>
+                  ) : null}
                 </section>
 
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Ingredients</p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.sectionIngredients}</p>
                   {ingredients.length > 0 ? (
                     <ul className="mt-2 space-y-1.5">
                       {ingredients.map((ingredient) => (
@@ -1446,12 +1421,12 @@ function MealDetailsDrawer({
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-sm text-text-secondary mt-2">No ingredients provided yet.</p>
+                    <p className="text-sm text-text-secondary mt-2">{copy.noIngredients}</p>
                   )}
                 </section>
 
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Recipe steps</p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.sectionRecipe}</p>
                   {steps.length > 0 ? (
                     <ol className="mt-2 space-y-2 list-decimal pl-5">
                       {steps.map((step, index) => (
@@ -1461,40 +1436,38 @@ function MealDetailsDrawer({
                       ))}
                     </ol>
                   ) : (
-                    <p className="text-sm text-text-secondary mt-2">No preparation flow available.</p>
+                    <p className="text-sm text-text-secondary mt-2">{copy.noRecipeSteps}</p>
                   )}
                 </section>
 
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Nutrition details</p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.sectionNutritionDetails}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2 text-sm">
-                    <DetailRow label="Calories" value={`${displayMeal.estimatedCalories} kcal`} />
-                    <DetailRow label="Protein" value={`${displayMeal.estimatedProtein} g`} />
-                    <DetailRow label="Carbs" value={`${displayMeal.estimatedCarbs} g`} />
-                    <DetailRow label="Fats" value={`${displayMeal.estimatedFat} g`} />
-                    <DetailRow label="Fiber" value={`${displayMeal.fiberGrams ?? '-'} g`} />
-                    <DetailRow label="Satiety" value={displayMeal.estimatedSatiety || '-'} />
+                    <DetailRow label={copy.detailCalories} value={`${displayMeal.estimatedCalories} kcal`} />
+                    <DetailRow label={copy.detailProtein} value={`${displayMeal.estimatedProtein} g`} />
+                    <DetailRow label={copy.detailCarbs} value={`${displayMeal.estimatedCarbs} g`} />
+                    <DetailRow label={copy.detailFats} value={`${displayMeal.estimatedFat} g`} />
+                    <DetailRow label={copy.detailFiber} value={`${displayMeal.fiberGrams ?? '-'} g`} />
+                    <DetailRow label={copy.detailSatiety} value={displayMeal.estimatedSatiety || '-'} />
                   </div>
                   <p className="text-xs text-text-secondary mt-2">
-                    Suggested use: {displayMeal.suggestedUse || 'General meal'} • Day target: {dayTarget.calories} kcal / P {dayTarget.protein}g
+                    {copy.suggestedUseLine(displayMeal.suggestedUse || copy.generalMeal, dayTarget.calories, dayTarget.protein)}
                   </p>
                 </section>
 
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Smart actions</p>
-                  {actionLoading ? (
-                    <p className="mt-2 text-xs text-amber-200/90">Applying action…</p>
-                  ) : null}
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.smartActionsTitle}</p>
+                  {actionLoading ? <p className="mt-2 text-xs text-amber-200/90">{copy.applyingAction}</p> : null}
                   <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {mealActionButtons.map((actionLabel) => (
+                    {MEAL_SMART_ACTION_KEYS.map((actionKey) => (
                       <button
-                        key={actionLabel}
+                        key={actionKey}
                         type="button"
                         disabled={actionLoading || aiLoading}
-                        onClick={() => onAction(actionLabel)}
+                        onClick={() => onAction(actionKey)}
                         className="rounded-md border border-border px-3 py-2 text-left text-sm text-text-secondary hover:text-text-primary hover:border-amber-300/45 hover:bg-amber-300/10 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                       >
-                        {actionLabel}
+                        {mealSmartActionLabel(locale, actionKey)}
                       </button>
                     ))}
                   </div>
@@ -1511,11 +1484,13 @@ function MealDetailsDrawer({
 }
 
 function TrainingDetailsDrawer({
+  copy,
   selectedTraining,
   aiDetails,
   aiLoading,
   onClose,
 }: {
+  copy: CoachProPageCopy;
   selectedTraining: SelectedTrainingSession | null;
   aiDetails: TrainingDrawerDetails | null;
   aiLoading: boolean;
@@ -1570,7 +1545,7 @@ function TrainingDetailsDrawer({
         className={`absolute inset-0 bg-background/60 backdrop-blur-[1px] transition-opacity duration-200 ${
           isOpen ? 'opacity-100' : 'opacity-0'
         }`}
-        aria-label="Close training details"
+        aria-label={copy.drawerTrainingClose}
         onClick={onClose}
       />
       <section
@@ -1581,26 +1556,28 @@ function TrainingDetailsDrawer({
         <div className="h-full overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
           <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{session.dayLabel} • Training session</p>
+              <p className="text-xs uppercase tracking-[0.1em] text-text-muted">
+                {session.dayLabel} • {copy.drawerTrainingSession}
+              </p>
               <h3 className="text-xl font-semibold text-text-primary mt-1">{session.workoutType}</h3>
               <p className="text-sm text-text-secondary mt-1">{session.sessionGoal}</p>
-              {aiLoading ? <p className="text-xs text-info-300 mt-1">Evo is generating session instructions...</p> : null}
+              {aiLoading ? <p className="text-xs text-info-300 mt-1">{copy.drawerGeneratingTraining}</p> : null}
             </div>
             <button
               type="button"
               onClick={onClose}
               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-text-secondary hover:text-text-primary hover:border-info-300/45"
-              aria-label="Close panel"
+              aria-label={copy.drawerClosePanel}
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <StatBadge icon={<Timer className="h-3.5 w-3.5" />} label="Duration" value={`${session.durationMinutes} min`} />
-            <StatBadge icon={<Activity className="h-3.5 w-3.5" />} label="Intensity" value={session.intensity} />
-            <StatBadge icon={<Swords className="h-3.5 w-3.5" />} label="Blocks" value={`${session.structure.length}`} />
-            <StatBadge icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Mode" value="Adaptive" />
+            <StatBadge icon={<Timer className="h-3.5 w-3.5" />} label={copy.statDuration} value={`${session.durationMinutes} min`} />
+            <StatBadge icon={<Activity className="h-3.5 w-3.5" />} label={copy.statIntensity} value={session.intensity} />
+            <StatBadge icon={<Swords className="h-3.5 w-3.5" />} label={copy.statBlocks} value={`${session.structure.length}`} />
+            <StatBadge icon={<ShieldCheck className="h-3.5 w-3.5" />} label={copy.statMode} value={copy.statModeAdaptive} />
           </div>
 
           <div className="mt-5 space-y-5">
@@ -1626,20 +1603,22 @@ function TrainingDetailsDrawer({
             ) : (
               <>
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Warm-up</p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.warmUpTitle}</p>
                   <p className="text-sm text-text-primary mt-2">
-                    {warmUp ? `${warmUp.name} • ${warmUp.durationMinutes || '-'} min • ${warmUp.notes || 'Prepare movement quality.'}` : 'Start with 8 minutes of dynamic prep and activation.'}
+                    {warmUp
+                      ? `${warmUp.name} • ${warmUp.durationMinutes || '-'} min • ${warmUp.notes || copy.warmUpBlockNoteDefault}`
+                      : copy.warmUpFallback}
                   </p>
                 </section>
 
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Main work</p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.mainWorkTitle}</p>
                   <ul className="mt-2 space-y-2">
                     {mainWork.map((block) => (
                       <li key={block.name} className="rounded-md border border-border/80 bg-background/35 p-2">
                         <p className="text-sm font-medium text-text-primary">{block.name}</p>
                         <p className="text-xs text-text-secondary mt-1">
-                          {block.sets || '-'} sets • {block.reps || '-'} reps • {block.durationMinutes || '-'} min
+                          {copy.setsRepsMinLine(block.sets || '-', block.reps || '-', block.durationMinutes || '-')}
                         </p>
                         {block.notes ? <p className="text-xs text-text-secondary mt-1">{block.notes}</p> : null}
                       </li>
@@ -1648,33 +1627,36 @@ function TrainingDetailsDrawer({
                 </section>
 
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Cooldown</p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.cooldownTitle}</p>
                   <p className="text-sm text-text-primary mt-2">
-                    {cooldown ? `${cooldown.name} • ${cooldown.durationMinutes || '-'} min • ${cooldown.notes || 'Finish and down-regulate.'}` : 'Finish with breathing reset and mobility cooldown.'}
+                    {cooldown
+                      ? `${cooldown.name} • ${cooldown.durationMinutes || '-'} min • ${cooldown.notes || copy.cooldownBlockNoteDefault}`
+                      : copy.cooldownFallback}
                   </p>
                 </section>
 
                 <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="rounded-lg border border-info-300/35 bg-info-300/10 p-3.5">
-                    <p className="text-xs uppercase tracking-[0.1em] text-info-200">Fallback short version</p>
+                    <p className="text-xs uppercase tracking-[0.1em] text-info-200">{copy.fallbackShortTitle}</p>
                     <p className="text-sm text-text-primary mt-1">{session.fallbackVersion}</p>
                   </div>
                   <div className="rounded-lg border border-primary-300/35 bg-primary-500/10 p-3.5">
-                    <p className="text-xs uppercase tracking-[0.1em] text-primary-200">Minimum viable session</p>
+                    <p className="text-xs uppercase tracking-[0.1em] text-primary-200">{copy.minViableTitle}</p>
                     <p className="text-sm text-text-primary mt-1">{session.minimumViableVersion}</p>
                   </div>
                 </section>
 
                 <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">Why this session</p>
-                  <p className="text-sm text-text-primary mt-2">
-                    Session focus supports your weekly objective with a realistic workload and practical fallback path for low-energy days.
-                  </p>
+                  <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.whySessionTitle}</p>
+                  <p className="text-sm text-text-primary mt-2">{copy.whySessionBody}</p>
                   <p className="text-xs text-text-secondary mt-2">
-                    {aiDetails?.painSubstitution ||
-                      'Pain/low-energy substitution: reduce range, lower load, and keep one main movement + one support block.'}
+                    {aiDetails?.painSubstitution || copy.painSubstitutionFallback}
                   </p>
-                  {aiDetails?.whyThisSession ? <p className="text-xs text-info-200 mt-2">Why this session: {aiDetails.whyThisSession}</p> : null}
+                  {aiDetails?.whyThisSession ? (
+                    <p className="text-xs text-info-200 mt-2">
+                      {copy.whySessionPrefix} {aiDetails.whyThisSession}
+                    </p>
+                  ) : null}
                 </section>
               </>
             )}
@@ -1712,10 +1694,12 @@ function TextAreaRow({
   label,
   value,
   onChange,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  placeholder: string;
 }) {
   return (
     <div>
@@ -1724,7 +1708,7 @@ function TextAreaRow({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="input-field w-full min-h-20 resize-y"
-        placeholder="Comma separated values"
+        placeholder={placeholder}
       />
     </div>
   );
@@ -1790,7 +1774,7 @@ function FieldSelect({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
 }) {
   return (
@@ -1798,8 +1782,8 @@ function FieldSelect({
       <label className="block text-xs text-text-secondary mb-1">{label}</label>
       <select className="input-field w-full" value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>
@@ -1896,7 +1880,7 @@ function OverviewPill({
   );
 }
 
-function ShoppingGroup({ label, items }: { label: string; items: string[] }) {
+function ShoppingGroup({ label, items, emptyLabel }: { label: string; items: string[]; emptyLabel: string }) {
   return (
     <div className="rounded-md border border-border bg-surface-elevated p-2.5">
       <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted">{label}</p>
@@ -1909,7 +1893,7 @@ function ShoppingGroup({ label, items }: { label: string; items: string[] }) {
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-text-secondary mt-1">None</p>
+        <p className="text-xs text-text-secondary mt-1">{emptyLabel}</p>
       )}
     </div>
   );
@@ -1941,7 +1925,7 @@ function NotesList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function CoachProGenerationOverlay() {
+function CoachProGenerationOverlay({ copy }: { copy: CoachProPageCopy }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -1958,21 +1942,19 @@ function CoachProGenerationOverlay() {
           <div className="flex items-start gap-3">
             <AICoachAvatar size="md" />
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.12em] text-primary-200">Evo is preparing your plan</p>
-              <h3 className="text-lg font-semibold text-text-primary mt-1">Generating your personalized Evo Coach Pro strategy</h3>
-              <p className="text-sm text-text-secondary mt-1">
-                Evo is building your weekly meals, training structure, substitutions, and execution guidance.
-              </p>
+              <p className="text-xs uppercase tracking-[0.12em] text-primary-200">{copy.generationOverlayEyebrow}</p>
+              <h3 className="text-lg font-semibold text-text-primary mt-1">{copy.generationOverlayTitle}</h3>
+              <p className="text-sm text-text-secondary mt-1">{copy.generationOverlayBody}</p>
               <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-primary-300/30 bg-primary-500/10 px-3 py-1.5 text-xs text-primary-100">
                 <ButtonSpinner />
-                Processing profile, preferences, and week structure...
+                {copy.generationOverlayProcessing}
               </div>
             </div>
           </div>
 
           <div className="mt-5 space-y-3">
             <div className="rounded-xl border border-border bg-surface-elevated p-3">
-              <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-2">Plan overview skeleton</p>
+              <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-2">{copy.generationSkeletonOverview}</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <Skeleton className="h-12 w-full rounded-md" />
                 <Skeleton className="h-12 w-full rounded-md" />
@@ -1981,7 +1963,7 @@ function CoachProGenerationOverlay() {
               </div>
             </div>
             <div className="rounded-xl border border-border bg-surface-elevated p-3">
-              <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-2">Weekly nutrition skeleton</p>
+              <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-2">{copy.generationSkeletonNutrition}</p>
               <div className="space-y-2">
                 <Skeleton className="h-14 w-full rounded-md" />
                 <Skeleton className="h-14 w-full rounded-md" />
@@ -1989,7 +1971,7 @@ function CoachProGenerationOverlay() {
               </div>
             </div>
             <div className="rounded-xl border border-border bg-surface-elevated p-3">
-              <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-2">Weekly training skeleton</p>
+              <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-2">{copy.generationSkeletonTraining}</p>
               <div className="space-y-2">
                 <Skeleton className="h-12 w-full rounded-md" />
                 <Skeleton className="h-12 w-full rounded-md" />

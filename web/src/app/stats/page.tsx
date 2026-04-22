@@ -25,6 +25,8 @@ import {
   EvoHintCard,
   InsightEmptyState,
 } from '@/components/evo';
+import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
+import { statsPageCopy } from '@/lib/i18n/copy/stats-page';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type AnalysisMode = 'combined' | 'nutrition' | 'training';
@@ -89,15 +91,19 @@ export default function StatsPage() {
   }
 
   const user = userData?.me;
+  const locale = graphqlAppLocaleToUi(user?.preferences?.appLocale);
+  const sc = statsPageCopy[locale];
   const stats = daySnapshot.stats;
   const workouts = daySnapshot.workouts || [];
   const workoutSummary = daySnapshot.summary;
   const weeklyReview = weeklyReviewData?.weeklyEvoReview;
   const activity = daySnapshot.activity;
   const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  const analysisModeLabel =
+    analysisMode === 'combined' ? sc.modeCombined : analysisMode === 'nutrition' ? sc.modeNutrition : sc.modeTraining;
 
   const handleDeleteMeal = async (mealId: string) => {
-    const confirmed = window.confirm('Delete this meal entry?');
+    const confirmed = window.confirm(sc.confirmDeleteMeal);
     if (!confirmed) return;
 
     const result = await deleteFoodItem({ variables: { id: mealId } });
@@ -109,7 +115,7 @@ export default function StatsPage() {
   };
 
   const handleDeleteWorkout = async (workoutId: string) => {
-    const confirmed = window.confirm('Delete this workout entry?');
+    const confirmed = window.confirm(sc.confirmDeleteWorkout);
     if (!confirmed) return;
 
     const result = await deleteWorkout({ variables: { id: workoutId } });
@@ -123,7 +129,7 @@ export default function StatsPage() {
   const handleSaveSteps = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!Number.isFinite(stepsInput) || stepsInput < 0 || stepsInput > 120000) {
-      appToast.info('Invalid steps', 'Steps must be between 0 and 120000.');
+      appToast.info('Invalid steps', locale === 'pl' ? 'Kroki: 0–120000.' : 'Steps must be between 0 and 120000.');
       return;
     }
 
@@ -143,7 +149,7 @@ export default function StatsPage() {
           <PageTopBar
             rightContent={
               <span className="text-sm text-text-secondary">
-                Goal mode: {formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))}
+                {sc.goalModePrefix} {formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))}
               </span>
             }
           />
@@ -152,20 +158,16 @@ export default function StatsPage() {
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <div className="xl:col-span-8">
             <div className="bg-surface rounded-xl border border-border p-5 mb-6">
-              <AISectionHeader
-                eyebrow="Day analyzer"
-                title="Pick day"
-                subtitle="Use a single day view to see what drifts, what works, and what to do next."
-              />
+              <AISectionHeader eyebrow={sc.eyebrow} title={sc.pickDayTitle} subtitle={sc.pickDaySubtitle} />
               <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                 <div className="inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
-                  <ModeButton label="Combined" active={analysisMode === 'combined'} onClick={() => setAnalysisMode('combined')} />
-                  <ModeButton label="Nutrition" active={analysisMode === 'nutrition'} onClick={() => setAnalysisMode('nutrition')} />
-                  <ModeButton label="Training" active={analysisMode === 'training'} onClick={() => setAnalysisMode('training')} />
+                  <ModeButton label={sc.modeCombined} active={analysisMode === 'combined'} onClick={() => setAnalysisMode('combined')} />
+                  <ModeButton label={sc.modeNutrition} active={analysisMode === 'nutrition'} onClick={() => setAnalysisMode('nutrition')} />
+                  <ModeButton label={sc.modeTraining} active={analysisMode === 'training'} onClick={() => setAnalysisMode('training')} />
                 </div>
               </div>
               <label htmlFor="stats-date" className="block text-sm text-text-secondary mb-2">
-                Analysis date
+                {sc.analysisDate}
               </label>
               <input
                 id="stats-date"
@@ -182,24 +184,20 @@ export default function StatsPage() {
                   value={stepsInput}
                   onChange={(event) => setStepsInput(Number(event.target.value))}
                   className="input-field w-full"
-                  placeholder="Steps"
+                  placeholder={sc.stepsPlaceholder}
                 />
                 <button type="submit" className="btn-secondary" disabled={savingSteps}>
-                  {savingSteps ? 'Saving...' : 'Save steps'}
+                  {savingSteps ? sc.saving : sc.saveSteps}
                 </button>
               </form>
               <p className="text-xs text-text-muted mt-2">
-                {daySnapshot.loading ? 'Loading activity...' : `Steps tracked: ${Math.round(activity?.steps || 0)}`}
+                {daySnapshot.loading ? sc.loadingActivity : sc.stepsTracked(Math.round(activity?.steps || 0))}
               </p>
             </div>
 
             {analysisMode === 'combined' && daySnapshot.insight ? (
               <div className="mb-6">
-                <EvoHintCard
-                  title="Main insight for selected day"
-                  tone="notice"
-                  content={daySnapshot.insight.summary}
-                />
+                <EvoHintCard title={sc.mainInsightTitle} tone="notice" content={daySnapshot.insight.summary} />
               </div>
             ) : null}
 
@@ -215,7 +213,8 @@ export default function StatsPage() {
               ) : (
                 <>
                   <StatCard
-                    title="Calories"
+                    ui={sc}
+                    title={locale === 'pl' ? 'Kalorie' : 'Calories'}
                     value={stats?.totalCalories?.toFixed(0) || '0'}
                     goal={stats?.dynamicGoals?.calories || user?.preferences?.dailyCalorieGoal || 2000}
                     progress={goalProgress.calories}
@@ -223,7 +222,8 @@ export default function StatsPage() {
                     tone="brand"
                   />
                   <StatCard
-                    title="Protein"
+                    ui={sc}
+                    title={locale === 'pl' ? 'Białko' : 'Protein'}
                     value={stats?.totalProtein?.toFixed(1) || '0'}
                     goal={stats?.dynamicGoals?.protein || user?.preferences?.proteinGoal || undefined}
                     progress={goalProgress.protein}
@@ -231,7 +231,8 @@ export default function StatsPage() {
                     tone="info"
                   />
                   <StatCard
-                    title="Carbs"
+                    ui={sc}
+                    title={locale === 'pl' ? 'Węglowodany' : 'Carbs'}
                     value={stats?.totalCarbs?.toFixed(1) || '0'}
                     goal={stats?.dynamicGoals?.carbs || user?.preferences?.carbsGoal || undefined}
                     progress={goalProgress.carbs}
@@ -239,7 +240,8 @@ export default function StatsPage() {
                     tone="success"
                   />
                   <StatCard
-                    title="Fat"
+                    ui={sc}
+                    title={locale === 'pl' ? 'Tłuszcze' : 'Fat'}
                     value={stats?.totalFat?.toFixed(1) || '0'}
                     goal={stats?.dynamicGoals?.fat || user?.preferences?.fatGoal || undefined}
                     progress={goalProgress.fat}
@@ -253,7 +255,9 @@ export default function StatsPage() {
 
             {(analysisMode === 'combined' || analysisMode === 'nutrition') ? (
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h3 className="text-xl font-semibold tracking-tight text-text-primary mb-5">Meals for {selectedDate}</h3>
+              <h3 className="text-xl font-semibold tracking-tight text-text-primary mb-5">
+                {sc.mealsFor} {selectedDate}
+              </h3>
               {daySnapshot.loading ? (
                 <div className="space-y-3">
                   <ListRowSkeleton />
@@ -272,7 +276,7 @@ export default function StatsPage() {
                         onClick={() => handleDeleteMeal(meal.id)}
                         disabled={deletingMeal}
                         className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
-                        title="Delete meal"
+                        title={sc.deleteMealTitle}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -294,13 +298,13 @@ export default function StatsPage() {
               ) : (
                 <div className="text-center py-12">
                   <Camera className="h-16 w-16 text-text-muted mx-auto mb-4" />
-                  <p className="text-text-secondary mb-4">No meals logged for {selectedDate}</p>
+                  <p className="text-text-secondary mb-4">{sc.noMeals(selectedDate)}</p>
                   <button
                     onClick={() => router.push('/meals')}
                     className="btn-primary inline-flex items-center space-x-2 px-4"
                   >
                     <Camera className="h-4 w-4 stroke-[1.9]" />
-                    <span>Add meal</span>
+                    <span>{sc.addMeal}</span>
                   </button>
                 </div>
               )}
@@ -310,12 +314,14 @@ export default function StatsPage() {
             {(analysisMode === 'combined' || analysisMode === 'training') ? (
             <section className="bg-surface rounded-xl border border-border p-5 mt-4">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-xl font-semibold tracking-tight text-text-primary">Workouts for {selectedDate}</h3>
+                <h3 className="text-xl font-semibold tracking-tight text-text-primary">
+                  {sc.workoutsFor} {selectedDate}
+                </h3>
                 <button
                   onClick={() => router.push('/workouts')}
                   className="btn-secondary"
                 >
-                  Open Workout Coach
+                  {sc.openWorkoutCoach}
                 </button>
               </div>
 
@@ -329,17 +335,17 @@ export default function StatsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
                   <WorkoutSummaryCard
                     icon={<Dumbbell className="h-4 w-4 text-amber-400" />}
-                    label="Sessions"
+                    label={sc.sessions}
                     value={`${workouts.length}`}
                   />
                   <WorkoutSummaryCard
                     icon={<Flame className="h-4 w-4 text-info-500" />}
-                    label="Burned"
+                    label={sc.burned}
                     value={`${workoutSummary?.caloriesBurned?.toFixed(0) || '0'} kcal`}
                   />
                   <WorkoutSummaryCard
                     icon={<Camera className="h-4 w-4 text-primary-400" />}
-                    label="Net calories"
+                    label={sc.netCalories}
                     value={`${workoutSummary?.netCalories?.toFixed(0) || '0'} kcal`}
                   />
                 </div>
@@ -362,7 +368,7 @@ export default function StatsPage() {
                         onClick={() => handleDeleteWorkout(workout.id)}
                         disabled={deletingWorkout}
                         className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
-                        title="Delete workout"
+                        title={sc.deleteWorkoutTitle}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -379,13 +385,13 @@ export default function StatsPage() {
               ) : (
                 <div className="text-center py-12">
                   <Dumbbell className="h-16 w-16 text-text-muted mx-auto mb-4" />
-                  <p className="text-text-secondary mb-4">No workouts logged for {selectedDate}</p>
+                  <p className="text-text-secondary mb-4">{sc.noWorkouts(selectedDate)}</p>
                   <button
                     onClick={() => router.push('/workouts')}
                     className="btn-primary inline-flex items-center space-x-2 px-4"
                   >
                     <Dumbbell className="h-4 w-4 stroke-[1.9]" />
-                    <span>Log workout</span>
+                    <span>{sc.logWorkout}</span>
                   </button>
                 </div>
               )}
@@ -408,33 +414,42 @@ export default function StatsPage() {
                   ) : null}
                   <p className="text-sm text-text-secondary mb-3 leading-relaxed whitespace-pre-wrap">{weeklyReview.summary}</p>
                   <div className="grid grid-cols-3 gap-2 mb-2">
-                    <WorkoutSummaryCard icon={<Camera className="h-4 w-4 text-info-400" />} label="Nutrition" value={`${weeklyReview.nutritionScore}/100`} />
-                    <WorkoutSummaryCard icon={<Dumbbell className="h-4 w-4 text-amber-300" />} label="Training" value={`${weeklyReview.trainingScore}/100`} />
-                    <WorkoutSummaryCard icon={<Flame className="h-4 w-4 text-success-400" />} label="Consistency" value={`${weeklyReview.consistencyScore}/100`} />
+                    <WorkoutSummaryCard
+                      icon={<Camera className="h-4 w-4 text-info-400" />}
+                      label={locale === 'pl' ? 'Odżywianie' : 'Nutrition'}
+                      value={`${weeklyReview.nutritionScore}/100`}
+                    />
+                    <WorkoutSummaryCard
+                      icon={<Dumbbell className="h-4 w-4 text-amber-300" />}
+                      label={locale === 'pl' ? 'Trening' : 'Training'}
+                      value={`${weeklyReview.trainingScore}/100`}
+                    />
+                    <WorkoutSummaryCard
+                      icon={<Flame className="h-4 w-4 text-success-400" />}
+                      label={locale === 'pl' ? 'Konsekwencja' : 'Consistency'}
+                      value={`${weeklyReview.consistencyScore}/100`}
+                    />
                   </div>
                   {weeklyReview.proTip ? (
                     <div className="rounded-lg border border-primary-500/25 bg-primary-500/5 px-3 py-2.5 mb-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-primary-200 mb-1">Pro tip</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-primary-200 mb-1">{sc.proTip}</p>
                       <p className="text-xs text-text-primary leading-snug">{weeklyReview.proTip}</p>
                     </div>
                   ) : null}
                 </section>
               ) : (
                 <section className="bg-surface rounded-xl border border-border p-4">
-                  <InsightEmptyState
-                    title="Weekly trend is not ready yet"
-                    description="Evo needs more day snapshots to build a reliable weekly pattern."
-                  />
+                  <InsightEmptyState title={sc.weeklyEmptyTitle} description={sc.weeklyEmptyDescription} />
                 </section>
               )}
               <ContextAICoach
-                title="AI Coach"
-                description={`Mode: ${analysisMode}. Ask Evo for focused suggestions based on selected date.`}
+                title={sc.aiCoachTitle}
+                description={sc.aiCoachDescription(analysisModeLabel)}
                 quickPrompts={[
-                  `Review my nutrition for ${selectedDate}.`,
-                  `Combine my meals and workouts for ${selectedDate} and tell me what to do next.`,
-                  `What macro is most off target on ${selectedDate}?`,
-                  `Suggest one dinner idea for ${selectedDate} for better balance.`,
+                  sc.quick1(selectedDate),
+                  sc.quick2(selectedDate),
+                  sc.quick3(selectedDate),
+                  sc.quick4(selectedDate),
                 ]}
                 statsReference={selectedDate}
               />
@@ -466,6 +481,7 @@ function WorkoutSummaryCard({
 }
 
 function StatCard({
+  ui,
   title,
   value,
   goal,
@@ -473,6 +489,7 @@ function StatCard({
   unit,
   tone,
 }: {
+  ui: (typeof statsPageCopy)['en'];
   title: string;
   value: string;
   goal?: number;
@@ -495,14 +512,18 @@ function StatCard({
         <span className={`text-2xl font-semibold tracking-tight ${toneStyles[tone].value}`}>{value}</span>
         <span className="text-xs text-text-secondary">{unit}</span>
       </div>
-      {goal ? <p className="text-xs text-text-muted mb-2">Goal: {goal} {unit}</p> : null}
+      {goal ? (
+        <p className="text-xs text-text-muted mb-2">
+          {ui.statGoal} {goal} {unit}
+        </p>
+      ) : null}
       <div className="w-full bg-background/60 rounded-full h-2">
         <div
           className={`h-2 rounded-full ${toneStyles[tone].bar}`}
           style={{ width: `${Math.min(percentage, 100)}%` }}
         />
       </div>
-      <p className="text-xs text-text-muted mt-1">{percentage.toFixed(0)}% of goal</p>
+      <p className="text-xs text-text-muted mt-1">{ui.statPercentOfGoal(percentage.toFixed(0))}</p>
     </div>
   );
 }

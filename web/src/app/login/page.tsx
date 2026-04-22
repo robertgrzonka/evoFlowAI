@@ -12,29 +12,33 @@ import { resetApolloClientAfterAuthChange } from '@/lib/apollo-client';
 import { ButtonSpinner } from '@/components/ui/loading';
 import EvoMark from '@/components/EvoMark';
 import { appToast } from '@/lib/app-toast';
+import { authPagesCopy } from '@/lib/i18n/copy/auth-pages';
+import { usePublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
 
 export default function LoginPage() {
   const router = useRouter();
+  const locale = usePublicUiLocale();
+  const c = authPagesCopy[locale].login;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  
+
   const [login, { loading }] = useMutation(LOGIN_MUTATION, {
     onCompleted: async (data) => {
       setAuthToken(data.login.token, rememberMe);
       await resetApolloClientAfterAuthChange();
-      appToast.success('Welcome back!', 'You are now logged in to evoFlowAI.');
+      appToast.success(c.toastWelcomeTitle, c.toastWelcomeBody);
       router.push('/dashboard');
     },
     onError: (error) => {
-      appToast.error('Login failed', error.message || 'Please check email and password.');
+      appToast.error(c.toastLoginFailTitle, error.message || c.toastLoginFailBody);
     },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       await login({
         variables: {
@@ -45,7 +49,6 @@ export default function LoginPage() {
         },
       });
     } catch (error) {
-      // Error handled by onError callback
       console.error('Login error:', error);
     }
   };
@@ -58,29 +61,24 @@ export default function LoginPage() {
         transition={{ duration: 0.35, ease: 'easeOut' }}
         className="w-full max-w-[420px]"
       >
-        {/* Back to home */}
         <Link href="/" className="inline-flex items-center text-text-secondary hover:text-text-primary mb-8 transition-colors">
           <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
-          Back to home
+          {c.backHome}
         </Link>
 
-        {/* Logo */}
         <div className="flex items-center justify-center space-x-2 mb-7">
           <EvoMark className="h-6 w-6 text-primary-500" />
           <span className="text-xl font-semibold tracking-tight text-gradient">evoFlowAI</span>
         </div>
 
-        {/* Card */}
         <div className="card-elevated">
-          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-2 text-center">Welcome back</h1>
-          <p className="text-sm text-text-secondary text-center mb-6">
-            Log in to your account to continue
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-2 text-center">{c.title}</h1>
+          <p className="text-sm text-text-secondary text-center mb-6">{c.subtitle}</p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-text-primary mb-2">
-                Email
+                {c.email}
               </label>
               <div className="auth-input-wrap">
                 <Mail className="auth-input-icon" />
@@ -99,7 +97,7 @@ export default function LoginPage() {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-text-primary mb-2">
-                Password
+                {c.password}
               </label>
               <div className="auth-input-wrap">
                 <Lock className="auth-input-icon" />
@@ -117,7 +115,7 @@ export default function LoginPage() {
                   type="button"
                   className="auth-input-action"
                   onClick={() => setShowPassword((prev) => !prev)}
-                  title={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? c.hidePassword : c.showPassword}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -132,10 +130,10 @@ export default function LoginPage() {
                   onChange={(event) => setRememberMe(event.target.checked)}
                   className="h-4 w-4 rounded-sm border-border bg-surface text-primary-500 focus:ring-primary-500"
                 />
-                <span className="ml-2 text-sm text-text-secondary">Remember me</span>
+                <span className="ml-2 text-sm text-text-secondary">{c.rememberMe}</span>
               </label>
               <Link href="/forgot-password" className="text-sm text-primary-500 hover:text-primary-400 transition-colors">
-                Forgot password?
+                {c.forgotPassword}
               </Link>
             </div>
 
@@ -147,17 +145,19 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <ButtonSpinner />
-                  Logging in...
+                  {c.submitting}
                 </>
-              ) : 'Log in'}
+              ) : (
+                c.submit
+              )}
             </button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-text-secondary">
-              Don't have an account?{' '}
+              {c.noAccount}{' '}
               <Link href="/register" className="text-primary-500 hover:text-primary-400 font-medium transition-colors">
-                Sign up
+                {c.signUp}
               </Link>
             </p>
           </div>
@@ -166,4 +166,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

@@ -1,12 +1,19 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
-import { Dumbbell, FileUp, Flame, Timer, Trash2 } from 'lucide-react';
+import { clsx } from 'clsx';
+import { ChevronDown, Dumbbell, FileUp, Flame, Timer, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, Skeleton } from '@/components/ui/loading';
-import { DELETE_WORKOUT_MUTATION, IMPORT_WORKOUT_FILE_MUTATION, LOG_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
+import {
+  DELETE_WORKOUT_MUTATION,
+  IMPORT_WORKOUT_FILE_MUTATION,
+  LOG_WORKOUT_MUTATION,
+  UPSERT_DAILY_ACTIVITY_MUTATION,
+} from '@/lib/graphql/mutations';
 import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION, WEEKLY_WORKOUTS_COACH_QUERY, WEEKLY_WORKOUTS_TRAINING_QUERY } from '@/lib/graphql/queries';
 import { appToast } from '@/lib/app-toast';
 import { buildDayRefetchQueries, dateKeyToNoonUtcIso } from '@/lib/day-data';
@@ -18,12 +25,15 @@ import {
   SmartSuggestionChips,
 } from '@/components/evo';
 import WeeklyWorkoutsTrainingSection from '@/components/workouts/WeeklyWorkoutsTrainingSection';
+import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
+import { workoutsPageCopy } from '@/lib/i18n/copy/workouts-page';
 
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 
-const intensityOptions: WorkoutIntensity[] = ['LOW', 'MEDIUM', 'HIGH'];
-
 export default function WorkoutsPage() {
+  const locale = useAppUiLocale();
+  const w = workoutsPageCopy[locale];
+  const router = useRouter();
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [selectedDate, setSelectedDate] = useState(today);
   const [title, setTitle] = useState('');
@@ -32,9 +42,18 @@ export default function WorkoutsPage() {
   const [caloriesBurned, setCaloriesBurned] = useState(300);
   const [intensity, setIntensity] = useState<WorkoutIntensity>('MEDIUM');
   const [importNotes, setImportNotes] = useState('');
+  const [dayPanelOpen, setDayPanelOpen] = useState(true);
+  const [logPanelOpen, setLogPanelOpen] = useState(true);
+  const [activityBonusDraft, setActivityBonusDraft] = useState('0');
 
   const { data: meData } = useQuery(ME_QUERY);
   const daySnapshot = useDaySnapshot({ date: selectedDate, enabled: true, includeInsight: false });
+
+  useEffect(() => {
+    const raw = daySnapshot.stats?.activityBonusKcal;
+    if (raw === undefined || raw === null) return;
+    setActivityBonusDraft(String(Math.max(0, Math.round(Number(raw)))));
+  }, [daySnapshot.stats?.activityBonusKcal, selectedDate]);
 
   useSubscription(NEW_WORKOUT_SUBSCRIPTION, {
     variables: { userId: meData?.me?.id },
@@ -73,6 +92,17 @@ export default function WorkoutsPage() {
       { query: WEEKLY_WORKOUTS_COACH_QUERY, variables: { endDate: today } },
     ],
   });
+  const [upsertDailyActivity, { loading: savingActivityBonus }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
+    onCompleted: () => {
+      appToast.success(w.activityBonusSaved, w.activityBudgetHint);
+    },
+    onError: (error) => {
+      appToast.error('Save failed', error.message || 'Could not save.');
+    },
+    refetchQueries: buildDayRefetchQueries(selectedDate),
+    awaitRefetchQueries: true,
+  });
+
   const [importWorkoutFile, { loading: importingWorkoutFile }] = useMutation(IMPORT_WORKOUT_FILE_MUTATION, {
     onCompleted: () => {
       setImportNotes('');
@@ -95,7 +125,7 @@ export default function WorkoutsPage() {
     event.preventDefault();
 
     if (!title.trim()) {
-      appToast.info('Workout title missing', 'Add workout name before saving.');
+      appToast.info('Workout title missing', w.titlePlaceholder);
       return;
     }
 
@@ -115,13 +145,28 @@ export default function WorkoutsPage() {
 
   const summary = daySnapshot.summary;
   const workouts = daySnapshot.workouts || [];
+
+  const handleSaveActivityBonus = async () => {
+    const n = Number(String(activityBonusDraft).replace(',', '.'));
+    const bonus = Math.max(0, Math.min(1500, Number.isFinite(n) ? Math.round(n) : 0));
+    const steps = Math.max(0, Math.round(Number(daySnapshot.stats?.steps ?? 0)));
+    await upsertDailyActivity({
+      variables: {
+        input: {
+          date: selectedDate,
+          steps,
+          activityBonusKcal: bonus,
+        },
+      },
+    });
+  };
   const weeklyWorkoutsGoal = Number(meData?.me?.preferences?.weeklyWorkoutsGoal || 4);
   const weeklyActiveMinutesGoal = Number(meData?.me?.preferences?.weeklyActiveMinutesGoal || 180);
   const minutesOnDay = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
-  const dayLabel = selectedDate === today ? 'today' : selectedDate;
+  const dayLabel = selectedDate === today ? w.todayWord : selectedDate;
 
   const handleDeleteWorkout = async (workoutId: string) => {
-    const confirmed = window.confirm('Delete this workout entry?');
+    const confirmed = window.confirm(w.confirmDelete);
     if (!confirmed) return;
 
     const result = await deleteWorkout({ variables: { id: workoutId } });
@@ -168,63 +213,246 @@ export default function WorkoutsPage() {
   };
   const lastWorkout = workouts[0];
   const workoutTemplates = [
-    { id: 'tpl-upper', label: 'Upper body strength · 45 min · medium' },
-    { id: 'tpl-lower', label: 'Lower body strength · 50 min · high' },
-    { id: 'tpl-cardio', label: 'Cardio intervals · 30 min · high' },
+    { id: 'tpl-upper', label: w.tplUpper },
+    { id: 'tpl-lower', label: w.tplLower },
+    { id: 'tpl-cardio', label: w.tplCardio },
   ];
 
   return (
     <AppShell>
       <div className="space-y-5">
-        <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">Workout Coach</h1>} />
+        <PageTopBar
+          rightContent={
+            <button type="button" onClick={() => router.push('/chat?channel=COACH')} className="btn-secondary">
+              {w.openEvoChat}
+            </button>
+          }
+        />
+
+        <h1 className="text-xl font-semibold tracking-tight text-text-primary">{w.pageTitle}</h1>
+        <p className="text-sm text-text-secondary max-w-3xl leading-relaxed">{w.pageIntro}</p>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <MetricCard icon={<Dumbbell className="h-4 w-4" />} label={`Sessions (${dayLabel})`} value={`${workouts.length}`} />
-          <MetricCard icon={<Timer className="h-4 w-4" />} label={`Minutes (${dayLabel})`} value={`${minutesOnDay} min`} />
-          <MetricCard icon={<Flame className="h-4 w-4" />} label="Weekly sessions goal" value={`${weeklyWorkoutsGoal}`} />
-          <MetricCard icon={<Flame className="h-4 w-4" />} label="Weekly minutes goal" value={`${weeklyActiveMinutesGoal} min`} />
+          <MetricCard icon={<Dumbbell className="h-4 w-4" />} label={`${w.sessionsLabel} (${dayLabel})`} value={`${workouts.length}`} />
+          <MetricCard icon={<Timer className="h-4 w-4" />} label={`${w.minutesLabel} (${dayLabel})`} value={`${minutesOnDay} min`} />
+          <MetricCard icon={<Flame className="h-4 w-4" />} label={w.weeklySessionsGoal} value={`${weeklyWorkoutsGoal}`} />
+          <MetricCard icon={<Flame className="h-4 w-4" />} label={w.weeklyMinutesGoal} value={`${weeklyActiveMinutesGoal} min`} />
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-          <section className="xl:col-span-5 bg-surface border border-border rounded-xl p-4 md:p-5">
-            <AISectionHeader
-              eyebrow="Workout flow"
-              title="Log your training"
-              subtitle="Track the session, then let Evo evaluate what to do with nutrition and recovery."
-              rightAction={
-                <div className="h-10 w-10 rounded-full bg-amber-400/10 border border-amber-400/30 flex items-center justify-center">
-                  <Dumbbell className="h-5 w-5 text-amber-400 stroke-[1.9]" />
+        <div className="space-y-6 xl:space-y-8">
+          <div className="grid gap-6 xl:gap-8 lg:grid-cols-2 items-start">
+            <section className="bg-surface border border-border rounded-xl p-4 md:p-5 min-w-0">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="min-w-0 text-lg font-semibold tracking-tight text-text-primary">
+                  {w.workoutsFor} {selectedDate}
+                  {selectedDate === today ? w.todaySuffix : ''}
+                </h2>
+                <button
+                  type="button"
+                  className="btn-ghost h-9 w-9 shrink-0 rounded-lg border border-border/80 px-0"
+                  aria-expanded={dayPanelOpen}
+                  aria-controls="workouts-day-panel"
+                  onClick={() => setDayPanelOpen((v) => !v)}
+                >
+                  <ChevronDown
+                    className={clsx('mx-auto h-4 w-4 transition-transform duration-200', dayPanelOpen && 'rotate-180')}
+                  />
+                  <span className="sr-only">{dayPanelOpen ? w.collapseWorkoutsDay : w.expandWorkoutsDay}</span>
+                </button>
+              </div>
+              {dayPanelOpen ? (
+                <div id="workouts-day-panel" className="space-y-4">
+                  <div className="rounded-xl border border-border bg-surface p-4 md:p-5">
+                    <h3 className="mb-4 text-base font-semibold tracking-tight text-text-primary">
+                      {w.daySummaryTitle(selectedDate, selectedDate === today)}
+                    </h3>
+                    {daySnapshot.loading ? (
+                      <div className="space-y-3">
+                        <Skeleton className="h-16 w-full rounded-lg" />
+                        <Skeleton className="h-16 w-full rounded-lg" />
+                        <Skeleton className="h-20 w-full rounded-lg" />
+                      </div>
+                    ) : summary ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                          <MetricCard
+                            icon={<Flame className="h-4 w-4" />}
+                            label={w.netCaloriesLabel}
+                            value={`${summary.netCalories.toFixed(0)} kcal`}
+                          />
+                          <MetricCard
+                            icon={<Timer className="h-4 w-4" />}
+                            label={selectedDate === today ? w.burnedTodayLabel : w.burnedOnDateLabel(selectedDate)}
+                            value={`${summary.caloriesBurned.toFixed(0)} kcal`}
+                          />
+                          <MetricCard
+                            icon={<Dumbbell className="h-4 w-4" />}
+                            label={w.proteinLeftLabel}
+                            value={`${Math.max(0, summary.remainingProtein).toFixed(0)} g`}
+                          />
+                        </div>
+                        <div className="space-y-3 rounded-lg border border-border bg-surface-elevated p-3.5">
+                          <p className="text-xs uppercase tracking-[0.12em] text-text-muted">{w.coachSuggestion}</p>
+                          <p className="whitespace-pre-wrap break-words text-sm text-text-primary">{summary.message}</p>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+                            <button
+                              type="button"
+                              className="btn-secondary w-full shrink-0 sm:min-w-[10rem] sm:flex-1"
+                              onClick={() => window.location.assign('/chat?channel=COACH')}
+                            >
+                              {w.explainScore}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary w-full shrink-0 sm:min-w-[10rem] sm:flex-1"
+                              onClick={() => window.location.assign('/chat?channel=COACH')}
+                            >
+                              {w.suggestPostMeal}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <InsightEmptyState title={w.noInsightTitle} description={w.noInsightDescription} />
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-surface p-4 md:p-5 space-y-4">
+                    <h3 className="text-base font-semibold tracking-tight text-text-primary">
+                      {w.dayWorkoutsHeading(selectedDate, selectedDate === today)}
+                    </h3>
+                    {daySnapshot.loading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-14 w-full rounded-lg" />
+                        <Skeleton className="h-14 w-full rounded-lg" />
+                      </div>
+                    ) : workouts.length > 0 ? (
+                      <div className="space-y-2.5">
+                        {workouts.map((workout: any) => (
+                          <div key={workout.id} className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="min-w-0 flex-1 break-words pr-1 text-sm font-semibold text-text-primary">
+                                {workout.title}
+                              </p>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <span className="text-xs uppercase tracking-[0.12em] text-text-muted">
+                                  {workout.intensity.toLowerCase()}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteWorkout(workout.id)}
+                                  disabled={deletingWorkout}
+                                  className="inline-flex items-center justify-center rounded-md border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:border-red-400/40 hover:text-red-400"
+                                  title={w.deleteWorkoutTitle}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                            <p className="mt-1 text-xs text-text-secondary">
+                              {workout.durationMinutes} min • {workout.caloriesBurned} kcal burned
+                            </p>
+                            {workout.notes ? <p className="mt-2 text-sm text-text-secondary">{workout.notes}</p> : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-text-secondary">{w.noWorkoutsLine(selectedDate, selectedDate === today)}</p>
+                    )}
+
+                    <div className="border-t border-border/80 pt-4 space-y-2">
+                      <p className="text-sm font-medium text-text-primary">{w.activityBonusTitle}</p>
+                      <p className="text-xs text-text-secondary leading-relaxed">{w.activityBonusDescription}</p>
+                      <div className="flex flex-wrap items-end gap-2 pt-1">
+                        <label className="block min-w-[10rem] flex-1">
+                          <span className="text-xs text-text-muted">{w.activityBonusLabel}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1500}
+                            step={25}
+                            value={activityBonusDraft}
+                            onChange={(e) => setActivityBonusDraft(e.target.value)}
+                            className="input-field mt-1 w-full tabular-nums"
+                            aria-label={w.activityBonusLabel}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="btn-secondary shrink-0 h-10 px-3"
+                          disabled={savingActivityBonus || daySnapshot.loading}
+                          onClick={() => void handleSaveActivityBonus()}
+                        >
+                          {savingActivityBonus ? <ButtonSpinner /> : w.activityBonusSave}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-text-muted leading-snug">{w.activityBudgetHint}</p>
+                    </div>
+                  </div>
                 </div>
-              }
-            />
+              ) : null}
+            </section>
 
-            {lastWorkout ? (
-              <EvoHintCard
-                title="Repeat last workout"
-                tone="notice"
-                content={`Last session: ${lastWorkout.title} · ${lastWorkout.durationMinutes} min · ${lastWorkout.caloriesBurned} kcal.`}
-                action={
-                  <button
-                    type="button"
-                    className="btn-secondary w-full"
-                    onClick={() => {
-                      setTitle(String(lastWorkout.title || ''));
-                      setDurationMinutes(Number(lastWorkout.durationMinutes || 45));
-                      setCaloriesBurned(Number(lastWorkout.caloriesBurned || 300));
-                      setIntensity((String(lastWorkout.intensity || 'MEDIUM').toUpperCase() as WorkoutIntensity));
-                    }}
-                  >
-                    Use as template
-                  </button>
-                }
-              />
-            ) : null}
+            <section id="log-workout" className="scroll-mt-6 min-w-0 rounded-xl border border-border bg-surface p-4 md:p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <AISectionHeader
+                    eyebrow={w.eyebrow}
+                    title={w.logTitle}
+                    subtitle={w.logSubtitle}
+                    rightAction={
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-400/30 bg-amber-400/10">
+                        <Dumbbell className="h-5 w-5 text-amber-400 stroke-[1.9]" />
+                      </div>
+                    }
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn-ghost mt-0.5 h-9 w-9 shrink-0 rounded-lg border border-border/80 px-0"
+                  aria-expanded={logPanelOpen}
+                  aria-controls="log-workout-panel"
+                  onClick={() => setLogPanelOpen((v) => !v)}
+                >
+                  <ChevronDown
+                    className={clsx('mx-auto h-4 w-4 transition-transform duration-200', logPanelOpen && 'rotate-180')}
+                  />
+                  <span className="sr-only">{logPanelOpen ? w.collapseLogWorkout : w.expandLogWorkout}</span>
+                </button>
+              </div>
+              {logPanelOpen ? (
+                <div id="log-workout-panel" className="space-y-4">
+                  {lastWorkout ? (
+                    <EvoHintCard
+                      title={w.repeatLastTitle}
+                      tone="notice"
+                      content={w.repeatLastContent(
+                        String(lastWorkout.title || ''),
+                        lastWorkout.durationMinutes,
+                        lastWorkout.caloriesBurned
+                      )}
+                      action={
+                        <button
+                          type="button"
+                          className="btn-secondary w-full"
+                          onClick={() => {
+                            setTitle(String(lastWorkout.title || ''));
+                            setDurationMinutes(Number(lastWorkout.durationMinutes || 45));
+                            setCaloriesBurned(Number(lastWorkout.caloriesBurned || 300));
+                            setIntensity(String(lastWorkout.intensity || 'MEDIUM').toUpperCase() as WorkoutIntensity);
+                          }}
+                        >
+                          {w.useAsTemplate}
+                        </button>
+                      }
+                    />
+                  ) : null}
 
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-              <div className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="space-y-2 rounded-lg border border-border bg-surface-elevated p-3.5">
                 <label htmlFor="workouts-date" className="block text-sm font-medium text-text-primary">
-                  Day for this log
-                  <span className="text-text-muted font-normal"> — optional</span>
+                  {w.dayLabel}
+                  <span className="text-text-muted font-normal">{w.dayOptional}</span>
                 </label>
                 <input
                   id="workouts-date"
@@ -234,28 +462,24 @@ export default function WorkoutsPage() {
                   onChange={(event) => setSelectedDate(event.target.value)}
                   className="input-field w-full"
                 />
-                <p className="text-xs text-text-muted">
-                  Defaults to today. Change only if you are logging or importing a session for an earlier day.
-                </p>
+                <p className="text-xs text-text-muted">{w.dayHint}</p>
               </div>
 
               <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                <p className="text-sm font-semibold text-text-primary mb-1">Import from device file</p>
-                <p className="text-xs text-text-secondary mb-3">
-                  Upload Garmin/fitness export file (GPX, TCX, FIT). Evo will parse and log it automatically.
-                </p>
+                <p className="text-sm font-semibold text-text-primary mb-1">{w.importTitle}</p>
+                <p className="text-xs text-text-secondary mb-3">{w.importSubtitle}</p>
                 <div className="space-y-2.5">
                   <input
                     value={importNotes}
                     onChange={(event) => setImportNotes(event.target.value)}
                     className="input-field w-full"
-                    placeholder="Optional note for imported workout"
+                    placeholder={w.importNotesPlaceholder}
                   />
                   <label className="btn-secondary w-full cursor-pointer">
                     <input type="file" accept=".gpx,.tcx,.fit" className="hidden" onChange={handleImportWorkout} />
                     <span className="inline-flex items-center gap-2">
                       <FileUp className="h-4 w-4" />
-                      {importingWorkoutFile ? 'Importing...' : 'Import workout file'}
+                      {importingWorkoutFile ? w.importing : w.importFile}
                     </span>
                   </label>
                 </div>
@@ -263,18 +487,18 @@ export default function WorkoutsPage() {
 
               <div>
                 <label htmlFor="workoutTitle" className="block text-sm font-medium text-text-primary mb-2">
-                  Workout title
+                  {w.workoutTitle}
                 </label>
                 <input
                   id="workoutTitle"
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   className="input-field w-full"
-                  placeholder="e.g. Upper body strength + core"
+                  placeholder={w.titlePlaceholder}
                 />
               </div>
               <SmartSuggestionChips
-                title="Smart workout templates"
+                title={w.chipsTitle}
                 suggestions={workoutTemplates}
                 onSelect={(value) => {
                   const [name, durationPart, intensityPart] = value.split('·').map((chunk) => chunk.trim());
@@ -290,7 +514,7 @@ export default function WorkoutsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="durationMinutes" className="block text-sm font-medium text-text-primary mb-2">
-                    Duration (min)
+                    {w.duration}
                   </label>
                   <input
                     id="durationMinutes"
@@ -303,7 +527,7 @@ export default function WorkoutsPage() {
                 </div>
                 <div>
                   <label htmlFor="caloriesBurned" className="block text-sm font-medium text-text-primary mb-2">
-                    Estimated kcal burned
+                    {w.kcalBurned}
                   </label>
                   <input
                     id="caloriesBurned"
@@ -318,7 +542,7 @@ export default function WorkoutsPage() {
 
               <div>
                 <label htmlFor="intensity" className="block text-sm font-medium text-text-primary mb-2">
-                  Intensity
+                  {w.intensity}
                 </label>
                 <select
                   id="intensity"
@@ -326,24 +550,22 @@ export default function WorkoutsPage() {
                   onChange={(event) => setIntensity(event.target.value as WorkoutIntensity)}
                   className="input-field w-full"
                 >
-                  {intensityOptions.map((item) => (
-                    <option key={item} value={item}>
-                      {item.charAt(0) + item.slice(1).toLowerCase()}
-                    </option>
-                  ))}
+                  <option value="LOW">{w.intensityLow}</option>
+                  <option value="MEDIUM">{w.intensityMedium}</option>
+                  <option value="HIGH">{w.intensityHigh}</option>
                 </select>
               </div>
 
               <div>
                 <label htmlFor="workoutNotes" className="block text-sm font-medium text-text-primary mb-2">
-                  Session notes
+                  {w.sessionNotes}
                 </label>
                 <textarea
                   id="workoutNotes"
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   className="input-field w-full min-h-24 resize-y"
-                  placeholder="How it felt, sets/reps, what to improve next time..."
+                  placeholder={w.notesPlaceholder}
                 />
               </div>
 
@@ -351,106 +573,22 @@ export default function WorkoutsPage() {
                 {loggingWorkout ? (
                   <>
                     <ButtonSpinner />
-                    Evo is evaluating the session...
+                    {w.savingEvaluating}
                   </>
                 ) : (
-                  'Save workout and sync with Evo'
+                  w.saveAndSync
                 )}
               </button>
-            </form>
-          </section>
+                  </form>
+                </div>
+              ) : null}
+            </section>
+          </div>
 
-          <section className="xl:col-span-7 space-y-4">
-            <div className="bg-surface border border-border rounded-xl p-4 md:p-5">
-              <h2 className="text-lg font-semibold tracking-tight text-text-primary mb-4">
-                Day summary for {selectedDate}
-                {selectedDate === today ? ' (today)' : ''} — food + training
-              </h2>
-              {daySnapshot.loading ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-16 w-full rounded-lg" />
-                  <Skeleton className="h-16 w-full rounded-lg" />
-                  <Skeleton className="h-20 w-full rounded-lg" />
-                </div>
-              ) : summary ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <MetricCard icon={<Flame className="h-4 w-4" />} label="Net calories" value={`${summary.netCalories.toFixed(0)} kcal`} />
-                    <MetricCard
-                      icon={<Timer className="h-4 w-4" />}
-                      label={selectedDate === today ? 'Burned today' : `Burned (${selectedDate})`}
-                      value={`${summary.caloriesBurned.toFixed(0)} kcal`}
-                    />
-                    <MetricCard icon={<Dumbbell className="h-4 w-4" />} label="Protein left" value={`${Math.max(0, summary.remainingProtein).toFixed(0)} g`} />
-                  </div>
-                  <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                    <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">Coach suggestion</p>
-                    <p className="text-sm text-text-primary whitespace-pre-wrap">{summary.message}</p>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button type="button" className="btn-secondary" onClick={() => window.location.assign('/chat?channel=COACH')}>
-                        Explain this score
-                      </button>
-                      <button type="button" className="btn-secondary" onClick={() => window.location.assign('/chat?channel=COACH')}>
-                        Suggest post-workout meal
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <InsightEmptyState
-                  title="No workout insight yet"
-                  description="Log one training session and Evo will generate an instant post-workout read."
-                />
-              )}
-            </div>
-
-            <div className="bg-surface border border-border rounded-xl p-4 md:p-5">
-              <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">
-                Workouts for {selectedDate}
-                {selectedDate === today ? ' (today)' : ''}
-              </h3>
-              {daySnapshot.loading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-14 w-full rounded-lg" />
-                  <Skeleton className="h-14 w-full rounded-lg" />
-                </div>
-              ) : workouts.length > 0 ? (
-                <div className="space-y-2.5">
-                  {workouts.map((workout: any) => (
-                    <div key={workout.id} className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-text-primary">{workout.title}</p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs uppercase tracking-[0.12em] text-text-muted">{workout.intensity.toLowerCase()}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteWorkout(workout.id)}
-                            disabled={deletingWorkout}
-                            className="inline-flex items-center justify-center rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
-                            title="Delete workout"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-text-secondary mt-1">
-                        {workout.durationMinutes} min • {workout.caloriesBurned} kcal burned
-                      </p>
-                      {workout.notes ? <p className="text-sm text-text-secondary mt-2">{workout.notes}</p> : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-text-secondary">
-                  No workouts logged for {selectedDate}
-                  {selectedDate === today ? ' yet' : ''}.
-                </p>
-              )}
-            </div>
-          </section>
+          <div className="min-w-0">
+            <WeeklyWorkoutsTrainingSection weekEndDate={today} />
+          </div>
         </div>
-
-        <WeeklyWorkoutsTrainingSection weekEndDate={today} />
       </div>
     </AppShell>
   );

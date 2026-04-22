@@ -12,6 +12,8 @@ import { resetApolloClientAfterAuthChange } from '@/lib/apollo-client';
 import { ButtonSpinner } from '@/components/ui/loading';
 import EvoMark from '@/components/EvoMark';
 import { appToast } from '@/lib/app-toast';
+import { authPagesCopy } from '@/lib/i18n/copy/auth-pages';
+import { usePublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -19,6 +21,8 @@ export default function ResetPasswordPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const resetToken = searchParams.get('token');
+  const locale = usePublicUiLocale();
+  const c = authPagesCopy[locale].reset;
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -29,11 +33,11 @@ export default function ResetPasswordPage() {
     onCompleted: async (data) => {
       setAuthToken(data.resetPassword.token, true);
       await resetApolloClientAfterAuthChange();
-      appToast.success('Password updated', 'You can continue to your dashboard.');
+      appToast.success(c.toastUpdatedTitle, c.toastUpdatedBody);
       router.push('/dashboard');
     },
     onError: (error) => {
-      appToast.error('Reset failed', error.message || 'Unable to reset password.');
+      appToast.error(c.toastFailTitle, error.message || c.toastFailBody);
     },
   });
 
@@ -41,17 +45,17 @@ export default function ResetPasswordPage() {
     event.preventDefault();
 
     if (!resetToken) {
-      appToast.error('Invalid link', 'Missing reset token in URL.');
+      appToast.error(c.toastInvalidTitle, c.toastInvalidBody);
       return;
     }
 
     if (password.length < MIN_PASSWORD_LENGTH) {
-      appToast.warning('Password too short', `Use at least ${MIN_PASSWORD_LENGTH} characters.`);
+      appToast.warning(c.toastShortTitle, c.toastShortBody(MIN_PASSWORD_LENGTH));
       return;
     }
 
     if (password !== confirmPassword) {
-      appToast.warning('Password mismatch', 'Please make sure both password fields are identical.');
+      appToast.warning(c.toastMismatchTitle, c.toastMismatchBody);
       return;
     }
 
@@ -79,7 +83,7 @@ export default function ResetPasswordPage() {
       >
         <Link href="/login" className="inline-flex items-center text-text-secondary hover:text-text-primary mb-8 transition-colors">
           <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
-          Back to login
+          {c.backLogin}
         </Link>
 
         <div className="flex items-center justify-center space-x-2 mb-7">
@@ -88,16 +92,14 @@ export default function ResetPasswordPage() {
         </div>
 
         <div className="card-elevated">
-          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-2 text-center">Choose a new password</h1>
-          <p className="text-sm text-text-secondary text-center mb-6">
-            Set a new password for your account and continue to the dashboard.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-2 text-center">{c.title}</h1>
+          <p className="text-sm text-text-secondary text-center mb-6">{c.subtitle}</p>
 
           {resetToken ? (
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-text-primary mb-2">
-                  New password
+                  {c.newPassword}
                 </label>
                 <div className="auth-input-wrap">
                   <Lock className="auth-input-icon" />
@@ -116,19 +118,17 @@ export default function ResetPasswordPage() {
                     type="button"
                     className="auth-input-action"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    title={showPassword ? 'Hide password' : 'Show password'}
+                    title={showPassword ? c.hidePassword : c.showPassword}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-text-muted">
-                  At least {MIN_PASSWORD_LENGTH} characters
-                </p>
+                <p className="mt-1 text-xs text-text-muted">{c.passwordHint(MIN_PASSWORD_LENGTH)}</p>
               </div>
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-text-primary mb-2">
-                  Confirm new password
+                  {c.confirmPassword}
                 </label>
                 <div className="auth-input-wrap">
                   <Lock className="auth-input-icon" />
@@ -146,7 +146,7 @@ export default function ResetPasswordPage() {
                     type="button"
                     className="auth-input-action"
                     onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    title={showConfirmPassword ? c.hidePassword : c.showPassword}
                   >
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -161,18 +161,21 @@ export default function ResetPasswordPage() {
                 {loading ? (
                   <>
                     <ButtonSpinner />
-                    Resetting password...
+                    {c.submitting}
                   </>
-                ) : 'Reset password'}
+                ) : (
+                  c.submit
+                )}
               </button>
             </form>
           ) : (
             <div className="rounded-lg border border-border bg-surface/60 p-4">
-              <p className="text-sm text-text-secondary">
-                This reset link is missing a token. Generate a new one to continue.
-              </p>
-              <Link href="/forgot-password" className="inline-block mt-4 text-primary-500 hover:text-primary-400 font-medium transition-colors">
-                Generate a new reset link
+              <p className="text-sm text-text-secondary">{c.missingTokenBody}</p>
+              <Link
+                href="/forgot-password"
+                className="inline-block mt-4 text-primary-500 hover:text-primary-400 font-medium transition-colors"
+              >
+                {c.newLinkCta}
               </Link>
             </div>
           )}

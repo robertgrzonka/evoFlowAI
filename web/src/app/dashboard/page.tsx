@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { clsx } from 'clsx';
 import { motion } from 'framer-motion';
 import { useMutation, useQuery } from '@apollo/client';
 import {
@@ -12,6 +13,7 @@ import { Camera, ChartColumnIncreasing, Dumbbell, Plus, Target, Trash2 } from 'l
 import { clearAuthToken, hasAuthToken } from '@/lib/auth-token';
 import { clearApolloClientCache } from '@/lib/apollo-client';
 import AppShell from '@/components/AppShell';
+import { useAppShellLayout } from '@/components/app-shell-layout';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import {
   ButtonSpinner,
@@ -38,110 +40,22 @@ import {
   NextBestActionCard,
 } from '@/components/evo';
 import Tooltip from '@/components/ui/atoms/Tooltip';
+import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
+import {
+  buildDashboardDynamicGuidance,
+  buildDashboardEvoPresence,
+  buildDashboardGoalHoverHint,
+  buildDashboardNextAction,
+  getDashboardStrings,
+} from '@/lib/i18n/copy/dashboard';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 type ActionTone = 'brand' | 'info' | 'success';
 
-const buildDynamicGuidance = (input: {
-  remainingCalories: number;
-  remainingProtein: number;
-  workoutCount: number;
-  steps: number;
-  tips?: string[];
-}): string => {
-  const { remainingCalories, remainingProtein, workoutCount, steps, tips = [] } = input;
-  const nutritionTip = tips[0];
-  const trainingTip = tips[1];
-  const recoveryTip = tips[2];
-
-  if (remainingCalories < -150) {
-    if (remainingProtein > 20) {
-      return nutritionTip || 'You are over calorie budget, but still short on protein. Keep the next meal small and protein-focused.';
-    }
-    return recoveryTip || 'You are over calorie budget today. Keep the rest of the day light and prioritize hydration plus recovery.';
-  }
-
-  if (remainingProtein > 35) {
-    if (remainingCalories < 250) {
-      return nutritionTip || 'Calories are limited, so use a lean protein meal to close the protein gap without overshooting.';
-    }
-    return nutritionTip || 'Main priority now is protein. Build your next meal around 30-40g protein, then fill with carbs as needed.';
-  }
-
-  if (remainingCalories > 500) {
-    if (workoutCount > 0) {
-      return trainingTip || 'You still have solid room today. A balanced post-training meal with protein and carbs fits well now.';
-    }
-    return nutritionTip || 'You have a lot of budget left. Go for a balanced meal now so you do not under-eat by the end of day.';
-  }
-
-  if (steps > 12000 && remainingCalories > 150) {
-    return recoveryTip || 'Your activity is high today, so a moderate balanced meal is a good next move.';
-  }
-
-  if (remainingCalories > 150) {
-    return nutritionTip || 'A moderate balanced meal fits well now. Keep portions controlled and finish protein target.';
-  }
-
-  return recoveryTip || 'Day is nearly closed. Keep the next intake light, protein-aware, and focus on recovery.';
-};
-
-const buildEvoPresenceLine = (input: {
-  remainingCalories: number;
-  remainingProtein: number;
-  workoutCount: number;
-  steps: number;
-}): string => {
-  const { remainingCalories, remainingProtein, workoutCount, steps } = input;
-  if (remainingCalories < -150) return 'Evo status: Tight control mode.';
-  if (remainingProtein > 30) return 'Evo status: Protein-first mode.';
-  if (workoutCount > 0 && remainingCalories > 250) return 'Evo status: Refuel and recover mode.';
-  if (steps > 12000) return 'Evo status: High-activity day mode.';
-  return 'Evo status: Keep the momentum.';
-};
-
-const buildNextAction = (input: {
-  remainingCalories: number;
-  remainingProtein: number;
-  mealsCount: number;
-  workoutCount: number;
-}): { title: string; description: string; targetPath: string; actionLabel: string } => {
-  const { remainingCalories, remainingProtein, mealsCount, workoutCount } = input;
-  if (remainingProtein > 35) {
-    return {
-      title: 'Close your protein gap first',
-      description: `You still have around ${Math.round(remainingProtein)}g protein to hit. Build one protein-first meal now.`,
-      targetPath: '/meals',
-      actionLabel: 'Log protein-focused meal',
-    };
-  }
-  if (remainingCalories < -150) {
-    return {
-      title: 'Stabilize intake for the rest of today',
-      description: 'You are above today budget. Keep the next meal light and avoid random snacking.',
-      targetPath: '/chat?channel=COACH',
-      actionLabel: 'Ask Evo for correction plan',
-    };
-  }
-  if (workoutCount === 0 && mealsCount >= 2 && remainingCalories > 350) {
-    return {
-      title: 'You still have room for useful movement',
-      description: 'A short workout can improve energy balance and recovery quality for tomorrow.',
-      targetPath: '/workouts',
-      actionLabel: 'Log quick workout',
-    };
-  }
-  return {
-    title: 'Keep your current rhythm',
-    description: 'You are in a decent place. One balanced meal and clean recovery will close the day well.',
-    targetPath: '/chat?channel=COACH',
-    actionLabel: 'Get Evo end-of-day plan',
-  };
-};
-
 export default function DashboardPage() {
   const router = useRouter();
+  const { sidebarCollapsed } = useAppShellLayout();
   const [mounted, setMounted] = useState(false);
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [quickWorkoutTitle, setQuickWorkoutTitle] = useState('');
@@ -217,6 +131,8 @@ export default function DashboardPage() {
   }
 
   const user = userData?.me;
+  const locale = graphqlAppLocaleToUi(user?.preferences?.appLocale);
+  const d = getDashboardStrings(locale);
   const stats = daySnapshot.stats;
   const workouts = daySnapshot.workouts || [];
   const insight = daySnapshot.insight;
@@ -225,42 +141,43 @@ export default function DashboardPage() {
   const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
   const completedMeals = stats?.meals?.length || 0;
   const totalTrainingMinutes = daySnapshot.derived.workoutMinutes;
-  const dailyTrainingLabel = workouts.length > 0
-    ? `${workouts.length} session${workouts.length > 1 ? 's' : ''} • ${totalTrainingMinutes} min`
-    : 'No sessions';
+  const dailyTrainingLabel =
+    workouts.length > 0
+      ? `${workouts.length} ${workouts.length > 1 ? d.sessionsMany : d.sessionsOne} • ${totalTrainingMinutes} min`
+      : d.noSessions;
 
   const guidance = insight
-    ? buildDynamicGuidance({
+    ? buildDashboardDynamicGuidance(locale, {
         remainingCalories: insight.remainingCalories,
         remainingProtein: insight.remainingProtein,
         workoutCount: daySnapshot.derived.workoutCount,
         steps: daySnapshot.derived.steps,
         tips: insight.tips,
       })
-    : 'Log meals and workouts to unlock daily guidance.';
+    : d.noGuidance;
   const evoPresence = insight
-    ? buildEvoPresenceLine({
+    ? buildDashboardEvoPresence(locale, {
         remainingCalories: insight.remainingCalories,
         remainingProtein: insight.remainingProtein,
         workoutCount: daySnapshot.derived.workoutCount,
         steps: daySnapshot.derived.steps,
       })
-    : 'Evo status: Waiting for enough data.';
+    : d.evoWaiting;
 
   const progressTone = insight
     ? insight.remainingProtein <= 10 && insight.remainingCalories >= -100
-      ? 'On track'
+      ? d.progressOnTrack
       : insight.remainingCalories < -100
-        ? 'Watch intake'
-        : 'In progress'
-    : 'In progress';
+        ? d.progressWatch
+        : d.progressInProgress
+    : d.progressInProgress;
 
   const categorizedTips = [
-    { label: 'Nutrition notice', tip: insight?.tips?.[0] || 'Prioritize protein and balanced carbs in your next meal.' },
-    { label: 'Training notice', tip: insight?.tips?.[1] || 'Keep training quality high and avoid overdoing volume late in the day.' },
-    { label: 'Recovery notice', tip: insight?.tips?.[2] || 'Hydrate and support recovery with micronutrient-dense foods.' },
+    { label: d.tipNutrition, tip: insight?.tips?.[0] || d.tipNutritionFallback },
+    { label: d.tipTraining, tip: insight?.tips?.[1] || d.tipTrainingFallback },
+    { label: d.tipRecovery, tip: insight?.tips?.[2] || d.tipRecoveryFallback },
   ];
-  const nextAction = buildNextAction({
+  const nextAction = buildDashboardNextAction(locale, {
     remainingCalories: Number(insight?.remainingCalories || 0),
     remainingProtein: Number(insight?.remainingProtein || 0),
     mealsCount: completedMeals,
@@ -268,7 +185,7 @@ export default function DashboardPage() {
   });
 
   const handleDeleteMeal = async (mealId: string) => {
-    const confirmed = window.confirm('Delete this meal entry?');
+    const confirmed = window.confirm(d.confirmDeleteMeal);
     if (!confirmed) return;
 
     const result = await deleteFoodItem({ variables: { id: mealId } });
@@ -282,7 +199,7 @@ export default function DashboardPage() {
   const handleQuickWorkout = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!quickWorkoutTitle.trim()) {
-      appToast.info('Workout title missing', 'Enter workout name before saving.');
+      appToast.info('Workout title missing', d.workoutTitleMissing);
       return;
     }
 
@@ -302,7 +219,7 @@ export default function DashboardPage() {
   const handleQuickSteps = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!Number.isFinite(quickSteps) || quickSteps < 0 || quickSteps > 120000) {
-      appToast.info('Invalid steps', 'Steps must be between 0 and 120000.');
+      appToast.info('Invalid steps', d.invalidSteps);
       return;
     }
 
@@ -325,11 +242,9 @@ export default function DashboardPage() {
           transition={{ duration: 0.35, ease: 'easeOut' }}
         >
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-text-primary mb-1.5">
-            Welcome back, {user?.name || 'there'}!
+            {d.welcomeName(user?.name || 'there')}
           </h2>
-          <p className="max-w-2xl text-sm text-text-secondary">
-            One place for meals, training, and next steps from Evo.
-          </p>
+          <p className="max-w-2xl text-sm text-text-secondary">{d.welcomeSub}</p>
         </motion.div>
 
         <motion.section
@@ -339,10 +254,17 @@ export default function DashboardPage() {
           className="bg-surface rounded-xl border border-border p-4 md:p-5"
         >
           <AISectionHeader
-            eyebrow="Mission control"
-            title="Evo daily brief"
-            subtitle="How you are doing, what is drifting, and what to do right now."
-            status={<EvoStatusBadge label={progressTone} tone={progressTone === 'On track' ? 'success' : progressTone === 'Watch intake' ? 'warning' : 'focus'} />}
+            eyebrow={d.missionEyebrow}
+            title={d.dailyBriefTitle}
+            subtitle={d.dailyBriefSubtitle}
+            status={
+              <EvoStatusBadge
+                label={progressTone}
+                tone={
+                  progressTone === d.progressOnTrack ? 'success' : progressTone === d.progressWatch ? 'warning' : 'focus'
+                }
+              />
+            }
             rightAction={<AICoachAvatar size="md" />}
           />
 
@@ -355,11 +277,14 @@ export default function DashboardPage() {
           ) : insight ? (
             <div className="space-y-4">
               <HeroInsightCard
-                title="Main insight"
+                layout="split"
+                title={d.mainInsight}
                 insight={insight.summary}
                 supportLine={evoPresence}
                 cta={
                   <NextBestActionCard
+                    fillHeight
+                    eyebrow={d.nextStepEyebrow}
                     title={nextAction.title}
                     description={nextAction.description}
                     actionLabel={nextAction.actionLabel}
@@ -367,19 +292,31 @@ export default function DashboardPage() {
                   />
                 }
               >
-                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
-                  <EmojiMetric emoji="🎯" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} tooltip="Goal mode" />
-                  <EmojiMetric emoji="🍽️" value={`${completedMeals} meals`} tooltip="Meals today" />
-                  <EmojiMetric emoji="🏋️" value={`${daySnapshot.derived.workoutCount} • ${totalTrainingMinutes} min`} tooltip={`Training today (${dailyTrainingLabel})`} />
-                  <EmojiMetric emoji="⚖️" value={`${insight.netCalories.toFixed(0)} kcal`} tooltip="Net calories (food - workouts)" />
-                  <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)} kcal`} tooltip="Calories left for today" />
-                  <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)} g`} tooltip="Protein left for today" />
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 lg:gap-4">
+                  <EmojiMetric
+                    emoji="🎯"
+                    value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))}
+                    tooltip={d.metricGoal}
+                  />
+                  <EmojiMetric
+                    emoji="🍽️"
+                    value={`${completedMeals} ${d.mealsLoggedWord}`}
+                    tooltip={d.metricMealsToday}
+                  />
+                  <EmojiMetric
+                    emoji="🏋️"
+                    value={`${daySnapshot.derived.workoutCount} • ${totalTrainingMinutes} min`}
+                    tooltip={`${d.metricTrainingToday} (${dailyTrainingLabel})`}
+                  />
+                  <EmojiMetric emoji="⚖️" value={`${insight.netCalories.toFixed(0)} kcal`} tooltip={d.metricNetKcal} />
+                  <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)} kcal`} tooltip={d.metricKcalLeft} />
+                  <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)} g`} tooltip={d.metricProteinLeft} />
                 </div>
               </HeroInsightCard>
 
-              <EvoHintCard title="Quick read from Evo" content={guidance} tone="notice" />
+              <EvoHintCard title={d.quickReadTitle} content={guidance} tone="notice" />
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 2xl:gap-4 w-full">
                 {categorizedTips.map((item) => (
                   <EvoHintCard key={item.label} title={item.label} content={item.tip} tone="positive" />
                 ))}
@@ -387,9 +324,9 @@ export default function DashboardPage() {
             </div>
           ) : (
             <InsightEmptyState
-              title="Evo is waiting for enough context"
-              description="Log at least one meal or workout and Evo will build a focused daily brief."
-              actionLabel="Open meals"
+              title={d.emptyTitle}
+              description={d.emptyDesc}
+              actionLabel={d.emptyAction}
               onAction={() => router.push('/meals')}
             />
           )}
@@ -397,8 +334,8 @@ export default function DashboardPage() {
 
         <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-semibold tracking-tight text-text-primary">Weekly Evo review</h3>
-            <span className="text-xs text-text-secondary">Last 7 days</span>
+            <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.weeklyTitle}</h3>
+            <span className="text-xs text-text-secondary">{d.weeklyLast7}</span>
           </div>
           {weeklyReviewLoading ? (
             <div className="space-y-2">
@@ -409,19 +346,16 @@ export default function DashboardPage() {
             <div className="space-y-3">
               {!weeklyReview.isCompleteWeek ? (
                 <div className="rounded-lg border border-dashed border-primary-500/30 bg-primary-500/5 px-3 py-2">
-                  <p className="text-xs text-primary-200">
-                    Partial weekly review for <span className="font-semibold text-primary-100">{weeklyReview.availableDays}/7</span> available days
-                    (<span className="font-semibold text-primary-100">{weeklyReview.trackedDays}</span> tracked).
-                  </p>
+                  <p className="text-xs text-primary-200">{d.weeklyPartial(weeklyReview.availableDays, weeklyReview.trackedDays)}</p>
                 </div>
               ) : null}
               <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{weeklyReview.summary}</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <ScorePill label="Nutrition" score={weeklyReview.nutritionScore} />
-                <ScorePill label="Training" score={weeklyReview.trainingScore} />
-                <ScorePill label="Consistency" score={weeklyReview.consistencyScore} />
+                <ScorePill label={d.scoreNutrition} score={weeklyReview.nutritionScore} />
+                <ScorePill label={d.scoreTraining} score={weeklyReview.trainingScore} />
+                <ScorePill label={d.scoreConsistency} score={weeklyReview.consistencyScore} />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 2xl:gap-4 w-full">
                 {weeklyReview.highlights.map((highlight: string) => (
                   <div key={highlight} className="rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm text-text-secondary">
                     {highlight}
@@ -430,29 +364,39 @@ export default function DashboardPage() {
               </div>
               {weeklyReview.proTip ? (
                 <div className="rounded-xl border border-primary-500/25 bg-gradient-to-br from-primary-500/10 via-surface-elevated/80 to-amber-400/5 px-4 py-3.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-200/95 mb-1.5">Pro tip</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-200/95 mb-1.5">{d.proTip}</p>
                   <p className="text-sm text-text-primary leading-snug">{weeklyReview.proTip}</p>
                 </div>
               ) : null}
             </div>
           ) : (
-            <p className="text-sm text-text-secondary">Weekly review will appear after more logs.</p>
+            <p className="text-sm text-text-secondary">{d.weeklyEmpty}</p>
           )}
         </section>
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-          <section className="xl:col-span-8 space-y-4">
+        <div
+          className={clsx(
+            'grid grid-cols-1 gap-4 lg:grid-cols-12',
+            sidebarCollapsed && '2xl:gap-6'
+          )}
+        >
+          <section className={clsx('space-y-4', sidebarCollapsed ? 'lg:col-span-8 2xl:col-span-9' : 'lg:col-span-8')}>
             <div className="bg-surface rounded-xl border border-border p-4 md:p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold tracking-tight text-text-primary">Today goals</h3>
-                  <p className="text-sm text-text-secondary">Dynamic daily target and progress for {today}</p>
+                  <h3 className="text-lg font-semibold tracking-tight text-text-primary">{d.todayGoals}</h3>
+                  <p className="text-sm text-text-secondary">{d.todayGoalsSub(today)}</p>
                 </div>
                 <button onClick={() => router.push('/goals')} className="btn-secondary">
-                  Set Goals
+                  {d.setGoals}
                 </button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-3">
+              <div
+                className={clsx(
+                  'grid grid-cols-1 sm:grid-cols-2 gap-3',
+                  sidebarCollapsed ? 'lg:grid-cols-4' : 'lg:grid-cols-2 xl:grid-cols-4'
+                )}
+              >
                 {daySnapshot.loading ? (
                   <>
                     <StatCardSkeleton />
@@ -463,13 +407,14 @@ export default function DashboardPage() {
                 ) : (
                   <>
                     <StatCard
-                      title="Calories"
+                      ui={d}
+                      title={d.statCalories}
                       value={stats?.totalCalories?.toFixed(0) || '0'}
                       goal={stats?.dynamicGoals?.calories || user?.preferences?.dailyCalorieGoal || 2000}
                       progress={goalProgress.calories}
                       unit="kcal"
                       tone="brand"
-                      hoverHint={buildGoalHoverHint({
+                      hoverHint={buildDashboardGoalHoverHint(locale, {
                         title: 'Calories',
                         value: Number(stats?.totalCalories || 0),
                         goal: Number(stats?.dynamicGoals?.calories || user?.preferences?.dailyCalorieGoal || 2000),
@@ -477,13 +422,14 @@ export default function DashboardPage() {
                       })}
                     />
                     <StatCard
-                      title="Protein"
+                      ui={d}
+                      title={d.statProtein}
                       value={stats?.totalProtein?.toFixed(1) || '0'}
                       goal={stats?.dynamicGoals?.protein || user?.preferences?.proteinGoal || undefined}
                       progress={goalProgress.protein}
                       unit="g"
                       tone="info"
-                      hoverHint={buildGoalHoverHint({
+                      hoverHint={buildDashboardGoalHoverHint(locale, {
                         title: 'Protein',
                         value: Number(stats?.totalProtein || 0),
                         goal: Number(stats?.dynamicGoals?.protein || user?.preferences?.proteinGoal || 0),
@@ -491,13 +437,14 @@ export default function DashboardPage() {
                       })}
                     />
                     <StatCard
-                      title="Carbs"
+                      ui={d}
+                      title={d.statCarbs}
                       value={stats?.totalCarbs?.toFixed(1) || '0'}
                       goal={stats?.dynamicGoals?.carbs || user?.preferences?.carbsGoal || undefined}
                       progress={goalProgress.carbs}
                       unit="g"
                       tone="success"
-                      hoverHint={buildGoalHoverHint({
+                      hoverHint={buildDashboardGoalHoverHint(locale, {
                         title: 'Carbs',
                         value: Number(stats?.totalCarbs || 0),
                         goal: Number(stats?.dynamicGoals?.carbs || user?.preferences?.carbsGoal || 0),
@@ -505,13 +452,14 @@ export default function DashboardPage() {
                       })}
                     />
                     <StatCard
-                      title="Fat"
+                      ui={d}
+                      title={d.statFat}
                       value={stats?.totalFat?.toFixed(1) || '0'}
                       goal={stats?.dynamicGoals?.fat || user?.preferences?.fatGoal || undefined}
                       progress={goalProgress.fat}
                       unit="g"
                       tone="brandSoft"
-                      hoverHint={buildGoalHoverHint({
+                      hoverHint={buildDashboardGoalHoverHint(locale, {
                         title: 'Fat',
                         value: Number(stats?.totalFat || 0),
                         goal: Number(stats?.dynamicGoals?.fat || user?.preferences?.fatGoal || 0),
@@ -525,27 +473,27 @@ export default function DashboardPage() {
 
             <div className="bg-surface rounded-xl border border-border p-4 md:p-5">
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-base font-semibold tracking-tight text-text-primary">Quick actions</h3>
+                <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.quickActions}</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <ActionCard
                   icon={<Camera />}
-                  title="Meals"
-                  description="Describe meal or add photo"
+                  title={d.actionMealsTitle}
+                  description={d.actionMealsDesc}
                   onClick={() => router.push('/meals')}
                   tone="brand"
                 />
                 <ActionCard
                   icon={<ChartColumnIncreasing />}
-                  title="View Stats"
-                  description="Review history by day"
+                  title={d.actionStatsTitle}
+                  description={d.actionStatsDesc}
                   onClick={() => router.push('/stats')}
                   tone="info"
                 />
                 <ActionCard
                   icon={<Target />}
-                  title="Goal Settings"
-                  description="Adjust kcal and macros"
+                  title={d.actionGoalsTitle}
+                  description={d.actionGoalsDesc}
                   onClick={() => router.push('/goals')}
                   tone="success"
                 />
@@ -554,9 +502,9 @@ export default function DashboardPage() {
 
             <div className="bg-surface rounded-xl border border-border p-4 md:p-5">
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-base font-semibold tracking-tight text-text-primary">Today meals</h3>
+                <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.todayMeals}</h3>
                 <button onClick={() => router.push('/meals')} className="text-info-400 hover:text-info-300 text-sm transition-colors">
-                  Open Meals
+                  {d.openMeals}
                 </button>
               </div>
               {daySnapshot.loading ? (
@@ -577,7 +525,7 @@ export default function DashboardPage() {
                         onClick={() => handleDeleteMeal(meal.id)}
                         disabled={deletingMeal}
                         className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
-                        title="Delete meal"
+                        title={d.deleteMeal}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -597,29 +545,29 @@ export default function DashboardPage() {
               ) : (
                 <div className="text-center py-10">
                   <Camera className="h-12 w-12 text-text-muted mx-auto mb-3" />
-                  <p className="text-text-secondary mb-4">No meals logged today</p>
+                  <p className="text-text-secondary mb-4">{d.noMealsToday}</p>
                   <button onClick={() => router.push('/meals')} className="btn-primary inline-flex items-center space-x-2 px-4">
                     <Camera className="h-4 w-4" />
-                    <span>Log first meal</span>
+                    <span>{d.logFirstMeal}</span>
                   </button>
                 </div>
               )}
             </div>
           </section>
 
-          <aside className="xl:col-span-4 space-y-4">
+          <aside className={clsx('space-y-4', sidebarCollapsed ? 'lg:col-span-4 2xl:col-span-3' : 'lg:col-span-4')}>
             <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
               <div className="flex items-center justify-between mb-3.5">
-                <h3 className="text-base font-semibold tracking-tight text-text-primary">Quick add workout</h3>
+                <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.quickWorkout}</h3>
                 <button onClick={() => router.push('/workouts')} className="text-amber-300 hover:text-amber-200 text-xs transition-colors">
-                  Full page
+                  {d.fullPage}
                 </button>
               </div>
               <form onSubmit={handleQuickWorkout} className="space-y-3">
                 <input
                   value={quickWorkoutTitle}
                   onChange={(event) => setQuickWorkoutTitle(event.target.value)}
-                  placeholder="e.g. Running or Push workout"
+                  placeholder={d.workoutPlaceholder}
                   className="input-field w-full"
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -629,7 +577,7 @@ export default function DashboardPage() {
                     value={quickWorkoutDuration}
                     onChange={(event) => setQuickWorkoutDuration(Number(event.target.value))}
                     className="input-field w-full"
-                    placeholder="minutes"
+                    placeholder={d.minutesPh}
                   />
                   <input
                     type="number"
@@ -637,7 +585,7 @@ export default function DashboardPage() {
                     value={quickWorkoutBurned}
                     onChange={(event) => setQuickWorkoutBurned(Number(event.target.value))}
                     className="input-field w-full"
-                    placeholder="kcal"
+                    placeholder={d.kcalPh}
                   />
                 </div>
                 <select
@@ -645,20 +593,20 @@ export default function DashboardPage() {
                   onChange={(event) => setQuickWorkoutIntensity(event.target.value as WorkoutIntensity)}
                   className="input-field w-full"
                 >
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High</option>
+                  <option value="LOW">{d.intensityLow}</option>
+                  <option value="MEDIUM">{d.intensityMedium}</option>
+                  <option value="HIGH">{d.intensityHigh}</option>
                 </select>
                 <button type="submit" disabled={quickWorkoutSaving} className="btn-primary w-full inline-flex items-center justify-center gap-2">
                   {quickWorkoutSaving ? (
                     <>
                       <ButtonSpinner />
-                      Adding...
+                      {d.adding}
                     </>
                   ) : (
                     <>
                       <Plus className="h-4 w-4" />
-                      Add workout
+                      {d.addWorkout}
                     </>
                   )}
                 </button>
@@ -667,8 +615,8 @@ export default function DashboardPage() {
 
             <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
               <div className="flex items-center justify-between mb-3.5">
-                <h3 className="text-base font-semibold tracking-tight text-text-primary">Daily steps</h3>
-                <span className="text-xs text-text-secondary">Tracked only</span>
+                <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.dailySteps}</h3>
+                <span className="text-xs text-text-secondary">{d.trackedOnly}</span>
               </div>
               <form onSubmit={handleQuickSteps} className="space-y-3">
                 <input
@@ -678,16 +626,16 @@ export default function DashboardPage() {
                   value={quickSteps}
                   onChange={(event) => setQuickSteps(Number(event.target.value))}
                   className="input-field w-full"
-                  placeholder="Steps today"
+                  placeholder={d.stepsPlaceholder}
                 />
                 <button type="submit" disabled={savingSteps} className="btn-secondary w-full inline-flex items-center justify-center gap-2">
                   {savingSteps ? (
                     <>
                       <ButtonSpinner />
-                      Saving steps...
+                      {d.savingSteps}
                     </>
                   ) : (
-                    'Save steps'
+                    d.saveSteps
                   )}
                 </button>
               </form>
@@ -695,9 +643,9 @@ export default function DashboardPage() {
 
             <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold tracking-tight text-text-primary">Today training</h3>
+                <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.todayTraining}</h3>
                 <button onClick={() => router.push('/workouts')} className="text-xs text-text-secondary hover:text-text-primary transition-colors">
-                  See all
+                  {d.seeAll}
                 </button>
               </div>
               {daySnapshot.loading ? (
@@ -718,7 +666,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="rounded-lg border border-dashed border-border p-3 text-sm text-text-secondary">
-                  No workouts yet today.
+                  {d.noWorkoutsToday}
                 </div>
               )}
             </section>
@@ -730,6 +678,7 @@ export default function DashboardPage() {
 }
 
 function StatCard({
+  ui,
   title,
   value,
   goal,
@@ -738,6 +687,7 @@ function StatCard({
   tone,
   hoverHint,
 }: {
+  ui: ReturnType<typeof getDashboardStrings>;
   title: string;
   value: string;
   goal?: number;
@@ -778,7 +728,9 @@ function StatCard({
         <span className="text-xs text-text-secondary">{unit}</span>
       </div>
       {goal && (
-        <p className="text-xs text-text-muted mb-2">Goal: {goal} {unit}</p>
+        <p className="text-xs text-text-muted mb-2">
+          {ui.statGoalLine} {goal} {unit}
+        </p>
       )}
       <div className="w-full bg-background/60 rounded-full h-2">
         <div
@@ -786,20 +738,20 @@ function StatCard({
           style={{ width: `${Math.min(percentage, 100)}%` }}
         />
       </div>
-      <p className="text-xs text-text-muted mt-1">{percentage.toFixed(0)}% of goal</p>
+      <p className="text-xs text-text-muted mt-1">{ui.statPercentGoal(percentage.toFixed(0))}</p>
     </div>
   );
 
   if (!hoverHint) {
     return cardContent;
   }
-  const cleanHint = hoverHint.replace(/^Evo hint:\s*/i, '');
+  const cleanHint = hoverHint.replace(/^Evo hint:\s*/i, '').replace(/^Podpowiedź Evo:\s*/i, '');
 
   return (
     <Tooltip
       content={
         <span className="leading-snug">
-          <span className="font-semibold">Evo hint:</span> {cleanHint}
+          <span className="font-semibold">{ui.evoHintPrefix}</span> {cleanHint}
         </span>
       }
       inline={false}
@@ -875,45 +827,3 @@ function ScorePill({ label, score }: { label: string; score: number }) {
     </div>
   );
 }
-
-function buildGoalHoverHint(input: {
-  title: 'Calories' | 'Protein' | 'Carbs' | 'Fat';
-  value: number;
-  goal: number;
-  unit: 'kcal' | 'g';
-}) {
-  const { title, value, goal, unit } = input;
-  if (!goal || goal <= 0) {
-    return 'Add more day data and I will provide a precise recommendation.';
-  }
-
-  const ratio = value / goal;
-  const remaining = Math.max(0, goal - value);
-
-  if (title === 'Calories') {
-    if (ratio > 1.05) return `You are over by ${Math.round(value - goal)} ${unit}. Keep next meal lighter and protein-focused.`;
-    if (ratio < 0.65) return `You still have around ${Math.round(remaining)} ${unit}. Add a balanced meal to avoid underfueling.`;
-    return 'Calorie pace is solid. Keep portions controlled and close the day clean.';
-  }
-
-  if (title === 'Protein') {
-    if (ratio < 0.7) return `Around ${Math.round(remaining)} ${unit} left. Prioritize lean protein now (skyr, chicken, fish).`;
-    if (ratio > 1.15) return 'Protein is already above target. Shift next meal toward vegetables and quality carbs.';
-    return 'Protein pace looks good. One moderate protein portion should close the target.';
-  }
-
-  if (title === 'Carbs') {
-    if (ratio < 0.7) return `About ${Math.round(remaining)} ${unit} left. Use quality carbs around activity (rice, oats, potatoes).`;
-    if (ratio > 1.1) return 'Carbs are running high. Keep next meal lower-carb and higher in protein/fiber.';
-    return 'Carbs are on track. Keep sources mostly whole-food and easy to digest.';
-  }
-
-  if (ratio < 0.7) {
-    return `About ${Math.round(remaining)} ${unit} left. Prefer healthy fats like olive oil, nuts, seeds, or fatty fish.`;
-  }
-  if (ratio > 1.1) {
-    return 'Fat is above target. Keep next meal leaner and watch hidden oils/sauces.';
-  }
-  return 'Fat looks balanced. Keep quality sources and stable portions.';
-}
-

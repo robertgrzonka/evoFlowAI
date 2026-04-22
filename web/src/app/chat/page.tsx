@@ -28,6 +28,8 @@ import {
   InsightEmptyState,
   SmartSuggestionChips,
 } from '@/components/evo';
+import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
+import { chatPageCopy, getCoachPromptsForLocale, getGeneralPromptsForLocale } from '@/lib/i18n/copy/chat-page';
 
 type ChatChannel = 'GENERAL' | 'COACH';
 type ChatRole = 'USER' | 'ASSISTANT';
@@ -44,6 +46,8 @@ export default function ChatPage() {
   const conversationScrollRef = useRef<HTMLDivElement | null>(null);
 
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
+  const locale = graphqlAppLocaleToUi(meData?.me?.preferences?.appLocale);
+  const cc = chatPageCopy[locale];
   const goalMode = String(meData?.me?.preferences?.primaryGoal || 'MAINTENANCE').toUpperCase();
   const daySnapshot = useDaySnapshot({
     date: today,
@@ -77,13 +81,13 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!historyError) return;
-    appToast.error('Session expired', 'Please log in again.');
+    appToast.error(cc.sessionExpiredTitle, cc.sessionExpiredBody);
     void (async () => {
       clearAuthToken();
       await clearApolloClientCache();
       router.push('/login');
     })();
-  }, [historyError, router]);
+  }, [historyError, router, cc.sessionExpiredTitle, cc.sessionExpiredBody]);
 
   useEffect(() => {
     if (historyLoading) return;
@@ -106,7 +110,7 @@ export default function ChatPage() {
     },
     onError: (error) => {
       setWaitingForEvo(false);
-      appToast.error('Message failed', error.message || 'Could not send message.');
+      appToast.error(cc.messageFailedTitle, error.message || cc.messageFailedGeneric);
     },
   });
 
@@ -114,7 +118,7 @@ export default function ChatPage() {
     event.preventDefault();
     const content = prompt.trim();
     if (!content) {
-      appToast.info('Missing message', 'Write a message for Evo.');
+      appToast.info(cc.missingMessageTitle, cc.missingMessageBody);
       return;
     }
 
@@ -132,39 +136,41 @@ export default function ChatPage() {
     });
   };
 
-  const quickPrompts = conversationChannel === 'COACH'
-    ? getCoachPrompts(goalMode, daySnapshot.derived.remainingProtein, daySnapshot.derived.remainingCalories)
-    : getGeneralPrompts();
+  const quickPrompts =
+    conversationChannel === 'COACH'
+      ? getCoachPromptsForLocale(locale, goalMode, daySnapshot.derived.remainingProtein, daySnapshot.derived.remainingCalories)
+      : getGeneralPromptsForLocale(locale);
   const suggestionChips = quickPrompts.map((label, index) => ({
     id: `${conversationChannel}-${index}`,
     label,
   }));
-  const evoStatusLabel = conversationChannel === 'COACH'
-    ? daySnapshot.loading
-      ? 'Analyzing your day'
-      : daySnapshot.derived.remainingProtein > 30
-        ? 'Protein gap detected'
-        : daySnapshot.derived.remainingCalories < -100
-          ? 'Intake correction mode'
-          : 'Coach mode active'
-    : 'General mode active';
+  const evoStatusLabel =
+    conversationChannel === 'COACH'
+      ? daySnapshot.loading
+        ? cc.statusAnalyzing
+        : daySnapshot.derived.remainingProtein > 30
+          ? cc.statusProteinGap
+          : daySnapshot.derived.remainingCalories < -100
+            ? cc.statusCorrection
+            : cc.statusCoachActive
+      : cc.statusGeneralActive;
 
   return (
     <AppShell>
       <div className="space-y-5">
-        <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">Evo Chat</h1>} />
+        <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">{cc.pageTitle}</h1>} />
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-7 bg-surface border border-border rounded-xl p-4 md:p-5">
             <AISectionHeader
-              eyebrow="Evo conversation"
-              title="Conversation"
-              subtitle={conversationChannel === 'COACH' ? 'Evo reads your day context before replying.' : 'Talk strategy, habits, and planning.'}
+              eyebrow={cc.eyebrow}
+              title={cc.conversationTitle}
+              subtitle={conversationChannel === 'COACH' ? cc.coachSubtitle : cc.generalSubtitle}
               status={<EvoStatusBadge label={evoStatusLabel} tone={conversationChannel === 'COACH' ? 'focus' : 'neutral'} />}
             />
             <div className="mb-4 inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
               <ChannelTabButton
-                label="General"
+                label={cc.tabGeneral}
                 active={conversationChannel === 'GENERAL'}
                 onClick={() => {
                   setConversationChannel('GENERAL');
@@ -172,7 +178,7 @@ export default function ChatPage() {
                 }}
               />
               <ChannelTabButton
-                label="Coach"
+                label={cc.tabCoach}
                 active={conversationChannel === 'COACH'}
                 onClick={() => {
                   setConversationChannel('COACH');
@@ -197,7 +203,7 @@ export default function ChatPage() {
                             : 'bg-success-500/10 border-success-500/30 rounded-bl-md'
                         }`}
                       >
-                        <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted mb-1">{isUser ? 'You' : 'Evo'}</p>
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted mb-1">{isUser ? cc.you : cc.evo}</p>
                         <ChatMarkdown content={message.content} />
                       </div>
                     </div>
@@ -206,59 +212,55 @@ export default function ChatPage() {
                 {waitingForEvo ? (
                   <div className="flex justify-start">
                     <div className="max-w-[75%] rounded-2xl border border-primary-500/25 bg-primary-500/8 px-3 py-2 rounded-bl-md">
-                      <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted mb-1">Evo</p>
-                      <p className="text-sm text-text-secondary">Analyzing your day and preparing a focused response...</p>
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted mb-1">{cc.evo}</p>
+                      <p className="text-sm text-text-secondary">{cc.waitingMessage}</p>
                     </div>
                   </div>
                 ) : null}
               </div>
             ) : (
               <InsightEmptyState
-                title={conversationChannel === 'COACH' ? 'Coach thread is empty' : 'General thread is empty'}
-                description={
-                  conversationChannel === 'COACH'
-                    ? 'Ask Evo what is drifting today and it will propose one concrete next step.'
-                    : 'Start with a routine, planning, or recovery question.'
-                }
+                title={conversationChannel === 'COACH' ? cc.emptyCoachTitle : cc.emptyGeneralTitle}
+                description={conversationChannel === 'COACH' ? cc.emptyCoachDescription : cc.emptyGeneralDescription}
               />
             )}
           </section>
 
           <section className="xl:col-span-5 bg-surface border border-border rounded-xl p-4 md:p-5">
             <AISectionHeader
-              title={conversationChannel === 'COACH' ? 'Evo coach mode' : 'Evo general mode'}
+              title={conversationChannel === 'COACH' ? cc.coachModeTitle : cc.generalModeTitle}
               subtitle={
                 conversationChannel === 'COACH'
-                  ? `Today snapshot: ${Math.round(daySnapshot.derived.remainingCalories)} kcal left, ${Math.round(daySnapshot.derived.remainingProtein)}g protein left.`
-                  : 'Use this space for decisions, planning, and consistency strategy.'
+                  ? cc.coachSnapshot(daySnapshot.derived.remainingCalories, daySnapshot.derived.remainingProtein)
+                  : cc.generalSnapshotSubtitle
               }
               rightAction={<AICoachAvatar size="md" />}
             />
 
             {conversationChannel === 'COACH' ? (
               <EvoHintCard
-                title="Quick read from Evo"
+                title={cc.quickReadTitle}
                 tone="notice"
                 content={
                   daySnapshot.derived.remainingProtein > 30
-                    ? 'Protein is your biggest gap today. Solve this first and the day gets easier.'
+                    ? cc.quickReadProteinGap
                     : daySnapshot.derived.remainingCalories < -100
-                      ? 'You are above budget. A calm correction plan now beats random restriction later.'
-                      : 'You are relatively stable. Close the day with one clean, balanced move.'
+                      ? cc.quickReadOverBudget
+                      : cc.quickReadStable
                 }
               />
             ) : null}
 
             <form onSubmit={handleSend} className="space-y-4 mt-4">
               <SmartSuggestionChips
-                title={conversationChannel === 'COACH' ? 'Smart coach suggestions' : 'Smart suggestions'}
+                title={conversationChannel === 'COACH' ? cc.chipsCoach : cc.chipsGeneral}
                 suggestions={suggestionChips}
                 onSelect={(value) => setPrompt(value)}
               />
 
               <div>
                 <label htmlFor="chatPrompt" className="block text-sm font-medium text-text-primary mb-2">
-                  Your message
+                  {cc.yourMessage}
                 </label>
                 <textarea
                   id="chatPrompt"
@@ -266,9 +268,7 @@ export default function ChatPage() {
                   onChange={(event) => setPrompt(event.target.value)}
                   className="input-field w-full min-h-36 resize-y"
                   placeholder={
-                    conversationChannel === 'COACH'
-                      ? 'Example: I have around 700 kcal left and low protein. What should I eat for dinner?'
-                      : 'Example: Help me build a realistic weekly routine for meals and workouts.'
+                    conversationChannel === 'COACH' ? cc.placeholderCoach : cc.placeholderGeneral
                   }
                 />
               </div>
@@ -277,12 +277,12 @@ export default function ChatPage() {
                 {sendingMessage ? (
                   <>
                     <ButtonSpinner />
-                    Sending...
+                    {cc.sending}
                   </>
                 ) : conversationChannel === 'COACH' ? (
-                  'Ask Evo coach'
+                  cc.askCoach
                 ) : (
-                  'Ask Evo'
+                  cc.askEvo
                 )}
               </button>
             </form>
@@ -294,7 +294,7 @@ export default function ChatPage() {
                   onClick={() => setShowCoachDebug((prev) => !prev)}
                   className="w-full inline-flex items-center justify-between text-xs text-text-secondary hover:text-text-primary transition-colors"
                 >
-                  <span className="uppercase tracking-[0.12em]">Coach debug snapshot</span>
+                  <span className="uppercase tracking-[0.12em]">{cc.coachDebug}</span>
                   {showCoachDebug ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
                 {showCoachDebug ? (
@@ -311,9 +311,7 @@ export default function ChatPage() {
                     <p>carbs_consumed_g: {Math.round(daySnapshot.derived.carbsConsumed || 0)}</p>
                     <p>fat_consumed_g: {Math.round(daySnapshot.derived.fatConsumed || 0)}</p>
                     <p>steps_tracked: {Math.round(daySnapshot.derived.steps || 0)}</p>
-                    <p className="pt-1 text-text-muted">
-                      source: shared day snapshot
-                    </p>
+                    <p className="pt-1 text-text-muted">{cc.sourceLine}</p>
                   </div>
                 ) : null}
               </div>
@@ -325,14 +323,14 @@ export default function ChatPage() {
                 className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface-elevated px-2.5 py-2 text-xs text-text-secondary hover:text-text-primary transition-colors"
               >
                 <Utensils className="h-3.5 w-3.5" />
-                Add meal
+                {cc.addMeal}
               </Link>
               <Link
                 href="/workouts"
                 className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface-elevated px-2.5 py-2 text-xs text-text-secondary hover:text-text-primary transition-colors"
               >
                 <Dumbbell className="h-3.5 w-3.5" />
-                Add workout
+                {cc.addWorkout}
               </Link>
             </div>
           </section>
@@ -373,52 +371,4 @@ function ConversationSkeleton() {
       </div>
     </div>
   );
-}
-
-function getCoachPrompts(goalMode: string, remainingProtein?: number, remainingCalories?: number) {
-  if (typeof remainingProtein === 'number' && remainingProtein > 35) {
-    return [
-      `I still need around ${Math.round(remainingProtein)}g protein. Build one realistic dinner for this day.`,
-      'Explain why protein is the bottleneck today and what should change tomorrow morning.',
-      'Give me one high-protein correction meal and one backup option.',
-    ];
-  }
-
-  if (typeof remainingCalories === 'number' && remainingCalories < -100) {
-    return [
-      `I am over calories by around ${Math.abs(Math.round(remainingCalories))}. Give me a calm correction plan.`,
-      'Compare strict vs moderate correction and pick the smarter option for consistency.',
-      'What is the one mistake to avoid tonight so tomorrow starts clean?',
-    ];
-  }
-
-  if (goalMode === 'FAT_LOSS') {
-    return [
-      'Review my day and suggest one low-calorie high-protein next meal.',
-      'What is most off target in my macros right now?',
-      'Give me a practical plan for the rest of today.',
-    ];
-  }
-
-  if (goalMode === 'MUSCLE_GAIN') {
-    return [
-      'How should I finish today to support lean muscle gain?',
-      'Suggest a high-protein and high-carb dinner idea.',
-      'What should I prioritize after training today?',
-    ];
-  }
-
-  return [
-    'Review my current day and suggest one balanced next step.',
-    'What should I improve first: calories, protein, or meal timing?',
-    'Give me one nutrition tweak and one recovery tweak for tonight.',
-  ];
-}
-
-function getGeneralPrompts() {
-  return [
-    'Help me plan a realistic weekly routine for food and training.',
-    'I have a busy week. How can I stay consistent without overcomplicating?',
-    'Create a simple framework to improve my results in the next 14 days.',
-  ];
 }

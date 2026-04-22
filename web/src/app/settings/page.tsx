@@ -35,6 +35,7 @@ import { formatPrimaryGoal } from '@/lib/formatters';
 import { AISectionHeader, EvoHintCard } from '@/components/evo';
 import { settingsPageStrings } from '@/lib/i18n/settings-strings';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
+import { persistPublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -78,25 +79,28 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!error) return;
-    appToast.error('Session expired', 'Please log in again.');
+    const errS = settingsPageStrings[graphqlAppLocaleToUi(appLocale)];
+    appToast.error(errS.sessionExpiredTitle, errS.sessionExpiredBody);
     void (async () => {
       clearAuthToken();
       await clearApolloClientCache();
       router.push('/login');
     })();
-  }, [error, router]);
+  }, [error, router, appLocale]);
+
+  const s = settingsPageStrings[graphqlAppLocaleToUi(appLocale)];
 
   const handleSaveSettings = async () => {
     const parsedWeight = weightKg.trim() === '' ? null : Number(weightKg);
     const parsedHeight = heightCm.trim() === '' ? null : Number(heightCm);
 
     if (parsedWeight !== null && (!Number.isFinite(parsedWeight) || parsedWeight < 30 || parsedWeight > 300)) {
-      appToast.warning('Invalid weight', 'Weight must be between 30 and 300 kg.');
+      appToast.warning(s.invalidWeightTitle, s.invalidWeightBody);
       return;
     }
 
     if (parsedHeight !== null && (!Number.isFinite(parsedHeight) || parsedHeight < 120 || parsedHeight > 260)) {
-      appToast.warning('Invalid height', 'Height must be between 120 and 260 cm.');
+      appToast.warning(s.invalidHeightTitle, s.invalidHeightBody);
       return;
     }
 
@@ -116,10 +120,11 @@ export default function SettingsPage() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('evoflowai_evo_dock_enabled', String(evoDockEnabled));
         window.dispatchEvent(new Event('evo-settings-updated'));
+        persistPublicUiLocale(graphqlAppLocaleToUi(appLocale));
       }
-      appToast.success('Settings saved', 'Your app preferences were updated.');
+      appToast.success(s.settingsSavedTitle, s.settingsSavedBody);
     } catch (mutationError: any) {
-      appToast.error('Save failed', mutationError.message || 'Could not save settings.');
+      appToast.error(s.saveFailedTitle, mutationError.message || s.saveFailedBody);
     }
   };
 
@@ -134,7 +139,6 @@ export default function SettingsPage() {
   }
 
   const user = data?.me;
-  const s = settingsPageStrings[graphqlAppLocaleToUi(appLocale)];
   const garminStatus = stepSyncData?.stepSyncStatus;
   const proteinSuggestionByWeight =
     typeof user?.preferences?.weightKg === 'number' ? Math.round(user.preferences.weightKg * 2) : null;
@@ -148,9 +152,9 @@ export default function SettingsPage() {
       });
       setGarminToken('');
       await refetchStepSync();
-      appToast.success('Garmin connected', 'Step sync is enabled for your account.');
+      appToast.success(s.toastGarminConnectedTitle, s.toastGarminConnectedBody);
     } catch (mutationError: any) {
-      appToast.error('Garmin connect failed', mutationError.message || 'Could not connect Garmin.');
+      appToast.error(s.toastGarminConnectFailTitle, mutationError.message || s.toastGarminConnectFailBody);
     }
   };
 
@@ -158,9 +162,9 @@ export default function SettingsPage() {
     try {
       await disconnectStepSync({ variables: { provider: 'GARMIN' } });
       await refetchStepSync();
-      appToast.success('Garmin disconnected', 'Automatic step sync is disabled.');
+      appToast.success(s.toastGarminDisconnectedTitle, s.toastGarminDisconnectedBody);
     } catch (mutationError: any) {
-      appToast.error('Disconnect failed', mutationError.message || 'Could not disconnect Garmin.');
+      appToast.error(s.toastGarminDisconnectFailTitle, mutationError.message || s.toastGarminDisconnectFailBody);
     }
   };
 
@@ -170,13 +174,13 @@ export default function SettingsPage() {
       await refetchStepSync();
       const payload = result.data?.syncGarminSteps;
       appToast.success(
-        'Garmin synced',
+        s.toastGarminSyncedTitle,
         payload
-          ? `Imported ${payload.importedSteps} steps for ${payload.date}. Saved ${payload.savedSteps} steps in your day snapshot.`
-          : 'Steps were synced successfully.'
+          ? s.toastGarminSyncedBody(payload.importedSteps, payload.date, payload.savedSteps)
+          : s.toastGarminSyncedFallback
       );
     } catch (mutationError: any) {
-      appToast.error('Sync failed', mutationError.message || 'Could not sync Garmin steps.');
+      appToast.error(s.toastGarminSyncFailTitle, mutationError.message || s.toastGarminSyncFailBody);
     }
   };
 
@@ -251,21 +255,21 @@ export default function SettingsPage() {
                 </div>
                 <ToggleRow
                   icon={<Bell className="h-4 w-4 text-info-500" />}
-                  title="Notifications"
-                  description="Enable in-app guidance and important account feedback."
+                  title={s.notificationsTitle}
+                  description={s.notificationsDesc}
                   checked={notificationsEnabled}
                   onChange={setNotificationsEnabled}
                 />
                 <ToggleRow
                   icon={<MessageSquareMore className="h-4 w-4 text-success-500" />}
-                  title="Floating Evo Chat"
-                  description="Show minimized Evo messenger dock across authenticated pages."
+                  title={s.evoDockTitle}
+                  description={s.evoDockDesc}
                   checked={evoDockEnabled}
                   onChange={setEvoDockEnabled}
                 />
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-sm font-semibold text-text-primary mb-1.5">Evo coaching tone</p>
-                  <p className="text-xs text-text-secondary mb-3">This changes communication style, not Evo personality.</p>
+                  <p className="text-sm font-semibold text-text-primary mb-1.5">{s.coachingToneTitle}</p>
+                  <p className="text-xs text-text-secondary mb-3">{s.coachingToneSubtitle}</p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
@@ -276,7 +280,7 @@ export default function SettingsPage() {
                           : 'border-border text-text-secondary hover:text-text-primary'
                       }`}
                     >
-                      Supportive
+                      {s.toneSupportive}
                     </button>
                     <button
                       type="button"
@@ -287,13 +291,13 @@ export default function SettingsPage() {
                           : 'border-border text-text-secondary hover:text-text-primary'
                       }`}
                     >
-                      Direct
+                      {s.toneDirect}
                     </button>
                   </div>
                 </div>
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-sm font-semibold text-text-primary mb-1.5">Evo proactivity</p>
-                  <p className="text-xs text-text-secondary mb-3">How often Evo should interrupt with next-step suggestions.</p>
+                  <p className="text-sm font-semibold text-text-primary mb-1.5">{s.proactivityTitle}</p>
+                  <p className="text-xs text-text-secondary mb-3">{s.proactivitySubtitle}</p>
                   <div className="grid grid-cols-3 gap-2">
                     {(['LOW', 'MEDIUM', 'HIGH'] as const).map((level) => (
                       <button
@@ -306,28 +310,24 @@ export default function SettingsPage() {
                             : 'border-border text-text-secondary hover:text-text-primary'
                         }`}
                       >
-                        {level.charAt(0) + level.slice(1).toLowerCase()}
+                        {level === 'LOW' ? s.proactivityLow : level === 'HIGH' ? s.proactivityHigh : s.proactivityMedium}
                       </button>
                     ))}
                   </div>
                 </div>
                 <EvoHintCard
-                  title="Preview tone"
+                  title={s.previewToneTitle}
                   tone="notice"
-                  content={
-                    coachingTone === 'DIRECT'
-                      ? 'Direct: Evo keeps feedback tight and task-focused.'
-                      : 'Supportive: Evo stays warm, but still practical and concrete.'
-                  }
+                  content={coachingTone === 'DIRECT' ? s.previewToneDirect : s.previewToneSupportive}
                 />
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                  <p className="text-sm font-semibold text-text-primary mb-1.5">Body metrics for AI guidance</p>
-                  <p className="text-xs text-text-secondary mb-3">
-                    Evo uses this to suggest protein intake (default: about 2.0 g per kg body weight).
-                  </p>
+                  <p className="text-sm font-semibold text-text-primary mb-1.5">{s.bodyMetricsTitle}</p>
+                  <p className="text-xs text-text-secondary mb-3">{s.bodyMetricsSubtitle}</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
-                      <label htmlFor="weight-kg" className="block text-xs text-text-secondary mb-1">Weight (kg)</label>
+                      <label htmlFor="weight-kg" className="block text-xs text-text-secondary mb-1">
+                        {s.weightLabel}
+                      </label>
                       <input
                         id="weight-kg"
                         type="number"
@@ -337,11 +337,13 @@ export default function SettingsPage() {
                         value={weightKg}
                         onChange={(event) => setWeightKg(event.target.value)}
                         className="input-field w-full"
-                        placeholder="e.g. 78"
+                        placeholder={s.weightPlaceholder}
                       />
                     </div>
                     <div>
-                      <label htmlFor="height-cm" className="block text-xs text-text-secondary mb-1">Height (cm)</label>
+                      <label htmlFor="height-cm" className="block text-xs text-text-secondary mb-1">
+                        {s.heightLabel}
+                      </label>
                       <input
                         id="height-cm"
                         type="number"
@@ -351,7 +353,7 @@ export default function SettingsPage() {
                         value={heightCm}
                         onChange={(event) => setHeightCm(event.target.value)}
                         className="input-field w-full"
-                        placeholder="e.g. 180"
+                        placeholder={s.heightPlaceholder}
                       />
                     </div>
                   </div>
@@ -359,10 +361,8 @@ export default function SettingsPage() {
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-text-primary">Garmin step sync (Beta connector)</p>
-                      <p className="text-xs text-text-secondary mt-1">
-                        Prototype connector for Garmin-like endpoints. For production, use official Garmin approval or file import.
-                      </p>
+                      <p className="text-sm font-semibold text-text-primary">{s.garminTitle}</p>
+                      <p className="text-xs text-text-secondary mt-1">{s.garminSubtitle}</p>
                     </div>
                     <span
                       className={`inline-flex items-center justify-center rounded-full px-2.5 py-1 text-[11px] leading-none whitespace-nowrap ${
@@ -371,20 +371,18 @@ export default function SettingsPage() {
                           : 'bg-border/40 text-text-secondary border border-border'
                       }`}
                     >
-                      {garminStatus?.connected ? 'Connected' : 'Not connected'}
+                      {garminStatus?.connected ? s.garminConnected : s.garminNotConnected}
                     </span>
                   </div>
 
                   {!garminStatus?.configured ? (
-                    <p className="text-xs text-amber-300 mt-3">
-                      Garmin endpoint is not configured on server. Set <code>GARMIN_DAILY_STEPS_ENDPOINT</code> in backend env.
-                    </p>
+                    <p className="text-xs text-amber-300 mt-3">{s.garminEnvHint}</p>
                   ) : null}
 
                   <div className="mt-3 space-y-2.5">
                     <div>
                       <label htmlFor="garmin-token" className="block text-xs text-text-secondary mb-1">
-                        Garmin API token (optional when server has GARMIN_API_TOKEN)
+                        {s.garminTokenLabel}
                       </label>
                       <input
                         id="garmin-token"
@@ -392,7 +390,7 @@ export default function SettingsPage() {
                         value={garminToken}
                         onChange={(event) => setGarminToken(event.target.value)}
                         className="input-field w-full"
-                        placeholder="Paste Garmin token only if needed"
+                        placeholder={s.garminTokenPlaceholder}
                       />
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -403,7 +401,7 @@ export default function SettingsPage() {
                         className="btn-secondary inline-flex items-center gap-2"
                       >
                         <Cable className="h-4 w-4" />
-                        {connectingGarmin ? 'Connecting...' : 'Connect Garmin'}
+                        {connectingGarmin ? s.connectingGarmin : s.connectGarmin}
                       </button>
                       <button
                         type="button"
@@ -412,7 +410,7 @@ export default function SettingsPage() {
                         className="btn-primary inline-flex items-center gap-2"
                       >
                         <RefreshCw className={`h-4 w-4 ${syncingGarmin ? 'animate-spin' : ''}`} />
-                        {syncingGarmin ? 'Syncing...' : 'Sync now'}
+                        {syncingGarmin ? s.syncing : s.syncNow}
                       </button>
                       <button
                         type="button"
@@ -421,20 +419,22 @@ export default function SettingsPage() {
                         className="btn-ghost inline-flex items-center gap-2"
                       >
                         <Link2Off className="h-4 w-4" />
-                        Disconnect
+                        {s.disconnect}
                       </button>
                     </div>
                     <p className="text-xs text-text-secondary">
-                      Last sync:{' '}
+                      {s.lastSyncLabel}{' '}
                       <span className="text-text-primary">
                         {garminStatus?.lastSyncedAt
                           ? new Date(garminStatus.lastSyncedAt).toLocaleString()
-                          : 'Never'}
+                          : s.lastSyncNever}
                       </span>
-                      {garminStatus?.usingEnvToken ? ' • using server token' : ''}
+                      {garminStatus?.usingEnvToken ? ` • ${s.usingServerToken}` : ''}
                     </p>
                     {garminStatus?.lastError ? (
-                      <p className="text-xs text-red-300">Last error: {garminStatus.lastError}</p>
+                      <p className="text-xs text-red-300">
+                        {s.lastErrorPrefix} {garminStatus.lastError}
+                      </p>
                     ) : null}
                   </div>
                 </div>
@@ -442,52 +442,64 @@ export default function SettingsPage() {
             </div>
 
             <div className="bg-surface rounded-xl border border-border p-5">
-              <h2 className="text-base font-semibold tracking-tight text-text-primary mb-4">Current plan snapshot</h2>
+              <h2 className="text-base font-semibold tracking-tight text-text-primary mb-4">{s.planSnapshotTitle}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <PlanPill label="Primary goal" value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} />
-                <PlanPill label="Coaching tone" value={formatCoachingTone(String(user?.preferences?.coachingTone || 'SUPPORTIVE'))} />
-                <PlanPill label="Proactivity" value={formatProactivity(String(user?.preferences?.proactivityLevel || 'MEDIUM'))} />
-                <PlanPill label="Resting calories (base)" value={`${user?.preferences?.dailyCalorieGoal || 0} kcal`} />
-                <PlanPill label="Body weight" value={user?.preferences?.weightKg ? `${user.preferences.weightKg} kg` : 'Not set'} />
-                <PlanPill label="Height" value={user?.preferences?.heightCm ? `${user.preferences.heightCm} cm` : 'Not set'} />
-                <PlanPill label="Protein / day" value={`${user?.preferences?.proteinGoal || 0} g`} />
+                <PlanPill label={s.pillPrimaryGoal} value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} />
                 <PlanPill
-                  label="Protein suggestion (2g/kg)"
-                  value={proteinSuggestionByWeight ? `${proteinSuggestionByWeight} g` : 'Add weight to calculate'}
+                  label={s.pillCoachingTone}
+                  value={formatCoachingTone(String(user?.preferences?.coachingTone || 'SUPPORTIVE'), s)}
                 />
-                <PlanPill label="Carbs / day" value={`${user?.preferences?.carbsGoal || 0} g`} />
-                <PlanPill label="Fat / day" value={`${user?.preferences?.fatGoal || 0} g`} />
-                <PlanPill label="Workouts / week" value={`${user?.preferences?.weeklyWorkoutsGoal || 0}`} />
-                <PlanPill label="Active minutes / week" value={`${user?.preferences?.weeklyActiveMinutesGoal || 0} min`} />
+                <PlanPill
+                  label={s.pillProactivity}
+                  value={formatProactivity(String(user?.preferences?.proactivityLevel || 'MEDIUM'), s)}
+                />
+                <PlanPill label={s.pillRestingCalories} value={`${user?.preferences?.dailyCalorieGoal || 0} kcal`} />
+                <PlanPill
+                  label={s.pillBodyWeight}
+                  value={user?.preferences?.weightKg ? `${user.preferences.weightKg} kg` : s.notSet}
+                />
+                <PlanPill
+                  label={s.pillHeight}
+                  value={user?.preferences?.heightCm ? `${user.preferences.heightCm} cm` : s.notSet}
+                />
+                <PlanPill label={s.pillProteinDay} value={`${user?.preferences?.proteinGoal || 0} g`} />
+                <PlanPill
+                  label={s.pillProteinSuggestion}
+                  value={proteinSuggestionByWeight ? `${proteinSuggestionByWeight} g` : s.pillProteinSuggestionEmpty}
+                />
+                <PlanPill label={s.pillCarbsDay} value={`${user?.preferences?.carbsGoal || 0} g`} />
+                <PlanPill label={s.pillFatDay} value={`${user?.preferences?.fatGoal || 0} g`} />
+                <PlanPill label={s.pillWorkoutsWeek} value={`${user?.preferences?.weeklyWorkoutsGoal || 0}`} />
+                <PlanPill label={s.pillActiveMinWeek} value={`${user?.preferences?.weeklyActiveMinutesGoal || 0} min`} />
               </div>
             </div>
 
             <div className="bg-surface rounded-xl border border-border p-5">
-              <h2 className="text-base font-semibold tracking-tight text-text-primary mb-4">Quick destinations</h2>
+              <h2 className="text-base font-semibold tracking-tight text-text-primary mb-4">{s.quickDestTitle}</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                 <QuickLinkCard
                   onClick={() => router.push('/goals')}
                   icon={<Target className="mb-2 h-5 w-5 text-primary-500 stroke-[1.9]" />}
-                  title="Goal Settings"
-                  description="Calories, macros and training targets."
+                  title={s.quickGoalTitle}
+                  description={s.quickGoalDesc}
                 />
                 <QuickLinkCard
                   onClick={() => router.push('/stats')}
                   icon={<ChartColumnIncreasing className="mb-2 h-5 w-5 text-info-500 stroke-[1.9]" />}
-                  title="Stats View"
-                  description="Review nutrition progress by date."
+                  title={s.quickStatsTitle}
+                  description={s.quickStatsDesc}
                 />
                 <QuickLinkCard
                   onClick={() => router.push('/chat?channel=COACH')}
                   icon={<MessageSquareMore className="mb-2 h-5 w-5 text-success-500 stroke-[1.9]" />}
-                  title="AI Coach"
-                  description="Open Evo general or coach conversation."
+                  title={s.quickCoachTitle}
+                  description={s.quickCoachDesc}
                 />
                 <QuickLinkCard
                   onClick={() => router.push('/workouts')}
                   icon={<Dumbbell className="mb-2 h-5 w-5 text-amber-400 stroke-[1.9]" />}
-                  title="Workout Coach"
-                  description="Track training and recovery guidance."
+                  title={s.quickWorkoutsTitle}
+                  description={s.quickWorkoutsDesc}
                 />
               </div>
             </div>
@@ -495,22 +507,22 @@ export default function SettingsPage() {
 
           <aside className="xl:col-span-4 space-y-4">
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">Account</h3>
+              <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">{s.accountTitle}</h3>
               <div className="space-y-3">
-                <InfoRow icon={<UserRound className="h-4 w-4 text-text-muted" />} label="Name" value={user?.name || 'Not set'} />
-                <InfoRow icon={<ShieldCheck className="h-4 w-4 text-text-muted" />} label="Email" value={user?.email || 'Unknown'} />
+                <InfoRow icon={<UserRound className="h-4 w-4 text-text-muted" />} label={s.nameLabel} value={user?.name || s.notSet} />
+                <InfoRow icon={<ShieldCheck className="h-4 w-4 text-text-muted" />} label={s.emailLabel} value={user?.email || '—'} />
               </div>
             </section>
 
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">Security</h3>
+              <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">{s.securityTitle}</h3>
               <div className="space-y-2">
                 <button onClick={() => router.push('/forgot-password')} className="btn-secondary w-full">
-                  Reset password
+                  {s.resetPassword}
                 </button>
                 <button onClick={handleLogout} className="w-full inline-flex items-center justify-center gap-2 h-9 px-3.5 rounded-md border border-red-400/30 text-red-300 hover:text-red-200 hover:border-red-300/50 transition-colors">
                   <LogOut className="h-4 w-4" />
-                  Logout
+                  {s.logout}
                 </button>
               </div>
             </section>
@@ -605,13 +617,13 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
-function formatCoachingTone(value: string) {
-  return String(value || '').toUpperCase() === 'DIRECT' ? 'Direct' : 'Supportive';
+function formatCoachingTone(value: string, s: (typeof settingsPageStrings)['en']) {
+  return String(value || '').toUpperCase() === 'DIRECT' ? s.coachingToneDisplayDirect : s.coachingToneDisplaySupportive;
 }
 
-function formatProactivity(value: string) {
+function formatProactivity(value: string, s: (typeof settingsPageStrings)['en']) {
   const normalized = String(value || '').toUpperCase();
-  if (normalized === 'LOW') return 'Low';
-  if (normalized === 'HIGH') return 'High';
-  return 'Medium';
+  if (normalized === 'LOW') return s.proactivityDisplayLow;
+  if (normalized === 'HIGH') return s.proactivityDisplayHigh;
+  return s.proactivityDisplayMedium;
 }

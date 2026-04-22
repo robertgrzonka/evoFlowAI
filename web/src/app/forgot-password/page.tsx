@@ -9,8 +9,12 @@ import { REQUEST_PASSWORD_RESET_MUTATION } from '@/lib/graphql/mutations';
 import { ButtonSpinner } from '@/components/ui/loading';
 import EvoMark from '@/components/EvoMark';
 import { appToast } from '@/lib/app-toast';
+import { authPagesCopy } from '@/lib/i18n/copy/auth-pages';
+import { usePublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
 
 export default function ForgotPasswordPage() {
+  const locale = usePublicUiLocale();
+  const c = authPagesCopy[locale].forgot;
   const [email, setEmail] = useState('');
   const [submittedEmail, setSubmittedEmail] = useState('');
   const [resetUrl, setResetUrl] = useState<string | null>(null);
@@ -20,10 +24,10 @@ export default function ForgotPasswordPage() {
       const payload = data.requestPasswordReset;
       setSubmittedEmail(email);
       setResetUrl(payload.resetUrl ?? null);
-      appToast.success('Reset link ready', payload.message);
+      appToast.success(c.toastResetTitle, payload.message || '');
     },
     onError: (error) => {
-      appToast.error('Reset request failed', error.message || 'Unable to start password reset.');
+      appToast.error(c.toastFailTitle, error.message || c.toastFailBody);
     },
   });
 
@@ -50,9 +54,9 @@ export default function ForgotPasswordPage() {
 
     try {
       await navigator.clipboard.writeText(resetUrl);
-      appToast.success('Copied', 'Reset link copied to clipboard.');
+      appToast.success(c.toastCopiedTitle, c.toastCopiedBody);
     } catch (error) {
-      appToast.error('Copy failed', 'Unable to copy reset link.');
+      appToast.error(c.toastCopyFailTitle, c.toastCopyFailBody);
       console.error('Copy reset link error:', error);
     }
   };
@@ -67,7 +71,7 @@ export default function ForgotPasswordPage() {
       >
         <Link href="/login" className="inline-flex items-center text-text-secondary hover:text-text-primary mb-8 transition-colors">
           <ArrowLeft className="mr-2 h-4 w-4 stroke-[1.9]" />
-          Back to login
+          {c.backLogin}
         </Link>
 
         <div className="flex items-center justify-center space-x-2 mb-7">
@@ -76,15 +80,13 @@ export default function ForgotPasswordPage() {
         </div>
 
         <div className="card-elevated">
-          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-2 text-center">Reset your password</h1>
-          <p className="text-sm text-text-secondary text-center mb-6">
-            Enter your account email and we will generate a local reset link for you.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-2 text-center">{c.title}</h1>
+          <p className="text-sm text-text-secondary text-center mb-6">{c.subtitle}</p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-text-primary mb-2">
-                Email
+                {c.email}
               </label>
               <div className="auth-input-wrap">
                 <Mail className="auth-input-icon" />
@@ -109,18 +111,20 @@ export default function ForgotPasswordPage() {
               {loading ? (
                 <>
                   <ButtonSpinner />
-                  Generating link...
+                  {c.submitting}
                 </>
-              ) : 'Generate reset link'}
+              ) : (
+                c.submit
+              )}
             </button>
           </form>
 
           {submittedEmail ? (
             <div className="mt-6 rounded-lg border border-border bg-surface/60 p-4 space-y-4">
               <div>
-                <p className="text-sm font-medium text-text-primary">Request received</p>
+                <p className="text-sm font-medium text-text-primary">{c.requestReceived}</p>
                 <p className="text-sm text-text-secondary">
-                  If an account exists for <span className="text-text-primary">{submittedEmail}</span>, you can continue with the link below.
+                  {c.requestBody.replace('{email}', submittedEmail)}
                 </p>
               </div>
 
@@ -128,39 +132,31 @@ export default function ForgotPasswordPage() {
                 <>
                   <div>
                     <label htmlFor="resetUrl" className="block text-sm font-medium text-text-primary mb-2">
-                      Local reset link
+                      {c.resetLinkLabel}
                     </label>
-                    <input
-                      id="resetUrl"
-                      type="text"
-                      readOnly
-                      value={resetUrl}
-                      className="input-field w-full text-sm"
-                    />
+                    <input id="resetUrl" type="text" readOnly value={resetUrl} className="input-field w-full text-sm" />
                   </div>
 
                   <div className="flex gap-3">
                     <button type="button" onClick={handleCopyLink} className="btn-secondary flex-1">
-                      Copy link
+                      {c.copyLink}
                     </button>
                     <a href={resetUrl} className="btn-primary flex-1 text-center">
-                      Open link
+                      {c.openLink}
                     </a>
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-text-secondary">
-                  Local reset link is currently unavailable. Make sure backend local reset mode is enabled.
-                </p>
+                <p className="text-sm text-text-secondary">{c.linkUnavailable}</p>
               )}
             </div>
           ) : null}
 
           <div className="mt-6 text-center">
             <p className="text-text-secondary">
-              Remembered your password?{' '}
+              {c.remembered}{' '}
               <Link href="/login" className="text-primary-500 hover:text-primary-400 font-medium transition-colors">
-                Log in
+                {c.logIn}
               </Link>
             </p>
           </div>
