@@ -31,25 +31,19 @@ RUN mkdir -p public
 RUN npm run build
 
 # Stage 4: Production backend
+# Layout must match backend/package.json: "@evoflowai/shared": "file:../shared"
 FROM node:18-alpine AS backend-production
-WORKDIR /app
-
-# Install wget for healthcheck
 RUN apk add --no-cache wget
 
-# Copy built files
-COPY --from=backend-builder /app/backend/dist ./dist
-COPY --from=backend-builder /app/backend/package*.json ./
 COPY --from=shared-builder /app/shared /app/shared
+COPY --from=backend-builder /app/backend/dist /app/backend/dist
+COPY --from=backend-builder /app/backend/package.json /app/backend/
 
-# Install production dependencies only
+WORKDIR /app/backend
 RUN npm install --only=production
-
-# Create uploads directory
-RUN mkdir -p /app/uploads
+RUN mkdir -p uploads
 
 EXPOSE 3001
-
 CMD ["node", "dist/server.js"]
 
 # Stage 5: Production web
