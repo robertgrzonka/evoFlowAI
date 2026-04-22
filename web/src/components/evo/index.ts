@@ -5,3 +5,4 @@ export { default as EvoHintCard } from './EvoHintCard';
 export { default as NextBestActionCard } from './NextBestActionCard';
 export { default as SmartSuggestionChips } from './SmartSuggestionChips';
 export { default as InsightEmptyState } from './InsightEmptyState';
+export { default as EvoThinkingOverlay } from './EvoThinkingOverlay';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useSubscription } from '@apollo/client';
+import { useApolloClient, useMutation, useQuery, useSubscription } from '@apollo/client';
 import { ImagePlus, MessageCircle, Minus, Send, X } from 'lucide-react';
 import Link from 'next/link';
 import AICoachAvatar from '@/components/AICoachAvatar';
@@ -18,9 +18,16 @@ import {
   SEND_MESSAGE_MUTATION,
 } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
-import { buildDayRefetchQueries, CHAT_HISTORY_LIMIT } from '@/lib/day-data';
+import {
+  buildDayRefetchQueriesAfterLog,
+  CHAT_HISTORY_LIMIT,
+  kickDeferredAfterMealLog,
+  kickDeferredAfterWorkoutLog,
+} from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import EvoStatusBadge from '@/components/evo/EvoStatusBadge';
+import EvoThinkingOverlay from '@/components/evo/EvoThinkingOverlay';
+import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import Tooltip from '@/components/ui/atoms/Tooltip';
 
 type DockTab = 'chat' | 'meal' | 'workout';
@@ -33,6 +40,7 @@ type ChatMessage = { id: string; role: ChatRole; content: string; channel: ChatC
 const mealOptions: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
+  const client = useApolloClient();
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DockTab>('chat');
@@ -94,10 +102,11 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
       setMealImageBase64('');
       setMealImageMimeType('image/jpeg');
       setActiveTab('chat');
+      kickDeferredAfterMealLog(client);
       appToast.success('Meal added', 'Evo logged your meal to today.');
       await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
     awaitRefetchQueries: true,
   });
 
@@ -108,10 +117,11 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
     onCompleted: async () => {
       setWorkoutTitle('');
       setActiveTab('chat');
+      kickDeferredAfterWorkoutLog(client);
       appToast.success('Workout added', 'Evo logged your training session.');
       await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
-    refetchQueries: buildDayRefetchQueries(today),
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
     awaitRefetchQueries: true,
   });
 
@@ -130,6 +140,11 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   }, [isOpen, activeTab, chatChannel, historyLoading, messages.length]);
 
   if (hidden) return null;
+
+  const dockLocale = graphqlAppLocaleToUi(meData?.me?.preferences?.appLocale);
+  const dockThinkingOpen = sendingMessage || loggingMeal || loggingWorkout;
+  const dockThinkingIntent = loggingMeal ? 'meal' : loggingWorkout ? 'workout' : 'default';
+
   const insightSignalsCount =
     (daySnapshot.derived.remainingProtein > 30 ? 1 : 0) +
     (daySnapshot.derived.remainingCalories < -100 ? 1 : 0) +
@@ -222,7 +237,9 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <>
+      <EvoThinkingOverlay open={dockThinkingOpen} locale={dockLocale} intent={dockThinkingIntent} />
+      <div className="fixed bottom-4 right-4 z-50">
       {isOpen ? (
         <div className="w-[360px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-surface shadow-2xl">
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
@@ -446,6 +463,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
         </Tooltip>
       )}
     </div>
+    </>
   );
 }
 

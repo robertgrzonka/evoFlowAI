@@ -168,3 +168,9 @@ button, input, textarea, select {
 .recharts-legend-item-text {
   @apply text-text-secondary;
 }
+
+@keyframes evo-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}

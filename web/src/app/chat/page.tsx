@@ -25,6 +25,7 @@ import {
   AISectionHeader,
   EvoHintCard,
   EvoStatusBadge,
+  EvoThinkingOverlay,
   InsightEmptyState,
   SmartSuggestionChips,
 } from '@/components/evo';
@@ -157,6 +158,7 @@ export default function ChatPage() {
 
   return (
     <AppShell>
+      <EvoThinkingOverlay open={waitingForEvo} locale={locale} />
       <div className="space-y-5">
         <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">{cc.pageTitle}</h1>} />
 
@@ -209,14 +211,6 @@ export default function ChatPage() {
                     </div>
                   );
                 })}
-                {waitingForEvo ? (
-                  <div className="flex justify-start">
-                    <div className="max-w-[75%] rounded-2xl border border-primary-500/25 bg-primary-500/8 px-3 py-2 rounded-bl-md">
-                      <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted mb-1">{cc.evo}</p>
-                      <p className="text-sm text-text-secondary">{cc.waitingMessage}</p>
-                    </div>
-                  </div>
-                ) : null}
               </div>
             ) : (
               <InsightEmptyState
