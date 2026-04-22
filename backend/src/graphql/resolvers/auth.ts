@@ -6,6 +6,12 @@ import { Context } from '../context';
 
 const PASSWORD_MIN_LENGTH = 6;
 
+/** Match how password reset resolves users; avoids login failures on mixed-case input or legacy DB emails. */
+const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+const emailLookup = (email: string) =>
+  User.findOne({ email: normalizeEmail(email) }).collation({ locale: 'en', strength: 2 });
+
 const generateToken = (userId: string): string => {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -50,7 +56,7 @@ export const authResolvers = {
       const { email, password, name } = input;
 
       // Check if user already exists
-      const existingUser = await User.findOne({ email });
+      const existingUser = await emailLookup(email);
       if (existingUser) {
         throw new UserInputError('User with this email already exists');
       }
@@ -61,10 +67,11 @@ export const authResolvers = {
       }
 
       // Create new user
+      const normalizedEmail = normalizeEmail(email);
       const user = new User({
-        email,
+        email: normalizedEmail,
         password,
-        name: name || email.split('@')[0], // Use email prefix if no name provided
+        name: name || normalizedEmail.split('@')[0], // Use email prefix if no name provided
       });
 
       await user.save();
@@ -81,7 +88,7 @@ export const authResolvers = {
       const { email, password } = input;
 
       // Find user
-      const user = await User.findOne({ email });
+      const user = await emailLookup(email);
       if (!user) {
         throw new AuthenticationError('Invalid email or password');
       }
@@ -101,8 +108,7 @@ export const authResolvers = {
     },
 
     requestPasswordReset: async (_: any, { input }: { input: any }) => {
-      const email = input.email.trim().toLowerCase();
-      const user = await User.findOne({ email });
+      const user = await emailLookup(input.email);
       const message = 'If an account with that email exists, a reset link has been generated.';
 
       if (!user) {
