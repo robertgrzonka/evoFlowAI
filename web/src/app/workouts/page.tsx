@@ -31,6 +31,7 @@ import {
   SmartSuggestionChips,
 } from '@/components/evo';
 import WeeklyWorkoutsTrainingSection from '@/components/workouts/WeeklyWorkoutsTrainingSection';
+import { utcYesterdayDateKey } from '@/lib/calendar-date-key';
 import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
 import { workoutsPageCopy } from '@/lib/i18n/copy/workouts-page';
 
@@ -42,6 +43,7 @@ export default function WorkoutsPage() {
   const w = workoutsPageCopy[locale];
   const router = useRouter();
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const weeklyStatsEndDate = useMemo(() => utcYesterdayDateKey(), []);
   const [selectedDate, setSelectedDate] = useState(today);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -595,7 +597,7 @@ export default function WorkoutsPage() {
           </div>
 
           <div className="min-w-0">
-            <WeeklyWorkoutsTrainingSection weekEndDate={today} />
+            <WeeklyWorkoutsTrainingSection weekEndDate={weeklyStatsEndDate} />
           </div>
         </div>
       </div>

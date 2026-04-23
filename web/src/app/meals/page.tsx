@@ -21,6 +21,7 @@ import {
   SmartSuggestionChips,
 } from '@/components/evo';
 import WeeklyMealsNutritionSection from '@/components/meals/WeeklyMealsNutritionSection';
+import { utcYesterdayDateKey } from '@/lib/calendar-date-key';
 import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
 import { mealTypeLabels, mealsPageCopy } from '@/lib/i18n/copy/meals-page';
 
@@ -46,6 +47,8 @@ export default function MealsPage() {
   const mealTypes = mealTypeLabels[locale];
   const router = useRouter();
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  /** Weekly strip: 7 completed days ending yesterday (today still in progress). */
+  const weeklyStatsEndDate = useMemo(() => utcYesterdayDateKey(), []);
   const [selectedDate, setSelectedDate] = useState(today);
   const [content, setContent] = useState('');
   const [mealType, setMealType] = useState<MealType>('lunch');
@@ -395,7 +398,7 @@ export default function MealsPage() {
           </div>
 
           <div className="min-w-0">
-            <WeeklyMealsNutritionSection weekEndDate={today} />
+            <WeeklyMealsNutritionSection weekEndDate={weeklyStatsEndDate} />
           </div>
         </div>
       </div>

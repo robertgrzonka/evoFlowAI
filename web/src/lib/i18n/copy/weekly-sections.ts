@@ -40,7 +40,8 @@ export const weeklySectionsCopy: Record<
   en: {
     mealsEyebrow: '7-day lens',
     mealsTitle: 'Weekly meal snapshot',
-    mealsSubtitle: 'Calories and macros per day, plus Evo’s read on what deserves your attention next.',
+    mealsSubtitle:
+      'Seven completed calendar days through yesterday (today excluded): daily calories and macros, plus Evo’s read for the week ahead.',
     mealsWindow: 'Window',
     mealsDaysWithMeals: 'days with meals',
     mealsEntries: 'entries',
@@ -58,7 +59,8 @@ export const weeklySectionsCopy: Record<
     mealsDayTooltipHeading: 'Logged that day',
     workoutsEyebrow: '7-day lens',
     workoutsTitle: 'Weekly workout snapshot',
-    workoutsSubtitle: 'Minutes, sessions, and intensity mix per day — plus Evo’s training read for next week.',
+    workoutsSubtitle:
+      'Seven completed days through yesterday: minutes, sessions, and intensity mix per day — plus Evo’s training read for next week.',
     workoutsDaysWithTraining: 'days with training',
     workoutsSessions: 'sessions',
     avgMinutesDay: 'Avg minutes / day',
@@ -73,7 +75,8 @@ export const weeklySectionsCopy: Record<
   pl: {
     mealsEyebrow: '7 dni',
     mealsTitle: 'Tygodniowy podgląd posiłków',
-    mealsSubtitle: 'Kalorie i makro dziennie oraz odczyt Evo — na co zwrócić uwagę w następnym tygodniu.',
+    mealsSubtitle:
+      'Siedem zamkniętych dni kalendarzowych do wczoraj (dzisiaj pomijamy, żeby nie psuć średnich): kalorie i makro dziennie oraz odczyt Evo na kolejny tydzień.',
     mealsWindow: 'Okno',
     mealsDaysWithMeals: 'dni z posiłkami',
     mealsEntries: 'wpisów',
@@ -91,7 +94,8 @@ export const weeklySectionsCopy: Record<
     mealsDayTooltipHeading: 'Zapisane tego dnia',
     workoutsEyebrow: '7 dni',
     workoutsTitle: 'Tygodniowy podgląd treningów',
-    workoutsSubtitle: 'Minuty, sesje i mix intensywności dziennie oraz odczyt treningowy Evo na kolejny tydzień.',
+    workoutsSubtitle:
+      'Siedem zamkniętych dni do wczoraj: minuty, sesje i mix intensywności dziennie oraz odczyt treningowy Evo na kolejny tydzień.',
     workoutsDaysWithTraining: 'dni z treningiem',
     workoutsSessions: 'sesji',
     avgMinutesDay: 'Śr. minut / dzień',
