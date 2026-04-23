@@ -194,8 +194,8 @@ const buildFallbackWeeklyCoach = (payload: WeeklyNutritionPayload, prefs: any) =
 
   const closingLine =
     daysWithMeals === 0
-      ? 'One honest week of logs beats a perfect plan on paper — start today.'
-      : 'Small repeatable meal upgrades beat heroic perfection; you are building signal week over week.';
+      ? 'This window has no meal logs, so weekly averages and macro gaps cannot be inferred. Log at least breakfast and dinner tomorrow so the next 7-day rollup has real numbers to compare against your targets.'
+      : `You averaged about ${Math.round(averages.calories)} kcal and ${Math.round(averages.protein)} g protein per day vs goals of ${Math.round(goals.calories)} kcal and ${Math.round(goals.protein)} g protein. Next week, repeat your highest-protein day template on one extra weekday to lift the weekly mean without a full diet overhaul.`;
 
   return {
     headline,

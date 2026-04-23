@@ -1328,7 +1328,7 @@ Return JSON only:
   "summary": "2-3 sentences; reference concrete numbers and at least one pattern (e.g. weekend drift, protein gaps)",
   "focusAreas": ["exactly 3 bullets: what to watch based on THIS data — macro balance, consistency, calorie pacing, or logging gaps"],
   "improvements": ["exactly 3 bullets: specific actionable tweaks for next week — food choices, timing, or logging habits"],
-  "closingLine": "one encouraging sentence tied to their goal"
+  "closingLine": "EXACTLY two sentences (separated by one space after the first period, or by \\\\n\\\\n). Sentence 1: a concrete observation from THIS week's per-day meal rows (cite numbers: kcal, protein, or which dates had zero vs high intake). Sentence 2: one specific nutrition or logging tweak for next week tied to their macro goals. No generic pep talk."
 }
 
 Rules:
@@ -1336,6 +1336,7 @@ Rules:
 - If logging is sparse (${input.daysWithMeals} < 4), acknowledge data limits honestly.
 - Do not invent meals; only use rows above.
 - Bullets max 1 sentence each, practical.
+- closingLine must be two clear sentences; combined length roughly 120–420 characters.
 ${weeklyCoachJsonEmojiRules(tone)}
     `.trim();
 
@@ -1345,7 +1346,7 @@ ${weeklyCoachJsonEmojiRules(tone)}
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },
         ],
-        520
+        900
       )
     );
 
@@ -1357,7 +1358,7 @@ ${weeklyCoachJsonEmojiRules(tone)}
     const parsed = this.parseJsonResponse<WeeklyMealsCoachAiJson>(content);
     const headline = String(parsed.headline || '').trim();
     const summary = String(parsed.summary || '').trim();
-    const closingLine = String(parsed.closingLine || '').trim();
+    let closingLine = String(parsed.closingLine || '').trim();
     const focusAreas = (Array.isArray(parsed.focusAreas) ? parsed.focusAreas : [])
       .map((item) => String(item || '').trim())
       .filter(Boolean)
@@ -1369,6 +1370,11 @@ ${weeklyCoachJsonEmojiRules(tone)}
 
     if (!headline || !summary || !closingLine || focusAreas.length === 0 || improvements.length === 0) {
       throw new Error('Invalid weekly meals coach response');
+    }
+    closingLine = closingLine.replace(/\s+/g, ' ').trim();
+    const mealClosingSentences = closingLine.split(/(?<=[.!?])\s+/).filter((s) => s.replace(/\s/g, '').length >= 12);
+    if (closingLine.length < 100 || mealClosingSentences.length < 2) {
+      throw new Error('Invalid weekly meals coach response: closingLine must be two substantive sentences');
     }
 
     while (focusAreas.length < 3) {
@@ -1467,7 +1473,7 @@ Return JSON only:
   "summary": "2-3 sentences; reference concrete numbers and at least one pattern (e.g. intensity skew, weekend gaps, volume vs goal)",
   "focusAreas": ["exactly 3 bullets: what to watch — frequency, intensity mix, recovery signals from minutes/kcal pattern"],
   "improvements": ["exactly 3 bullets: specific training actions for next week — scheduling, progression, or session design"],
-  "closingLine": "one motivating sentence tied to their primary goal"
+  "closingLine": "EXACTLY two sentences (separated by one space after the first period, or by \\\\n\\\\n). Sentence 1: a concrete observation from THIS week's per-day rows — cite numbers (sessions, minutes, intensity L/M/H split, or which dates were empty vs loaded). Sentence 2: one specific training adjustment for next week tied to their weekly session/minute goals. No generic pep talk, no vague 'form' language unless tied to those numbers."
 }
 
 Rules:
@@ -1475,6 +1481,7 @@ Rules:
 - If training logs are sparse (${input.daysWithWorkouts} < 3), acknowledge limits honestly.
 - Do not invent sessions; only use rows above.
 - Bullets max 1 sentence each, practical.
+- closingLine must be two clear sentences; combined length roughly 120–420 characters.
 ${weeklyCoachJsonEmojiRules(tone)}
     `.trim();
 
@@ -1484,7 +1491,7 @@ ${weeklyCoachJsonEmojiRules(tone)}
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },
         ],
-        520
+        900
       )
     );
 
@@ -1496,7 +1503,7 @@ ${weeklyCoachJsonEmojiRules(tone)}
     const parsed = this.parseJsonResponse<WeeklyMealsCoachAiJson>(content);
     const headline = String(parsed.headline || '').trim();
     const summary = String(parsed.summary || '').trim();
-    const closingLine = String(parsed.closingLine || '').trim();
+    let closingLine = String(parsed.closingLine || '').trim();
     const focusAreas = (Array.isArray(parsed.focusAreas) ? parsed.focusAreas : [])
       .map((item) => String(item || '').trim())
       .filter(Boolean)
@@ -1508,6 +1515,11 @@ ${weeklyCoachJsonEmojiRules(tone)}
 
     if (!headline || !summary || !closingLine || focusAreas.length === 0 || improvements.length === 0) {
       throw new Error('Invalid weekly workouts coach response');
+    }
+    closingLine = closingLine.replace(/\s+/g, ' ').trim();
+    const sentenceLike = closingLine.split(/(?<=[.!?])\s+/).filter((s) => s.replace(/\s/g, '').length >= 12);
+    if (closingLine.length < 100 || sentenceLike.length < 2) {
+      throw new Error('Invalid weekly workouts coach response: closingLine must be two substantive sentences');
     }
 
     while (focusAreas.length < 3) {

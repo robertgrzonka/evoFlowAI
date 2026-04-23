@@ -19,6 +19,8 @@ export const weeklySectionsCopy: Record<
     whatToWatch: string;
     levelUpNextWeek: string;
     discussWeekInChat: string;
+    /** Short label above the two-sentence closing insight (meals + workouts weekly coach). */
+    coachProTipEyebrow: string;
     mealsDayTooltipEmpty: string;
     mealsDayTooltipHeading: string;
     workoutsEyebrow: string;
@@ -55,6 +57,7 @@ export const weeklySectionsCopy: Record<
     whatToWatch: 'What to watch',
     levelUpNextWeek: 'Level up next week',
     discussWeekInChat: 'Discuss this week in Evo chat',
+    coachProTipEyebrow: 'Pro tip',
     mealsDayTooltipEmpty: 'No meals logged for this day.',
     mealsDayTooltipHeading: 'Logged that day',
     workoutsEyebrow: '7-day lens',
@@ -90,6 +93,7 @@ export const weeklySectionsCopy: Record<
     whatToWatch: 'Na co uważać',
     levelUpNextWeek: 'Level up na przyszły tydzień',
     discussWeekInChat: 'Omów ten tydzień na czacie z Evo',
+    coachProTipEyebrow: 'Wskazówka Pro',
     mealsDayTooltipEmpty: 'Brak zalogowanych posiłków tego dnia.',
     mealsDayTooltipHeading: 'Zapisane tego dnia',
     workoutsEyebrow: '7 dni',

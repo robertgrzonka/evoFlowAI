@@ -472,8 +472,8 @@ const buildFallbackWeeklyWorkoutsCoach = (prefs: any, payload: WeeklyWorkoutsPay
 
   const closingLine =
     payload.daysWithWorkouts === 0
-      ? 'One logged session beats a perfect plan—start with something you will actually repeat.'
-      : 'Progress loves a boring rhythm: repeat the structure, nudge the details.';
+      ? 'This 7-day window has zero logged sessions, so there is no volume or intensity pattern to read yet. Book one short session in the next 48 hours and log it so next week’s snapshot can anchor to real data.'
+      : `Across the week you logged ${totalS} sessions and about ${Math.round(totalM)} minutes vs goals of ${sessionsTarget} sessions and ${minutesTarget} active minutes. For next week, keep the same slot rhythm but add ${totalS < sessionsTarget ? 'one extra' : 'a quality'} session where your minutes were lowest, so averages move toward target without a shock week.`;
 
   return {
     headline,

@@ -172,7 +172,10 @@ export default function WeeklyMealsNutritionSection({ weekEndDate }: { weekEndDa
                 </div>
               </div>
 
-              <p className="text-sm text-text-primary/90 border-t border-border/60 pt-4 italic">{coach.closingLine}</p>
+              <div className="border-t border-border/60 pt-4 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary-200/90">{ws.coachProTipEyebrow}</p>
+                <p className="text-sm text-text-primary/95 leading-relaxed whitespace-pre-line">{coach.closingLine}</p>
+              </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
                 <button type="button" className="btn-secondary text-sm" onClick={() => router.push('/chat?channel=COACH')}>
