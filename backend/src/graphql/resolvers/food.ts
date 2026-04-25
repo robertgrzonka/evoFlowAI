@@ -12,7 +12,7 @@ import {
 import { withFilter } from 'graphql-subscriptions';
 import { normalizeAppLocale } from '../../utils/appLocale';
 import { getDailyMetrics } from '../../utils/dailyMetrics';
-import { buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
+import { addDaysToDateKey, buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
 import { buildDynamicTargets } from '../../utils/activityBudget';
 import { inferCalorieGoalTone } from '@evoflowai/shared';
 
@@ -46,11 +46,22 @@ type WeeklyNutritionPayload = {
   goals: { calories: number; protein: number; carbs: number; fat: number };
   totals: { calories: number; protein: number; carbs: number; fat: number };
   averages: { calories: number; protein: number; carbs: number; fat: number };
+  /** Rolling 7-day averages for the calendar week immediately before `weekStart`. */
+  priorWeekAverages: { calories: number; protein: number; carbs: number; fat: number };
+  /** Mean workout kcal burned per day over that prior 7-day window. */
+  priorAvgWorkoutKcalPerDay: number;
 };
 
-const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string | null): Promise<WeeklyNutritionPayload> => {
-  const { startDate, nextDay, endKey, startKey } = toWeekRange(endDateInput || undefined);
+/** Build nutrition rollup for the 7-day window ending on `endKey` (inclusive). */
+const buildWeeklyNutritionPayloadForWeekEnding = async (
+  context: Context,
+  endKey: string
+): Promise<Omit<WeeklyNutritionPayload, 'priorWeekAverages' | 'priorAvgWorkoutKcalPerDay'>> => {
   const dateKeys = buildWeekDateKeys(endKey);
+  const startKey = dateKeys[0];
+  const nextAfterEnd = addDaysToDateKey(endKey, 1);
+  const startDate = new Date(`${startKey}T00:00:00.000Z`);
+  const nextDay = new Date(`${nextAfterEnd}T00:00:00.000Z`);
 
   const meals = await FoodItem.find({
     userId: context.user.id,
@@ -196,6 +207,20 @@ const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string 
     goals: { calories: avgDayCalorieBudget, protein: proteinGoal, carbs: carbsGoal, fat: fatGoal },
     totals: { calories: totalCalories, protein: totalProtein, carbs: totalCarbs, fat: totalFat },
     averages,
+  };
+};
+
+const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string | null): Promise<WeeklyNutritionPayload> => {
+  const { endKey } = toWeekRange(endDateInput || undefined);
+  const current = await buildWeeklyNutritionPayloadForWeekEnding(context, endKey);
+  const priorEndKey = addDaysToDateKey(current.weekStart, -1);
+  const prior = await buildWeeklyNutritionPayloadForWeekEnding(context, priorEndKey);
+  const priorAvgWorkoutKcalPerDay =
+    prior.days.reduce((sum, d) => sum + d.workoutCaloriesBurned, 0) / 7;
+  return {
+    ...current,
+    priorWeekAverages: prior.averages,
+    priorAvgWorkoutKcalPerDay,
   };
 };
 

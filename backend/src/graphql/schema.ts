@@ -302,6 +302,10 @@ export const typeDefs = gql`
     goals: WeeklyMealsGoals!
     totals: WeeklyMealsMacroTotals!
     averages: WeeklyMealsMacroTotals!
+    """Daily averages for the 7-day window immediately before weekStart (for week-over-week deltas)."""
+    priorWeekAverages: WeeklyMealsMacroTotals!
+    """Mean workout kcal burned per day over that prior window."""
+    priorAvgWorkoutKcalPerDay: Float!
   }
 
   type WeeklyMealsCoachInsight {

@@ -76,6 +76,13 @@ export const WEEKLY_MEALS_NUTRITION_QUERY = gql`
         carbs
         fat
       }
+      priorWeekAverages {
+        calories
+        protein
+        carbs
+        fat
+      }
+      priorAvgWorkoutKcalPerDay
       days {
         date
         calories
@@ -180,6 +187,7 @@ export const DAILY_STATS_QUERY = gql`
         id
         name
         mealType
+        createdAt
         nutrition {
           calories
           protein
