@@ -27,6 +27,12 @@ export function fingerprintWeeklyMealsCoach(
       carbs: number;
       fat: number;
       mealCount: number;
+      dayCalorieBudget: number;
+      workoutCaloriesBurned: number;
+      workoutSessions: number;
+      activityBonusKcal: number;
+      steps: number;
+      stepCaloriesBudget: number;
     }>;
     daysWithMeals: number;
     totalMealsLogged: number;
@@ -43,7 +49,7 @@ export function fingerprintWeeklyMealsCoach(
   userName?: string | null
 ): string {
   const body = {
-    schema: 'weekly_meals_coach_v1',
+    schema: 'weekly_meals_coach_v3',
     userName: String(userName || ''),
     weekStart: input.weekStart,
     weekEnd: input.weekEnd,
@@ -54,6 +60,12 @@ export function fingerprintWeeklyMealsCoach(
       carbs: round2(d.carbs),
       fat: round2(d.fat),
       mealCount: d.mealCount,
+      dayCalorieBudget: Math.round(d.dayCalorieBudget),
+      workoutCaloriesBurned: Math.round(d.workoutCaloriesBurned),
+      workoutSessions: d.workoutSessions,
+      activityBonusKcal: Math.round(d.activityBonusKcal),
+      steps: Math.round(d.steps),
+      stepCaloriesBudget: Math.round(d.stepCaloriesBudget),
     })),
     daysWithMeals: input.daysWithMeals,
     totalMealsLogged: input.totalMealsLogged,

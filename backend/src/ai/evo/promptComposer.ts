@@ -10,6 +10,7 @@ import {
   EvoTone,
   EvoUserContext,
 } from './types';
+import { DateTime } from 'luxon';
 import { normalizeAppLocale } from '../../utils/appLocale';
 import { coachingToneModelHint, normalizeCoachingToneKey } from '../../utils/coachingTone';
 
@@ -51,6 +52,19 @@ const formatUserContext = (userContext?: EvoUserContext): string => {
 
   if (userContext.statsDateKey) {
     sections.push(`Reference calendar date for logged data below: ${userContext.statsDateKey}`);
+  }
+
+  if (
+    userContext.clientTimeZone &&
+    typeof userContext.clientNowMs === 'number' &&
+    Number.isFinite(userContext.clientNowMs)
+  ) {
+    const dt = DateTime.fromMillis(userContext.clientNowMs, { zone: userContext.clientTimeZone });
+    if (dt.isValid) {
+      sections.push(
+        `User device local time (${userContext.clientTimeZone}): ${dt.toFormat('yyyy-LL-dd HH:mm')} — treat this as "now" for timing advice (meals, shakes, sleep). statsDateKey is the calendar date in this same timezone; intake/workout totals are for that local day.`
+      );
+    }
   }
 
   const intakeLabel = userContext.statsDateKey

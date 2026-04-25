@@ -1,5 +1,6 @@
 'use client';
 
+import { clsx } from 'clsx';
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -11,6 +12,7 @@ import EvoMark from '@/components/EvoMark';
 import { appToast } from '@/lib/app-toast';
 import { authPagesCopy } from '@/lib/i18n/copy/auth-pages';
 import { usePublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 export default function ForgotPasswordPage() {
   const locale = usePublicUiLocale();
@@ -120,7 +122,12 @@ export default function ForgotPasswordPage() {
           </form>
 
           {submittedEmail ? (
-            <div className="mt-6 rounded-lg border border-border bg-surface/60 p-4 space-y-4">
+            <div
+              className={clsx(
+                'mt-6 rounded-lg border border-border bg-surface/60 p-4 space-y-4 shadow-sm shadow-black/5',
+                accentEdgeClasses('info', 'left'),
+              )}
+            >
               <div>
                 <p className="text-sm font-medium text-text-primary">{c.requestReceived}</p>
                 <p className="text-sm text-text-secondary">
@@ -138,7 +145,7 @@ export default function ForgotPasswordPage() {
                   </div>
 
                   <div className="flex gap-3">
-                    <button type="button" onClick={handleCopyLink} className="btn-secondary flex-1">
+                    <button type="button" onClick={handleCopyLink} className="btn-info flex-1">
                       {c.copyLink}
                     </button>
                     <a href={resetUrl} className="btn-primary flex-1 text-center">

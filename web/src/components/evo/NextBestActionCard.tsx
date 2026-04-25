@@ -1,6 +1,7 @@
 'use client';
 
 import { clsx } from 'clsx';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 type NextBestActionCardProps = {
   title: string;
@@ -27,7 +28,8 @@ export default function NextBestActionCard({
   return (
     <div
       className={clsx(
-        'rounded-lg border border-border bg-surface-elevated p-3.5 md:p-4',
+        'rounded-lg border border-border bg-surface-elevated p-3.5 md:p-4 shadow-sm shadow-black/5',
+        accentEdgeClasses('primary', 'left'),
         fillHeight && 'flex min-h-0 flex-1 flex-col justify-between gap-3',
         className
       )}

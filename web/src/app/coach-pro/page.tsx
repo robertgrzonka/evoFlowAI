@@ -23,7 +23,9 @@ import {
   WandSparkles,
   X,
 } from 'lucide-react';
+import { clsx } from 'clsx';
 import AppShell from '@/components/AppShell';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import Tooltip from '@/components/ui/atoms/Tooltip';
@@ -44,6 +46,7 @@ import type { CoachProPlan, CoachProSetupInput } from '@/lib/coach-pro/types';
 import { rotateWeekFromToday } from '@/lib/coach-pro/plan-week-from-today';
 import { appToast } from '@/lib/app-toast';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
 import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
 import {
   aggressivenessSelectOptions,
@@ -140,7 +143,7 @@ type TrainingDrawerDetails = {
 };
 
 export default function EvoCoachProPage() {
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const { dateKey: today, timeZone } = useClientCalendarToday();
   const [step, setStep] = useState(0);
   const [setup, setSetup] = useState<CoachProSetupInput>(defaultSetup);
   const [hardExclusionsText, setHardExclusionsText] = useState('');
@@ -173,7 +176,12 @@ export default function EvoCoachProPage() {
   const { data: savedPlanData, loading: savedPlanLoading, refetch: refetchSavedPlan } = useQuery(MY_COACH_PRO_PLAN_QUERY, {
     fetchPolicy: 'cache-and-network',
   });
-  const daySnapshot = useDaySnapshot({ date: today, enabled: Boolean(meData?.me), includeInsight: false });
+  const daySnapshot = useDaySnapshot({
+    date: today,
+    clientTimeZone: timeZone,
+    enabled: Boolean(meData?.me),
+    includeInsight: false,
+  });
   const [generatePlan, { loading: generatingPlan, error: generateError, data: generateData }] = useLazyQuery(
     GENERATE_COACH_PRO_PLAN_QUERY,
     { fetchPolicy: 'no-cache' }
@@ -499,7 +507,12 @@ export default function EvoCoachProPage() {
   const renderSetupStep = () => {
     if (step === 0) {
       return (
-        <section className="bg-surface rounded-xl border border-border p-5 space-y-4">
+        <section
+          className={clsx(
+            'bg-surface rounded-xl border border-border p-5 space-y-4 shadow-sm shadow-black/5',
+            accentEdgeClasses('primary', 'left'),
+          )}
+        >
           <AISectionHeader eyebrow={t.step1Eyebrow} title={t.step1Title} subtitle={t.step1Subtitle} />
           <TextAreaRow label={t.hardExclusions} value={hardExclusionsText} onChange={setHardExclusionsText} placeholder={t.textareaPlaceholder} />
           <TextAreaRow label={t.softDislikes} value={softDislikesText} onChange={setSoftDislikesText} placeholder={t.textareaPlaceholder} />
@@ -577,7 +590,12 @@ export default function EvoCoachProPage() {
 
     if (step === 1) {
       return (
-        <section className="bg-surface rounded-xl border border-border p-5 space-y-4">
+        <section
+          className={clsx(
+            'bg-surface rounded-xl border border-border p-5 space-y-4 shadow-sm shadow-black/5',
+            accentEdgeClasses('info', 'left'),
+          )}
+        >
           <AISectionHeader eyebrow={t.step2Eyebrow} title={t.step2Title} subtitle={t.step2Subtitle} />
           <MultiSelectChips
             title={t.trainingTypesTitle}
@@ -649,7 +667,12 @@ export default function EvoCoachProPage() {
 
     if (step === 2) {
       return (
-        <section className="bg-surface rounded-xl border border-border p-5 space-y-4">
+        <section
+          className={clsx(
+            'bg-surface rounded-xl border border-border p-5 space-y-4 shadow-sm shadow-black/5',
+            accentEdgeClasses('success', 'left'),
+          )}
+        >
           <AISectionHeader eyebrow={t.step3Eyebrow} title={t.step3Title} subtitle={t.step3Subtitle} />
           <TextInput
             label={t.primaryGoal}
@@ -706,7 +729,12 @@ export default function EvoCoachProPage() {
     }
 
     return (
-      <section className="bg-surface rounded-xl border border-border p-5 space-y-4">
+      <section
+        className={clsx(
+          'bg-surface rounded-xl border border-border p-5 space-y-4 shadow-sm shadow-black/5',
+          accentEdgeClasses('primary', 'left'),
+        )}
+      >
         <AISectionHeader eyebrow={t.step4Eyebrow} title={t.step4Title} subtitle={t.step4Subtitle} />
         <FieldSelect
           label={t.workScheduleIntensity}
@@ -822,14 +850,24 @@ export default function EvoCoachProPage() {
               ) : null}
             </section>
             <aside className="xl:col-span-4 space-y-4">
-              <section className="bg-surface rounded-xl border border-border p-4">
+              <section
+                className={clsx(
+                  'bg-surface rounded-xl border border-border p-4 shadow-sm shadow-black/5',
+                  accentEdgeClasses('info', 'left'),
+                )}
+              >
                 <h3 className="text-sm font-semibold text-text-primary mb-2">{t.progressTitle}</h3>
                 <div className="w-full rounded-full bg-surface-elevated h-2">
                   <div className="h-2 rounded-full bg-amber-300/70" style={{ width: `${((step + 1) / 4) * 100}%` }} />
                 </div>
                 <p className="text-xs text-text-secondary mt-2">{t.stepOf(step + 1)}</p>
               </section>
-              <section className="bg-surface rounded-xl border border-border p-4 space-y-2">
+              <section
+                className={clsx(
+                  'bg-surface rounded-xl border border-border p-4 space-y-2 shadow-sm shadow-black/5',
+                  accentEdgeClasses('success', 'left'),
+                )}
+              >
                 <h3 className="text-sm font-semibold text-text-primary">{t.sidebarGenerateTitle}</h3>
                 <ul className="space-y-1 text-xs text-text-secondary">
                   {t.sidebarGenerateBullets.map((line) => (
@@ -841,13 +879,18 @@ export default function EvoCoachProPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <section className="bg-surface rounded-xl border border-border p-5">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('primary', 'left'),
+              )}
+            >
               <AISectionHeader
                 eyebrow={t.planOverviewEyebrow}
                 title={t.dashboardTitle}
                 subtitle={plan.overview.evoDashboardInsight?.trim() || t.dashboardSubtitle}
                 rightAction={
-                  <button type="button" className="btn-secondary" onClick={() => setPlan(null)}>
+                  <button type="button" className="btn-info" onClick={() => setPlan(null)}>
                     {t.reconfigureSetup}
                   </button>
                 }
@@ -874,7 +917,12 @@ export default function EvoCoachProPage() {
               </div>
             </section>
 
-            <section className="bg-surface rounded-xl border border-border p-5">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('info', 'left'),
+              )}
+            >
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-text-primary">{t.adaptTodayTitle}</h3>
                 <EvoStatusBadge label={t.adaptInProgressBadge} tone="warning" />
@@ -886,7 +934,12 @@ export default function EvoCoachProPage() {
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
               <section className="xl:col-span-8 space-y-4">
-                <section className="bg-surface rounded-xl border border-border p-5">
+                <section
+                  className={clsx(
+                    'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                    accentEdgeClasses('success', 'left'),
+                  )}
+                >
                   <div className="mb-3">
                     <h3 className="text-base font-semibold text-text-primary">{t.weeklyNutritionPlanTitle}</h3>
                     <p className="text-xs text-text-muted mt-1">
@@ -899,7 +952,13 @@ export default function EvoCoachProPage() {
                     {nutritionDaysVisible.map((day) => {
                       const dayTotals = sumDayMealMacros(day.meals);
                       return (
-                      <div key={day.dayLabel} className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                      <div
+                        key={day.dayLabel}
+                        className={clsx(
+                          'rounded-lg border border-border bg-surface-elevated p-3.5 shadow-sm shadow-black/5',
+                          accentEdgeClasses('primary', 'left'),
+                        )}
+                      >
                         <div className="flex items-center justify-between gap-2 mb-2">
                           <p className="text-sm font-semibold text-text-primary">{day.dayLabel}</p>
                           <p className="text-xs">
@@ -999,7 +1058,12 @@ export default function EvoCoachProPage() {
                   ) : null}
                 </section>
 
-                <section className="bg-surface rounded-xl border border-border p-5">
+                <section
+                  className={clsx(
+                    'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                    accentEdgeClasses('primary', 'left'),
+                  )}
+                >
                   <div className="mb-3">
                     <h3 className="text-base font-semibold text-text-primary">{t.weeklyTrainingPlanTitle}</h3>
                     <p className="text-xs text-text-muted mt-1">
@@ -1059,7 +1123,11 @@ export default function EvoCoachProPage() {
 
               <aside className="xl:col-span-4 space-y-4">
                 {plan.smartWarnings.length > 0 ? (
-                  <section className="bg-surface rounded-xl border border-amber-300/35 p-4">
+                  <section
+                    className={clsx(
+                      'bg-surface rounded-xl border border-amber-300/35 p-4 shadow-sm shadow-black/5 border-l-4 border-l-amber-300',
+                    )}
+                  >
                     <h4 className="text-sm font-semibold text-amber-100 mb-2">{t.biggestRiskTitle}</h4>
                     <ul className="space-y-1 text-xs text-amber-100/90">
                       {plan.smartWarnings.map((warning) => (
@@ -1072,7 +1140,12 @@ export default function EvoCoachProPage() {
                   </section>
                 ) : null}
 
-                <section className="bg-surface rounded-xl border border-border p-4">
+                <section
+                  className={clsx(
+                    'bg-surface rounded-xl border border-border p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('primary', 'left'),
+                  )}
+                >
                   <h4 className="text-sm font-semibold text-amber-100 mb-2">{t.whyWeekTitle}</h4>
                   <ul className="space-y-1 text-xs text-text-secondary">
                     {plan.rationale.map((item) => (
@@ -1081,7 +1154,12 @@ export default function EvoCoachProPage() {
                   </ul>
                 </section>
 
-                <section className="bg-surface rounded-xl border border-border p-4">
+                <section
+                  className={clsx(
+                    'bg-surface rounded-xl border border-border p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('info', 'left'),
+                  )}
+                >
                   <h4 className="text-sm font-semibold text-text-primary mb-2 inline-flex items-center gap-2">
                     <Brain className="h-4 w-4 text-primary-300" /> {t.weeklySuccessTitle}
                   </h4>
@@ -1096,7 +1174,12 @@ export default function EvoCoachProPage() {
                   </p>
                 </section>
 
-                <section className="bg-surface rounded-xl border border-border p-4">
+                <section
+                  className={clsx(
+                    'bg-surface rounded-xl border border-border p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('success', 'left'),
+                  )}
+                >
                   <h4 className="text-sm font-semibold text-text-primary mb-2 inline-flex items-center gap-2">
                     <ShoppingCart className="h-4 w-4" /> {t.shoppingListTitle}
                   </h4>
@@ -1111,7 +1194,12 @@ export default function EvoCoachProPage() {
                   </div>
                 </section>
 
-                <section className="bg-surface rounded-xl border border-border p-4">
+                <section
+                  className={clsx(
+                    'bg-surface rounded-xl border border-border p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('primary', 'left'),
+                  )}
+                >
                   <h4 className="text-sm font-semibold text-text-primary mb-2">{t.coachGuidanceTitle}</h4>
                   <EvoHintCard title={t.hardestPart} content={plan.hardestPartThisWeek} tone="warning" />
                   <EvoHintCard title={t.whereToFocus} content={plan.focusForBestResults} tone="positive" />
@@ -1119,7 +1207,12 @@ export default function EvoCoachProPage() {
               </aside>
             </div>
 
-            <section className="bg-surface rounded-xl border border-border p-5">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('info', 'left'),
+              )}
+            >
               <h3 className="text-base font-semibold text-text-primary mb-2">{t.coachNotesTradeoffs}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <NotesList title={t.notesCoach} items={plan.coachNotes} />
@@ -1368,18 +1461,18 @@ function MealDetailsDrawer({
           <div className="mt-5 space-y-5">
             {showLoadingSkeleton ? (
               <>
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                <section className="accent-drawer-block space-y-2">
                   <Skeleton className="h-3 w-24 rounded" />
                   <Skeleton className="h-4 w-full rounded" />
                   <Skeleton className="h-4 w-11/12 rounded" />
                 </section>
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                <section className="accent-drawer-block space-y-2">
                   <Skeleton className="h-3 w-24 rounded" />
                   <Skeleton className="h-4 w-full rounded" />
                   <Skeleton className="h-4 w-10/12 rounded" />
                   <Skeleton className="h-4 w-9/12 rounded" />
                 </section>
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                <section className="accent-drawer-block space-y-2">
                   <Skeleton className="h-3 w-24 rounded" />
                   <Skeleton className="h-4 w-full rounded" />
                   <Skeleton className="h-4 w-11/12 rounded" />
@@ -1388,7 +1481,7 @@ function MealDetailsDrawer({
               </>
             ) : (
               <>
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <section className="accent-drawer-block">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.sectionDescription}</p>
                   <p className="text-sm text-text-primary mt-2">{displayMeal.description}</p>
                   {displayMeal.rationale ? (
@@ -1398,7 +1491,7 @@ function MealDetailsDrawer({
                   ) : null}
                 </section>
 
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <section className="accent-drawer-block">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.sectionIngredients}</p>
                   {ingredients.length > 0 ? (
                     <ul className="mt-2 space-y-1.5">
@@ -1413,7 +1506,7 @@ function MealDetailsDrawer({
                   )}
                 </section>
 
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <section className="accent-drawer-block">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.sectionRecipe}</p>
                   {steps.length > 0 ? (
                     <ol className="mt-2 space-y-2 list-decimal pl-5">
@@ -1428,7 +1521,7 @@ function MealDetailsDrawer({
                   )}
                 </section>
 
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <section className="accent-drawer-block">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.sectionNutritionDetails}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2 text-sm">
                     <DetailRow label={copy.detailCalories} value={`${displayMeal.estimatedCalories} kcal`} />
@@ -1443,7 +1536,7 @@ function MealDetailsDrawer({
                   </p>
                 </section>
 
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <section className="accent-drawer-block">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.smartActionsTitle}</p>
                   {actionLoading ? <p className="mt-2 text-xs text-amber-200/90">{copy.applyingAction}</p> : null}
                   <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1571,18 +1664,18 @@ function TrainingDetailsDrawer({
           <div className="mt-5 space-y-5">
             {showLoadingSkeleton ? (
               <>
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                <section className="accent-drawer-block space-y-2">
                   <Skeleton className="h-3 w-24 rounded" />
                   <Skeleton className="h-4 w-full rounded" />
                   <Skeleton className="h-4 w-10/12 rounded" />
                 </section>
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                <section className="accent-drawer-block space-y-2">
                   <Skeleton className="h-3 w-24 rounded" />
                   <Skeleton className="h-10 w-full rounded-md" />
                   <Skeleton className="h-10 w-full rounded-md" />
                   <Skeleton className="h-10 w-11/12 rounded-md" />
                 </section>
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                <section className="accent-drawer-block space-y-2">
                   <Skeleton className="h-3 w-24 rounded" />
                   <Skeleton className="h-4 w-full rounded" />
                   <Skeleton className="h-4 w-9/12 rounded" />
@@ -1590,7 +1683,7 @@ function TrainingDetailsDrawer({
               </>
             ) : (
               <>
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <section className="accent-drawer-block">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.warmUpTitle}</p>
                   <p className="text-sm text-text-primary mt-2">
                     {warmUp
@@ -1599,7 +1692,7 @@ function TrainingDetailsDrawer({
                   </p>
                 </section>
 
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <section className="accent-drawer-block">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.mainWorkTitle}</p>
                   <ul className="mt-2 space-y-2">
                     {mainWork.map((block) => (
@@ -1614,7 +1707,7 @@ function TrainingDetailsDrawer({
                   </ul>
                 </section>
 
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <section className="accent-drawer-block">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.cooldownTitle}</p>
                   <p className="text-sm text-text-primary mt-2">
                     {cooldown
@@ -1634,7 +1727,7 @@ function TrainingDetailsDrawer({
                   </div>
                 </section>
 
-                <section className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                <section className="accent-drawer-block">
                   <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{copy.whySessionTitle}</p>
                   <p className="text-sm text-text-primary mt-2">{copy.whySessionBody}</p>
                   <p className="text-xs text-text-secondary mt-2">

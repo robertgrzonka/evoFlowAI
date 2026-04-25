@@ -14,10 +14,7 @@ export const userResolvers = {
       const value = String(preferences?.activityLevel || 'moderate');
       return value.toUpperCase();
     },
-    primaryGoal: (preferences: any) => {
-      const value = String(preferences?.primaryGoal || 'maintenance');
-      return value.toUpperCase();
-    },
+    primaryGoal: (preferences: any) => String(preferences?.primaryGoal ?? 'maintenance'),
     coachingTone: (preferences: any) => {
       const value = String(preferences?.coachingTone || 'supportive');
       return value.toUpperCase();
@@ -96,7 +93,18 @@ export const userResolvers = {
       if (weeklyWorkoutsGoal !== undefined) updateData['preferences.weeklyWorkoutsGoal'] = weeklyWorkoutsGoal;
       if (weeklyActiveMinutesGoal !== undefined) updateData['preferences.weeklyActiveMinutesGoal'] = weeklyActiveMinutesGoal;
       if (primaryGoal !== undefined) {
-        updateData['preferences.primaryGoal'] = String(primaryGoal || 'MAINTENANCE').toLowerCase();
+        const trimmed = String(primaryGoal ?? '').trim();
+        if (trimmed.length > 400) {
+          throw new UserInputError('Primary goal must be at most 400 characters');
+        }
+        const upper = trimmed.toUpperCase().replace(/\s+/g, '_');
+        const legacyMap: Record<string, string> = {
+          FAT_LOSS: 'fat_loss',
+          MUSCLE_GAIN: 'muscle_gain',
+          STRENGTH: 'strength',
+          MAINTENANCE: 'maintenance',
+        };
+        updateData['preferences.primaryGoal'] = trimmed ? legacyMap[upper] ?? trimmed : 'maintenance';
       }
       if (coachingTone !== undefined) {
         updateData['preferences.coachingTone'] = normalizeCoachingToneKey(String(coachingTone));
@@ -160,32 +168,54 @@ export const userResolvers = {
         dailyCalorieGoal: context.user.preferences?.dailyCalorieGoal,
         activityLevel: context.user.preferences?.activityLevel,
         appLocale: context.user.preferences?.appLocale,
+        weeklyWorkoutsGoal: context.user.preferences?.weeklyWorkoutsGoal,
+        weeklyActiveMinutesGoal: context.user.preferences?.weeklyActiveMinutesGoal,
+        primaryGoal: context.user.preferences?.primaryGoal,
       });
 
       const activityLevel = normalizeActivityLevel(suggested.activityLevel);
       const macroGoals = calculateMacroGoals(suggested.dailyCalorieGoal, activityLevel);
 
-      const updatedUser = await User.findByIdAndUpdate(
-        context.user.id,
-        {
-          $set: {
-            'preferences.dailyCalorieGoal': suggested.dailyCalorieGoal,
-            'preferences.activityLevel': activityLevel,
-            'preferences.proteinGoal': macroGoals.proteinGoal,
-            'preferences.carbsGoal': macroGoals.carbsGoal,
-            'preferences.fatGoal': macroGoals.fatGoal,
-          },
-        },
-        { new: true }
-      );
+      const prefsUpdate: Record<string, unknown> = {
+        'preferences.dailyCalorieGoal': suggested.dailyCalorieGoal,
+        'preferences.activityLevel': activityLevel,
+        'preferences.proteinGoal': macroGoals.proteinGoal,
+        'preferences.carbsGoal': macroGoals.carbsGoal,
+        'preferences.fatGoal': macroGoals.fatGoal,
+      };
+      if (suggested.primaryGoal !== undefined) {
+        const t = suggested.primaryGoal.trim();
+        const upper = t.toUpperCase().replace(/\s+/g, '_');
+        const legacyMap: Record<string, string> = {
+          FAT_LOSS: 'fat_loss',
+          MUSCLE_GAIN: 'muscle_gain',
+          STRENGTH: 'strength',
+          MAINTENANCE: 'maintenance',
+        };
+        prefsUpdate['preferences.primaryGoal'] = legacyMap[upper] ?? t;
+      }
+      if (suggested.weeklyWorkoutsGoal !== undefined) {
+        prefsUpdate['preferences.weeklyWorkoutsGoal'] = suggested.weeklyWorkoutsGoal;
+      }
+      if (suggested.weeklyActiveMinutesGoal !== undefined) {
+        prefsUpdate['preferences.weeklyActiveMinutesGoal'] = suggested.weeklyActiveMinutesGoal;
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(context.user.id, { $set: prefsUpdate }, { new: true });
 
       if (!updatedUser) {
         throw new Error('Failed to update goals');
       }
 
+      const loc = normalizeAppLocale(context.user.preferences?.appLocale);
+      const macroSuffix =
+        loc === 'pl'
+          ? ` Makra: ${macroGoals.proteinGoal} g B / ${macroGoals.carbsGoal} g W / ${macroGoals.fatGoal} g T.`
+          : ` Macros: ${macroGoals.proteinGoal}g protein / ${macroGoals.carbsGoal}g carbs / ${macroGoals.fatGoal}g fat.`;
+
       return {
         user: updatedUser,
-        message: `${suggested.message} New macro goals: ${macroGoals.proteinGoal}g protein, ${macroGoals.carbsGoal}g carbs, ${macroGoals.fatGoal}g fat.`,
+        message: `${suggested.message}${macroSuffix}`,
       };
     },
   },

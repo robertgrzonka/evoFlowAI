@@ -24,13 +24,8 @@ export const mealsPageCopy: Record<
     chooseImage: string;
     previewAlt: string;
     previewPlaceholder: string;
-    readyTitle: string;
-    readyContent: string;
-    editDetails: string;
-    confirmAnalyze: string;
+    saveMeal: string;
     analyzing: string;
-    analyzeNow: string;
-    reviewBeforeSave: string;
     mealsFor: string;
     todaySuffix: string;
     latestAnalysis: string;
@@ -55,7 +50,7 @@ export const mealsPageCopy: Record<
     collapseAddMeal: 'Collapse add-meal form',
     eyebrow: 'Meal flow',
     logTitle: 'Log meal',
-    logSubtitle: 'Describe or upload. Evo will analyze, then you can save with confidence.',
+    logSubtitle: 'Describe or upload a photo — one tap sends it to Evo and saves the meal to your day.',
     dayLabel: 'Day for this log',
     dayOptional: ' — optional',
     dayHint: 'Defaults to today. Change only if you are logging a meal for an earlier day.',
@@ -67,13 +62,8 @@ export const mealsPageCopy: Record<
     chooseImage: 'Choose image',
     previewAlt: 'Meal preview',
     previewPlaceholder: 'Image preview appears here',
-    readyTitle: 'Ready to analyze?',
-    readyContent: 'Quick review: if description and meal type look right, save. If not, edit before sending.',
-    editDetails: 'Edit details',
-    confirmAnalyze: 'Confirm & analyze',
+    saveMeal: 'Add meal',
     analyzing: 'Evo is analyzing your meal...',
-    analyzeNow: 'Analyze now',
-    reviewBeforeSave: 'Review before save',
     mealsFor: 'Meals for',
     todaySuffix: ' (today)',
     latestAnalysis: 'Latest Evo analysis',
@@ -97,7 +87,7 @@ export const mealsPageCopy: Record<
     collapseAddMeal: 'Zwiń formularz dodawania',
     eyebrow: 'Logowanie posiłku',
     logTitle: 'Dodaj posiłek',
-    logSubtitle: 'Opisz lub wgraj zdjęcie. Evo przeanalizuje, potem zapiszesz z pewnością siebie.',
+    logSubtitle: 'Opisz posiłek lub wgraj zdjęcie — jedno kliknięcie wysyła do Evo i zapisuje wpis w dniu.',
     dayLabel: 'Dzień wpisu',
     dayOptional: ' — opcjonalnie',
     dayHint: 'Domyślnie dziś. Zmień tylko, jeśli logujesz posiłek z wcześniejszego dnia.',
@@ -109,13 +99,8 @@ export const mealsPageCopy: Record<
     chooseImage: 'Wybierz zdjęcie',
     previewAlt: 'Podgląd posiłku',
     previewPlaceholder: 'Tu pojawi się podgląd',
-    readyTitle: 'Gotowe do analizy?',
-    readyContent: 'Sprawdź: typ i opis — jeśli OK, zapisz. Jeśli nie, popraw przed wysłaniem.',
-    editDetails: 'Edytuj',
-    confirmAnalyze: 'Potwierdź i analizuj',
+    saveMeal: 'Dodaj posiłek',
     analyzing: 'Evo analizuje posiłek…',
-    analyzeNow: 'Analizuj teraz',
-    reviewBeforeSave: 'Sprawdź przed zapisem',
     mealsFor: 'Posiłki na',
     todaySuffix: ' (dziś)',
     latestAnalysis: 'Ostatnia analiza Evo',

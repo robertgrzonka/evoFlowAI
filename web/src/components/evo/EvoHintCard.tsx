@@ -10,9 +10,9 @@ type EvoHintCardProps = {
 };
 
 const toneStyles: Record<EvoHintTone, string> = {
-  notice: 'border-info-500/30 bg-info-500/8',
-  warning: 'border-amber-400/35 bg-amber-400/8',
-  positive: 'border-success-500/30 bg-success-500/8',
+  notice: 'border-info-500/30 bg-info-500/8 border-l-4 border-l-info-500 shadow-sm shadow-black/5',
+  warning: 'border-amber-400/35 bg-amber-400/8 border-l-4 border-l-amber-400 shadow-sm shadow-black/5',
+  positive: 'border-success-500/30 bg-success-500/8 border-l-4 border-l-success-500 shadow-sm shadow-black/5',
 };
 
 export default function EvoHintCard({

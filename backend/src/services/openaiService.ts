@@ -58,12 +58,59 @@ type GoalSuggestionJson = {
   dailyCalorieGoal: number;
   activityLevel: string;
   message: string;
+  /** Optional: concise goal phrase in the user's language (replaces preferences.primaryGoal when set). */
+  primaryGoal?: string;
+  weeklyWorkoutsGoal?: number;
+  weeklyActiveMinutesGoal?: number;
 };
 
 type DashboardInsightJson = {
   summary: string;
+  supportLine?: string;
   tips: unknown[];
+  nextAction?: {
+    title?: string;
+    description?: string;
+    actionLabel?: string;
+    target?: string;
+  };
 };
+
+function parseDashboardSupportLine(raw: unknown): string | undefined {
+  const s = String(raw ?? '').trim();
+  if (s.length < 8 || s.length > 220) return undefined;
+  return s;
+}
+
+const DASHBOARD_NEXT_ACTION_TARGETS = new Set(['MEALS', 'WORKOUTS', 'CHAT_COACH', 'STATS', 'GOALS']);
+
+function normalizeDashboardNextActionTarget(raw: unknown): string | null {
+  let s = String(raw ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  if (s === 'CHAT' || s === 'COACH' || s === 'COACH_CHAT') s = 'CHAT_COACH';
+  if (DASHBOARD_NEXT_ACTION_TARGETS.has(s)) return s;
+  return null;
+}
+
+function parseDashboardAiNextAction(
+  raw: DashboardInsightJson['nextAction']
+): { title: string; description: string; actionLabel: string; target: string } | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const title = String((raw as { title?: string }).title || '').trim();
+  const description = String((raw as { description?: string }).description || '').trim();
+  const actionLabel = String((raw as { actionLabel?: string }).actionLabel || '').trim();
+  const target = normalizeDashboardNextActionTarget((raw as { target?: string }).target);
+  if (!title || title.length < 5 || !description || description.length < 12 || !actionLabel || !target) {
+    return undefined;
+  }
+  if (title.length > 90) return undefined;
+  if (description.length > 320) return undefined;
+  if (actionLabel.length > 48) return undefined;
+
+  return { title, description, actionLabel, target };
+}
 
 type WeeklyMealsCoachAiJson = {
   headline: string;
@@ -76,6 +123,7 @@ type WeeklyMealsCoachAiJson = {
 type WeeklyEvoReviewAiJson = {
   summary: string;
   proTip: string;
+  highlights: unknown;
 };
 
 type CoachProPlanJson = {
@@ -556,37 +604,50 @@ const COACH_PRO_TRAINING_DRAWER_JSON_SCHEMA: Record<string, unknown> = {
  */
 const insightJsonOutputLanguageRule = (locale: ReturnType<typeof normalizeAppLocale>): string =>
   locale === 'pl'
-    ? 'Output language (required): every string value you write in the JSON (summary, tips, headline, bullets, closingLine, proTip — whichever this schema uses) MUST be Polish. Keep meal/workout titles from the log data verbatim when you refer to them. Do not answer in English.'
+    ? 'Output language (required): every string value you write in the JSON (summary, supportLine, tips, nextAction fields, headline, bullets, closingLine, proTip — whichever this schema uses) MUST be Polish. Keep meal/workout titles from the log data verbatim when you refer to them. Do not answer in English.'
     : 'Output language (required): every string value you write in the JSON must be English. Keep meal/workout titles from the log data verbatim when you refer to them.';
 
 const dashboardInsightEmojiRules = (tone: EvoTone): string => {
   if (tone === 'gentle') {
-    return '- GENTLE tone — keep the copy lively; use emoji when it genuinely adds warmth (no minimum count — zero is fine if the prose already feels human; avoid emoji walls).';
+    return [
+      '- GENTLE — emoji density (mandatory): split "summary", "supportLine", each of "tips[0..2]", "nextAction.title", "nextAction.description" into sentences (by . ! ? … or line breaks). EVERY sentence that has any words must contain at least one Unicode emoji.',
+      '- Also put ≥1 emoji in "nextAction.actionLabel" (short CTA counts as one sentence).',
+      '- Vary emoji across lines; do not use the same emoji for every sentence.',
+    ].join('\n');
   }
   if (tone === 'strict' || tone === 'direct') {
-    return '- Emoji: do not use any emoji in "summary" or "tips".';
+    return '- Emoji: zero in "summary", "supportLine", "tips", and all "nextAction" strings — no emoticons either.';
   }
-  return '- Emoji: optional — at most one subtle emoji per sentence.';
+  return [
+    '- SUPPORTIVE — emoji: at most 2 emoji in the entire JSON total (all fields combined). Place only where empathy lands; never per-sentence coverage (that is GENTLE only).',
+    '- If you use zero emoji, that is acceptable; if you use emoji, never more than 2 total.',
+  ].join('\n');
 };
 
 const weeklyCoachJsonEmojiRules = (tone: EvoTone): string => {
   if (tone === 'gentle') {
-    return '- GENTLE tone — lively, human copy; sprinkle emoji where it fits (headline, summary, bullets, or closing — as natural, not a checklist). No minimum number; avoid repeating the same emoji every line.';
+    return [
+      '- GENTLE — every sentence in "headline", "summary", each "focusAreas" item, each "improvements" item, and each sentence in "closingLine" must contain ≥1 emoji.',
+      '- Vary emoji; no spamming the same symbol.',
+    ].join('\n');
   }
   if (tone === 'strict' || tone === 'direct') {
     return '- Emoji: do not use any emoji in any field of this JSON.';
   }
-  return '- Optional: at most one subtle emoji in headline OR closingLine, not both.';
+  return '- SUPPORTIVE — at most 2 emoji in the entire JSON (all fields combined), optional; never per-sentence emoji walls.';
 };
 
 const weeklyEvoReviewEmojiRules = (tone: EvoTone): string => {
   if (tone === 'gentle') {
-    return '- GENTLE tone — warm, vivid language; emoji welcome in "summary" and/or "proTip" when it feels natural (no minimum; proTip stays one sentence, max 240 characters).';
+    return [
+      '- GENTLE — every sentence in "summary", every sentence in "proTip", and every sentence in each of the 3 "highlights" strings must contain ≥1 emoji (if "proTip" is two sentences, each needs emoji).',
+      '- Vary emoji; keep "proTip" within length limits.',
+    ].join('\n');
   }
   if (tone === 'strict' || tone === 'direct') {
-    return '- Emoji: do not use any emoji in "summary" or "proTip".';
+    return '- Emoji: do not use any emoji in "summary", "proTip", or any "highlights" string.';
   }
-  return '- Emoji: optional — at most one subtle emoji in the whole JSON output.';
+  return '- SUPPORTIVE — at most 2 emoji in the whole JSON (summary + proTip + all highlights combined); optional.';
 };
 
 /** Align Coach Pro JSON copy with global Evo tone + app language (drawers, details, smart actions). */
@@ -640,9 +701,9 @@ const resolveFoodAnalysisGpt5CompletionBudget = (): number => {
 /** Coach Pro JSON (plan, details, drawers) — GPT-5 reasoning can consume large budget before visible JSON. */
 const resolveCoachProGpt5CompletionBudget = (): number => {
   const raw = process.env.OPENAI_COACH_PRO_GPT5_COMPLETION_BUDGET;
-  if (raw === undefined || String(raw).trim() === '') return 65536;
+  if (raw === undefined || String(raw).trim() === '') return 98304;
   const n = Number(raw);
-  if (!Number.isFinite(n)) return 65536;
+  if (!Number.isFinite(n)) return 98304;
   return Math.min(128000, Math.max(8192, Math.floor(n)));
 };
 
@@ -969,11 +1030,26 @@ export class OpenAIService {
 
   async suggestGoalsFromPrompt(
     prompt: string,
-    userContext: { dailyCalorieGoal?: number; activityLevel?: string; appLocale?: string }
-  ): Promise<{ dailyCalorieGoal: number; activityLevel: string; message: string }> {
+    userContext: {
+      dailyCalorieGoal?: number;
+      activityLevel?: string;
+      appLocale?: string;
+      weeklyWorkoutsGoal?: number;
+      weeklyActiveMinutesGoal?: number;
+      primaryGoal?: string;
+    }
+  ): Promise<{
+    dailyCalorieGoal: number;
+    activityLevel: string;
+    message: string;
+    primaryGoal?: string;
+    weeklyWorkoutsGoal?: number;
+    weeklyActiveMinutesGoal?: number;
+  }> {
     this.ensureInitialized();
 
     try {
+      const uiLocale = normalizeAppLocale(userContext.appLocale);
       const systemPrompt = composeEvoSystemPrompt({
         mode: 'analysis',
         tone: 'supportive',
@@ -984,20 +1060,38 @@ export class OpenAIService {
         userContext: {
           dailyCalorieGoal: userContext.dailyCalorieGoal,
           activityLevel: userContext.activityLevel,
-          appLocale: normalizeAppLocale(userContext.appLocale),
+          appLocale: uiLocale,
+          primaryGoal: userContext.primaryGoal,
+          weeklyWorkoutsGoal: userContext.weeklyWorkoutsGoal,
+          weeklyActiveMinutesGoal: userContext.weeklyActiveMinutesGoal,
         },
       });
       const aiPrompt = `
-Current dailyCalorieGoal: ${userContext.dailyCalorieGoal || 2000}
-Current activityLevel: ${userContext.activityLevel || 'moderate'}
+Current preferences (ground truth until you change them in JSON):
+- dailyCalorieGoal: ${userContext.dailyCalorieGoal || 2000}
+- activityLevel: ${userContext.activityLevel || 'moderate'}
+- weeklyWorkoutsGoal: ${userContext.weeklyWorkoutsGoal ?? 4}
+- weeklyActiveMinutesGoal: ${userContext.weeklyActiveMinutesGoal ?? 180}
+- primaryGoal (free text): ${String(userContext.primaryGoal || 'not set').slice(0, 400)}
+
 User request: ${prompt}
+
+${insightJsonOutputLanguageRule(uiLocale)}
 
 Return ONLY valid JSON:
 {
   "dailyCalorieGoal": number between 800 and 5000,
   "activityLevel": one of ["sedentary","light","moderate","active","very_active"],
-  "message": "short explanation in the user's language with one practical reason"
+  "message": "2-3 short sentences: what you changed and why (practical, no JSON jargon)",
+  "primaryGoal": "optional string, max 400 chars — concise restatement of their goal in their language; omit key or use empty string to keep the stored primaryGoal unchanged",
+  "weeklyWorkoutsGoal": optional number 0-14; omit to leave unchanged,
+  "weeklyActiveMinutesGoal": optional number 0-2000; omit to leave unchanged
 }
+
+Rules:
+- Align calorie target with their stated goal (deficit / maintenance / surplus / recomp) and training frequency if mentioned.
+- If they only tweak one thing, still return full dailyCalorieGoal + activityLevel; leave weekly fields omitted unless the prompt justifies changing them.
+- primaryGoal must respect dietary safety: no extreme deficits, no medical claims.
       `.trim();
 
       const response = await this.openai!.chat.completions.create(
@@ -1006,7 +1100,7 @@ Return ONLY valid JSON:
             { role: 'system', content: systemPrompt },
             { role: 'user', content: aiPrompt },
           ],
-          300
+          1100
         )
       );
 
@@ -1024,12 +1118,33 @@ Return ONLY valid JSON:
       const allowedLevels = new Set(['sedentary', 'light', 'moderate', 'active', 'very_active']);
       const activityLevel = allowedLevels.has(rawActivityLevel) ? rawActivityLevel : 'moderate';
 
-      const message = String(parsed.message || 'Goals updated based on your request.');
+      const message = String(parsed.message || 'Goals updated based on your request.').trim();
+
+      let nextPrimary: string | undefined;
+      if (parsed.primaryGoal !== undefined && parsed.primaryGoal !== null) {
+        const pg = String(parsed.primaryGoal).trim();
+        if (pg.length > 0 && pg.length <= 400) nextPrimary = pg;
+      }
+
+      let nextWeeklyWorkouts: number | undefined;
+      if (parsed.weeklyWorkoutsGoal !== undefined && parsed.weeklyWorkoutsGoal !== null) {
+        const w = Number(parsed.weeklyWorkoutsGoal);
+        if (Number.isFinite(w)) nextWeeklyWorkouts = Math.max(0, Math.min(14, Math.round(w)));
+      }
+
+      let nextWeeklyMinutes: number | undefined;
+      if (parsed.weeklyActiveMinutesGoal !== undefined && parsed.weeklyActiveMinutesGoal !== null) {
+        const m = Number(parsed.weeklyActiveMinutesGoal);
+        if (Number.isFinite(m)) nextWeeklyMinutes = Math.max(0, Math.min(2000, Math.round(m)));
+      }
 
       return {
         dailyCalorieGoal: clampedGoal,
         activityLevel,
         message,
+        primaryGoal: nextPrimary,
+        weeklyWorkoutsGoal: nextWeeklyWorkouts,
+        weeklyActiveMinutesGoal: nextWeeklyMinutes,
       };
     } catch (error) {
       console.error('OpenAI Goal Suggestion Error:', error);
@@ -1104,7 +1219,12 @@ Return ONLY valid JSON:
     mealDetails?: string[];
     workoutDetails?: string[];
     appLocale?: string;
-  }): Promise<{ summary: string; tips: string[] }> {
+  }): Promise<{
+    summary: string;
+    supportLine: string;
+    tips: string[];
+    nextAction?: { title: string; description: string; actionLabel: string; target: string };
+  }> {
     this.ensureInitialized();
 
     const uiLocale = normalizeAppLocale(input.appLocale);
@@ -1112,6 +1232,10 @@ Return ONLY valid JSON:
       coachingTone: input.coachingTone,
       proactivityLevel: input.proactivityLevel,
     });
+    const firstName =
+      String(input.userName || '')
+        .trim()
+        .split(/\s+/)[0] || 'there';
     const systemPrompt = composeEvoSystemPrompt({
       mode: 'insight',
       tone,
@@ -1119,6 +1243,7 @@ Return ONLY valid JSON:
       includeHumor: true,
       channel: 'insight',
       userContext: {
+        userName: input.userName,
         primaryGoal: input.primaryGoal,
         dailyCalorieGoal: input.calorieGoal,
         proteinGoal: input.proteinGoal,
@@ -1138,7 +1263,7 @@ Return ONLY valid JSON:
     });
     const prompt = `
 Day: ${input.date}
-User: ${input.userName || 'User'}
+User first name (use at most once across the whole JSON, only if it feels natural): ${firstName}
 Primary goal: ${input.primaryGoal || 'maintenance'}
 Current local hour: ${input.currentHour ?? 'n/a'}
 Remaining day estimate: ${input.remainingDayPercent ?? 'n/a'}%
@@ -1165,11 +1290,19 @@ ${insightJsonOutputLanguageRule(uiLocale)}
 
 Return JSON only:
 {
-  "summary": "max 2 concise sentences",
-  "tips": ["nutrition tip", "training tip", "recovery tip"]
+  "summary": "max 2 concise sentences; sound like their coach-friend, not a lab report",
+  "supportLine": "exactly ONE short sentence: warm, conversational vibe check for TODAY — not a repeat of summary, no 'Evo status:', no bullet labels",
+  "tips": ["nutrition tip", "training tip", "recovery tip"],
+  "nextAction": {
+    "title": "short imperative headline, max ~12 words, not a duplicate of summary",
+    "description": "one or two sentences: why this step now, tied to THEIR numbers and logged items; vary structure vs yesterday's clichés",
+    "actionLabel": "button text, max ~6 words, concrete verb + destination",
+    "target": "one of: MEALS | WORKOUTS | CHAT_COACH | STATS | GOALS"
+  }
 }
 
 Rules:
+- supportLine must add new color (mood, encouragement, or gentle reality check) vs summary — never copy phrases from summary verbatim
 - return exactly 3 tips
 - tip[0] must be nutrition focused
 - tip[1] must be training focused
@@ -1185,6 +1318,10 @@ ${dashboardInsightEmojiRules(tone)}
 - adapt advice to current time of day and how much of the day is left
 - if protein pacing is good for this time, explicitly praise that pacing
 - if protein pacing is poor for this time, call it out clearly and give a corrective next action
+- nextAction must be the single best move for the NEXT 2 HOURS — not a repeat of generic "one protein meal" unless the data truly leaves no better lever
+- nextAction.target must match the advice: protein gap → MEALS; over budget + stress → CHAT_COACH; no workout and time left → WORKOUTS; pattern questions → STATS; alignment with long-term goal → GOALS
+- forbid nextAction text that is basically the same title every day (e.g. stock "Close protein first" / "Domknij białko") — use specific hooks (numbers, meal names, time-of-day, workout title)
+- personalization: every field must reference this user's data (counts, gaps, logged names) — zero boilerplate that could apply to anyone
     `.trim();
 
     const response = await this.openai!.chat.completions.create(
@@ -1193,7 +1330,7 @@ ${dashboardInsightEmojiRules(tone)}
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },
         ],
-        350
+        480
       )
     );
 
@@ -1204,36 +1341,31 @@ ${dashboardInsightEmojiRules(tone)}
 
     const parsed = this.parseJsonResponse<DashboardInsightJson>(content);
     const summary = String(parsed.summary || '').trim();
+    const supportLineParsed = parseDashboardSupportLine(parsed.supportLine);
+    if (!supportLineParsed) {
+      throw new Error('Invalid AI insight: supportLine');
+    }
+    const supportLine = supportLineParsed;
     const rawTips = Array.isArray(parsed.tips) ? parsed.tips : [];
     const tips = rawTips.map((tip: unknown) => String(tip || '').trim()).filter(Boolean).slice(0, 3);
+    const nextAction = parseDashboardAiNextAction(parsed.nextAction);
 
-    if (!summary || tips.length === 0) {
+    if (!summary || summary.length < 24 || tips.length !== 3 || tips.some((t) => t.length < 12)) {
       throw new Error('Invalid AI insight response');
-    }
-
-    while (tips.length < 3) {
-      if (uiLocale === 'pl') {
-        if (tips.length === 0) tips.push('Zaplanuj posiłek bogaty w białko, żeby lepiej trafić w cel makro.');
-        else if (tips.length === 1) tips.push('Trzymaj trening przy jakości ruchu i kontrolowanym wysiłku.');
-        else tips.push('Zadbaj o nawodnienie i regenerację, żeby jutro iść dalej bez spadku formy.');
-      } else {
-        if (tips.length === 0) tips.push('Plan a protein-rich meal to support your nutrition target.');
-        else if (tips.length === 1) tips.push('Keep your training focused on quality movement and controlled effort.');
-        else tips.push('Prioritize hydration and recovery to stay consistent tomorrow.');
-      }
     }
 
     const toneKey = normalizeCoachingToneKey(input.coachingTone);
     const parityDecorates = this.shouldUseDashboardEmoji(input.date);
+    /** GENTLE must supply all emoji in-model (per-sentence rule); never prepend one here. */
     const shouldDecorateWithEmoji =
-      toneKey === 'strict' || toneKey === 'direct'
+      toneKey === 'strict' || toneKey === 'direct' || toneKey === 'gentle'
         ? false
-        : toneKey === 'gentle'
-          ? true
-          : parityDecorates;
+        : parityDecorates;
     const normalized = this.decorateDashboardInsightWithEmoji({
       summary,
+      supportLine,
       tips,
+      nextAction,
       shouldDecorateWithEmoji,
       caloriesBurned: input.caloriesBurned,
       remainingProtein: input.remainingProtein,
@@ -1250,7 +1382,10 @@ ${dashboardInsightEmojiRules(tone)}
     primaryGoal?: string;
     coachingTone?: string;
     proactivityLevel?: string;
-    calorieGoal: number;
+    /** Mean of the seven per-day calorie budgets (dynamic, includes activity). */
+    averageDayCalorieBudget: number;
+    /** Target on a rest day: preference base + primary-goal calorie delta only (no training/steps/bonus). */
+    restDayCalorieTarget: number;
     proteinGoal: number;
     carbsGoal: number;
     fatGoal: number;
@@ -1263,6 +1398,12 @@ ${dashboardInsightEmojiRules(tone)}
       carbs: number;
       fat: number;
       mealCount: number;
+      dayCalorieBudget: number;
+      workoutCaloriesBurned: number;
+      workoutSessions: number;
+      activityBonusKcal: number;
+      steps: number;
+      stepCaloriesBudget: number;
     }>;
     averages: { calories: number; protein: number; carbs: number; fat: number };
     totals: { calories: number; protein: number; carbs: number; fat: number };
@@ -1290,7 +1431,7 @@ ${dashboardInsightEmojiRules(tone)}
       userContext: {
         primaryGoal: input.primaryGoal,
         userName: input.userName,
-        dailyCalorieGoal: input.calorieGoal,
+        dailyCalorieGoal: input.restDayCalorieTarget,
         proteinGoal: input.proteinGoal,
         carbsGoal: input.carbsGoal,
         fatGoal: input.fatGoal,
@@ -1298,20 +1439,31 @@ ${dashboardInsightEmojiRules(tone)}
       },
     });
 
+    const restKcal = Math.round(input.restDayCalorieTarget);
     const dayLines = input.days
-      .map(
-        (d) =>
-          `${d.date}: ${d.mealCount} meals, ${Math.round(d.calories)} kcal, P ${Math.round(d.protein)}g / C ${Math.round(d.carbs)}g / F ${Math.round(d.fat)}g`
-      )
+      .map((d) => {
+        const budget = Math.round(d.dayCalorieBudget ?? input.averageDayCalorieBudget);
+        const burn = Math.round(d.workoutCaloriesBurned ?? 0);
+        const bonus = Math.round(d.activityBonusKcal ?? 0);
+        const sess = Math.round(d.workoutSessions ?? 0);
+        const stepsN = Math.max(0, Math.round(d.steps ?? 0));
+        const delta = Math.round(d.calories) - budget;
+        const deltaLabel = delta > 0 ? `+${delta} surplus` : delta < 0 ? `${delta} under` : 'on budget';
+        return `${d.date}: ${d.mealCount} meals, ${Math.round(d.calories)} kcal eaten vs ${budget} kcal **authorized budget** (rest-day target ${restKcal} + ${burn} kcal from ${sess} logged workout(s) + ${bonus} kcal manual activity bonus; ${stepsN} steps logged — steps do **not** increase budget in this app) → ${deltaLabel} vs budget, P ${Math.round(d.protein)}g / C ${Math.round(d.carbs)}g / F ${Math.round(d.fat)}g`;
+      })
       .join('\n');
 
     const prompt = `
-You are Evo — a sharp, warm nutrition coach reviewing ONE WEEK of logged meals (not workouts).
+You are Evo — a sharp, warm nutrition coach reviewing ONE WEEK of logged meals.
 
 Week window: ${input.weekStart} → ${input.weekEnd}
 User: ${input.userName || 'Athlete'}
 Primary goal: ${input.primaryGoal || 'general health'}
-Daily targets (reference): ${input.calorieGoal} kcal, protein ${input.proteinGoal}g, carbs ${input.carbsGoal}g, fat ${input.fatGoal}g.
+Static macro targets (reference): protein ${input.proteinGoal}g, carbs ${input.carbsGoal}g, fat ${input.fatGoal}g.
+Rest-day calorie target (preference base + goal delta only, **no** training/steps/bonus): ${restKcal} kcal/day.
+Mean authorized calorie budget across these 7 days (includes training + manual activity bonus where logged; steps are **not** added to budget): ~${Math.round(input.averageDayCalorieBudget)} kcal/day.
+
+Per-day rows use the same budget rules as the live app: **authorized budget** = rest-day target + logged workout burn + manual activity bonus. Step counts are context only (high steps may explain subjective energy needs but do not change the budget number here).
 
 Per-day log (zeros mean no meals that day):
 ${dayLines}
@@ -1335,6 +1487,8 @@ Rules:
 - Sound observant and specific; never generic filler.
 - If logging is sparse (${input.daysWithMeals} < 4), acknowledge data limits honestly.
 - Do not invent meals; only use rows above.
+- **Calorie judgment (critical):** For each date, the ONLY fair comparison is **kcal eaten** vs that row's **authorized budget** (number right after "vs"). If the row shows "under" or "on budget", you must **not** describe that day as a calorie surplus, "nadwyżka", or over pace — even if eaten kcal is higher than ${restKcal} kcal. Never shame higher intake on days with large **authorized budgets** from logged training. Only flag a surplus when eaten kcal is **meaningfully above** the authorized budget (e.g. clearly positive surplus in the row).
+- Do not criticize "missing workouts" in this view; workout counts justify the budget. Steps are context only.
 - Bullets max 1 sentence each, practical.
 - closingLine must be two clear sentences; combined length roughly 120–420 characters.
 ${weeklyCoachJsonEmojiRules(tone)}
@@ -1545,15 +1699,31 @@ ${weeklyCoachJsonEmojiRules(tone)}
     isCompleteWeek: boolean;
     availableDays: number;
     trackedDays: number;
+    periodDays: number;
     nutritionScore: number;
     trainingScore: number;
     consistencyScore: number;
-    highlightLines: string[];
     weekStart: string;
     weekEnd: string;
-    baselineSummary: string;
     appLocale?: string;
-  }): Promise<{ summary: string; proTip: string }> {
+    /** 0–3: rotates narrative angle per user+week for variety */
+    narrativeLens: number;
+    loggedMealNames?: string[];
+    loggedWorkoutTitles?: string[];
+    totalCalories: number;
+    targetPeriodCalories: number;
+    staticWeekKcal: number;
+    calorieGoalBase: number;
+    avgDailyProtein: number;
+    proteinGoal: number;
+    workoutsCount: number;
+    totalActiveMinutes: number;
+    totalStepsTracked: number;
+    mealDays: number;
+    workoutDays: number;
+    scaledWeeklySessionsTarget: number;
+    scaledWeeklyMinutesTarget: number;
+  }): Promise<{ summary: string; proTip: string; highlights: string[] }> {
     this.ensureInitialized();
 
     const uiLocale = normalizeAppLocale(input.appLocale);
@@ -1584,32 +1754,66 @@ ${weeklyCoachJsonEmojiRules(tone)}
     });
 
     const restrictions = (input.dietaryRestrictions || []).filter(Boolean).join(', ') || 'none listed';
-    const prompt = `
-Write a WEEKLY EVO REVIEW for the dashboard (not chat). The user already sees numeric scores elsewhere — your job is narrative punch + one unforgettable Pro Tip.
+    const lens = ((input.narrativeLens % 4) + 4) % 4;
+    const mealNames = (input.loggedMealNames || []).filter(Boolean).slice(0, 10);
+    const workoutTitles = (input.loggedWorkoutTitles || []).filter(Boolean).slice(0, 8);
+    const lensGuide =
+      lens === 0
+        ? 'Lens A — Open with the sharpest tradeoff in the data (e.g. strong training vs under-fueled nutrition, or high consistency with a hidden macro gap).'
+        : lens === 1
+          ? 'Lens B — Open with one tight “habit loop” for next week: trigger → loggable action → payoff; keep it concrete.'
+          : lens === 2
+            ? 'Lens C — Open by naming a *shape* of the week (clustering, empty days, steps vs sessions) that you infer from the weekly facts; no invented daily schedules.'
+            : 'Lens D — Open with one incisive question that fits their primary goal, then answer it in the rest of the summary using the weekly facts.';
 
+    const weeklyFacts = `
 Week: ${input.weekStart} → ${input.weekEnd}
-Window: ${input.availableDays}/7 available days · ${input.trackedDays} days with any tracking
+Window: ${input.availableDays}/7 available days · ${input.periodDays} days in scoring span · ${input.trackedDays} days with any tracking
 Complete week flag: ${input.isCompleteWeek}
 
 Scores (0-100, already computed — do not change them): nutrition ${input.nutritionScore}, training ${input.trainingScore}, consistency ${input.consistencyScore}
 
-Verified highlight lines (treat as ground truth; quote or paraphrase numbers accurately):
-${input.highlightLines.map((line) => `- ${line}`).join('\n')}
+Nutrition facts: total calories logged ${Math.round(input.totalCalories)} kcal vs dynamic weekly budget ~${Math.round(input.targetPeriodCalories)} kcal (sum of daily targets with logged workout burn + activity bonuses; flat 7×${input.calorieGoalBase} base would be ${input.staticWeekKcal} kcal without that). Average daily protein ${Math.round(input.avgDailyProtein)} g vs daily goal ${input.proteinGoal} g.
 
-Fallback summary if you get stuck (do not copy verbatim; improve it): ${input.baselineSummary}
+Training facts: ${input.workoutsCount} sessions, ${Math.round(input.totalActiveMinutes)} active minutes, ${Math.round(input.totalStepsTracked)} tracked steps. Full-week goals: ${input.weeklyWorkoutsGoal ?? 'n/a'} sessions, ${input.weeklyActiveMinutesGoal ?? 'n/a'} active minutes. Scaled targets for this window: ~${Math.round(input.scaledWeeklySessionsTarget)} sessions, ~${Math.round(input.scaledWeeklyMinutesTarget)} minutes.
+
+Consistency facts: ${input.mealDays} days with meals / ${input.periodDays} · ${input.workoutDays} days with workouts / ${input.periodDays} · ${input.trackedDays} days had any log in the tracked window.
+`.trim();
+
+    const prompt = `
+Write a WEEKLY EVO REVIEW for the dashboard (not chat). The user already sees numeric scores elsewhere — your job is narrative punch + a memorable Pro Tip + three pillar blurbs that sit under the score pills (nutrition / training / consistency).
+
+${weeklyFacts}
+
+Sample logged meal names (optional flavor — use only if helpful, never invent portions):
+${mealNames.length ? mealNames.map((n) => `- ${n}`).join('\n') : '- none passed'}
+
+Sample logged workout titles (optional flavor):
+${workoutTitles.length ? workoutTitles.map((t) => `- ${t}`).join('\n') : '- none passed'}
+
+Narrative lens for THIS response (follow it for the *opening* of summary + overall angle): ${lensGuide}
 
 ${insightJsonOutputLanguageRule(uiLocale)}
 
 Return JSON only (no markdown inside strings):
 {
-  "summary": "3-5 sentences max. Intriguing, specific; edge level must match coaching tone (gentle / supportive / direct / strict) from system instructions. Name the main tension between scores and the highlight data.",
-  "proTip": "Exactly ONE sentence, max 240 characters. Must feel bespoke: weave together (a) primary goal or dietary restrictions if any, (b) the weakest score or clearest gap in highlights, (c) proactivity level — LOW = one micro-habit, HIGH = a bolder stacked habit. Forbidden: clichés like drink more water, believe in yourself, stay consistent without specifics."
+  "summary": "3-5 sentences max. Intriguing, specific Evo voice; edge level must match coaching tone from system instructions. Name the main tension between scores and the weekly facts. Obey the narrative lens for how you open.",
+  "proTip": "1 or 2 short sentences, max 360 characters total. Must feel bespoke: weave (a) primary goal or dietary restrictions if any, (b) the weakest score or clearest gap in the facts, (c) proactivity level — LOW = one micro-habit, HIGH = a bolder stacked habit.",
+  "highlights": [
+    "1-2 short sentences. NUTRITION PILLAR ONLY: calories vs budget, protein vs goal, fueling vs training load. No session counts, no step counts, no logging-streak language.",
+    "1-2 short sentences. TRAINING PILLAR ONLY: sessions, active minutes, steps as movement load, intensity shape if inferable from titles — not protein, not logging streaks.",
+    "1-2 short sentences. CONSISTENCY PILLAR ONLY: how often meals/workouts were logged, gaps in the window, rhythm vs available days — not rehashing calorie/protein math or session prescriptions."
+  ]
 }
 
 Rules:
 - Plain text inside JSON only (no **markdown**, no bullet characters).
-- Do not contradict the numeric scores or highlight facts.
+- "highlights" must contain exactly 3 strings in this order: [nutrition, training, consistency]. Each 40-420 characters. No English in Polish locale and vice versa.
+- Do not contradict the numeric scores or weekly facts.
 - If dietary restrictions exist, proTip must respect them explicitly.
+- Banned templates unless facts prove that exact gap: “two protein anchors”, “breakfast + post-workout 40g”, “evening shake”, “kotwice białka”, “szejkiem wieczorem”, generic “stay consistent” without numbers.
+- If protein is not the dominant problem (e.g. training or consistency is clearly weaker), do not center proTip on protein shakes/anchors.
+- Vary sentence openings and metaphors vs a generic coach; do not reuse the same scaffolding every week.
 ${weeklyEvoReviewEmojiRules(tone)}
     `.trim();
 
@@ -1619,7 +1823,7 @@ ${weeklyEvoReviewEmojiRules(tone)}
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },
         ],
-        480
+        920
       )
     );
 
@@ -1635,15 +1839,22 @@ ${weeklyEvoReviewEmojiRules(tone)}
     const parsed = this.parseJsonResponse<WeeklyEvoReviewAiJson>(content);
     const summary = String(parsed.summary || '').trim();
     let proTip = String(parsed.proTip || '').trim();
-    if (proTip.length > 280) {
-      proTip = `${proTip.slice(0, 277)}…`;
+    if (proTip.length > 380) {
+      proTip = `${proTip.slice(0, 377)}…`;
     }
 
-    if (!summary || summary.length < 28 || !proTip || proTip.length < 20) {
+    const rawHl = Array.isArray(parsed.highlights) ? parsed.highlights : [];
+    const highlights = rawHl.map((h) => String(h || '').trim()).slice(0, 3);
+    while (highlights.length < 3) highlights.push('');
+
+    if (!summary || summary.length < 28 || !proTip || proTip.length < 24) {
       throw new Error('Invalid weekly Evo review narrative');
     }
+    if (highlights.some((h) => h.length < 40 || h.length > 480)) {
+      throw new Error('Invalid weekly Evo review narrative: highlights');
+    }
 
-    return { summary, proTip };
+    return { summary, proTip, highlights };
   }
 
   async generateCoachProPlan(input: {
@@ -1827,7 +2038,7 @@ Anti-leak rules (strict):
     return this.generateCoachProPlanWithContract({
       systemPrompt,
       userPrompt: prompt,
-      maxOutputTokens: 16000,
+      maxOutputTokens: 20000,
       context: 'generateCoachProPlan',
       requireFullWeek: true,
       minMealsPerDay,
@@ -1899,7 +2110,7 @@ ${adaptLangRule}
     return this.generateCoachProPlanWithContract({
       systemPrompt: adaptSystemPrompt,
       userPrompt: prompt,
-      maxOutputTokens: 10000,
+      maxOutputTokens: 14000,
       context: 'adaptCoachProPlan',
       requireFullWeek: false,
     });
@@ -1962,7 +2173,7 @@ ${coachProVoiceBlockFromPreferences(detailPrefs as Record<string, unknown>)}
 
     return this.generateCoachProPlanDetailsWithContract({
       userPrompt: prompt,
-      maxOutputTokens: 16000,
+      maxOutputTokens: 20000,
       requireFullWeek: true,
     });
   }
@@ -2313,9 +2524,13 @@ ${coachProVoiceBlockFromPreferences(
     const runAttempt = async (attempt: 1 | 2, previousError?: string) => {
       const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
       const usedMaxOutputTokens =
-        attempt === 2 && input.context === 'generateCoachProPlan'
-          ? Math.max(6000, Math.round(input.maxOutputTokens * 0.9))
+        attempt === 2
+          ? Math.min(32000, Math.max(input.maxOutputTokens, Math.round(input.maxOutputTokens * 1.35)))
           : input.maxOutputTokens;
+      const gpt5CoachProBudget =
+        attempt === 2
+          ? Math.min(128000, Math.floor(resolveCoachProGpt5CompletionBudget() * 1.45))
+          : resolveCoachProGpt5CompletionBudget();
       if (input.systemPrompt) {
         messages.push({ role: 'system', content: input.systemPrompt });
       }
@@ -2339,7 +2554,7 @@ ${coachProVoiceBlockFromPreferences(
             name: 'coach_pro_plan',
             schema: COACH_PRO_PLAN_JSON_SCHEMA,
           },
-          gpt5MaxCompletionBudget: resolveCoachProGpt5CompletionBudget(),
+          gpt5MaxCompletionBudget: gpt5CoachProBudget,
         })
       );
       const content = response.choices[0]?.message?.content;
@@ -2389,7 +2604,14 @@ ${coachProVoiceBlockFromPreferences(
   }): Promise<CoachProPlanDetailsJson> {
     this.ensureInitialized();
     const runAttempt = async (attempt: 1 | 2, previousError?: string) => {
-      const usedMaxOutputTokens = attempt === 2 ? Math.max(5000, Math.round(input.maxOutputTokens * 0.9)) : input.maxOutputTokens;
+      const usedMaxOutputTokens =
+        attempt === 2
+          ? Math.min(28000, Math.max(input.maxOutputTokens, Math.round(input.maxOutputTokens * 1.35)))
+          : input.maxOutputTokens;
+      const gpt5DetailsBudget =
+        attempt === 2
+          ? Math.min(128000, Math.floor(resolveCoachProGpt5CompletionBudget() * 1.45))
+          : resolveCoachProGpt5CompletionBudget();
       const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
         {
           role: 'system',
@@ -2409,7 +2631,7 @@ ${coachProVoiceBlockFromPreferences(
             name: 'coach_pro_details',
             schema: COACH_PRO_DETAILS_JSON_SCHEMA,
           },
-          gpt5MaxCompletionBudget: resolveCoachProGpt5CompletionBudget(),
+          gpt5MaxCompletionBudget: gpt5DetailsBudget,
         })
       );
       const content = response.choices[0]?.message?.content;
@@ -2566,19 +2788,32 @@ ${coachProVoiceBlockFromPreferences(
 
   private decorateDashboardInsightWithEmoji(input: {
     summary: string;
+    supportLine: string;
     tips: string[];
+    nextAction?: { title: string; description: string; actionLabel: string; target: string };
     shouldDecorateWithEmoji: boolean;
     caloriesBurned: number;
     remainingProtein: number;
     remainingCalories: number;
-  }): { summary: string; tips: string[] } {
+  }): {
+    summary: string;
+    supportLine: string;
+    tips: string[];
+    nextAction?: { title: string; description: string; actionLabel: string; target: string };
+  } {
     const hasEmoji = (text: string) => /[\u{1F300}-\u{1FAFF}]/u.test(text);
+    const passthrough = {
+      summary: input.summary,
+      supportLine: input.supportLine,
+      tips: input.tips,
+      ...(input.nextAction ? { nextAction: input.nextAction } : {}),
+    };
     if (!input.shouldDecorateWithEmoji) {
-      return { summary: input.summary, tips: input.tips };
+      return passthrough;
     }
 
     if (hasEmoji(input.summary) || input.tips.some((tip) => hasEmoji(tip))) {
-      return { summary: input.summary, tips: input.tips };
+      return passthrough;
     }
 
     const emoji =
@@ -2592,7 +2827,9 @@ ${coachProVoiceBlockFromPreferences(
 
     return {
       summary: `${emoji} ${input.summary}`,
+      supportLine: input.supportLine,
       tips: input.tips,
+      ...(input.nextAction ? { nextAction: input.nextAction } : {}),
     };
   }
 }

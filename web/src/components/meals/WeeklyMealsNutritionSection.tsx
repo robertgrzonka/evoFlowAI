@@ -1,5 +1,6 @@
 'use client';
 
+import { clsx } from 'clsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
@@ -13,6 +14,7 @@ import { weeklySectionsCopy } from '@/lib/i18n/copy/weekly-sections';
 import { mealTypeLabels } from '@/lib/i18n/copy/meals-page';
 import type { UiLocale } from '@/lib/i18n/ui-locale';
 import { formatDayWeekCardHeading } from '@/lib/i18n/format-day-label';
+import { accentEdgeClasses, type AccentKind } from '@/components/ui/accent-cards';
 
 type WeeklyWs = (typeof weeklySectionsCopy)['en'];
 
@@ -23,6 +25,10 @@ type DayRow = {
   carbs: number;
   fat: number;
   mealCount: number;
+  dayCalorieBudget?: number;
+  workoutCaloriesBurned?: number;
+  workoutSessions?: number;
+  activityBonusKcal?: number;
   meals?: Array<{ name: string; mealType: string; calories: number }>;
 };
 
@@ -49,7 +55,12 @@ export default function WeeklyMealsNutritionSection({ weekEndDate }: { weekEndDa
   const goals = summary?.goals;
 
   return (
-    <section className="rounded-2xl border border-border bg-surface overflow-hidden">
+    <section
+      className={clsx(
+        'rounded-2xl border border-border bg-surface overflow-hidden shadow-sm shadow-black/5',
+        accentEdgeClasses('primary', 'left'),
+      )}
+    >
       <div className="relative px-4 py-5 md:px-6 md:py-6 border-b border-border/80 bg-gradient-to-br from-primary-500/10 via-transparent to-amber-400/5">
         <AISectionHeader eyebrow={ws.mealsEyebrow} title={ws.mealsTitle} subtitle={ws.mealsSubtitle} />
         {summary ? (
@@ -94,31 +105,40 @@ export default function WeeklyMealsNutritionSection({ weekEndDate }: { weekEndDa
                   value={Math.round(summary.averages.calories)}
                   hint={`${ws.targetApprox}${Math.round(goals.calories)}`}
                   icon={<Flame className="h-4 w-4 text-amber-400" />}
+                  strip="primary"
                 />
                 <MacroStatCard
                   label={ws.avgProteinDay}
                   value={`${Math.round(summary.averages.protein)} g`}
                   hint={`${ws.goalG} ${Math.round(goals.protein)} g`}
                   icon={<Target className="h-4 w-4 text-cyan-400" />}
+                  strip="info"
                 />
                 <MacroStatCard
                   label={ws.avgCarbsDay}
                   value={`${Math.round(summary.averages.carbs)} g`}
                   hint={`${ws.goalG} ${Math.round(goals.carbs)} g`}
                   icon={<TrendingUp className="h-4 w-4 text-violet-400" />}
+                  strip="success"
                 />
                 <MacroStatCard
                   label={ws.avgFatDay}
                   value={`${Math.round(summary.averages.fat)} g`}
                   hint={`${ws.goalG} ${Math.round(goals.fat)} g`}
                   icon={<Sparkles className="h-4 w-4 text-rose-300" />}
+                  strip="primary"
                 />
               </div>
             ) : null}
           </>
         ) : null}
 
-        <div className="rounded-xl border border-border/90 bg-gradient-to-br from-surface-elevated to-background/40 p-4 md:p-5 space-y-4">
+        <div
+          className={clsx(
+            'rounded-xl border border-border/90 bg-gradient-to-br from-surface-elevated to-background/40 p-4 md:p-5 space-y-4 shadow-sm shadow-black/5',
+            accentEdgeClasses('success', 'left'),
+          )}
+        >
           {coachLoading && !coach ? (
             <div className="space-y-3">
               <Skeleton className="h-7 w-2/3 max-w-md rounded-md" />
@@ -142,7 +162,12 @@ export default function WeeklyMealsNutritionSection({ weekEndDate }: { weekEndDa
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
-                <div className="rounded-lg border border-border bg-background/30 p-4">
+                <div
+                  className={clsx(
+                    'rounded-lg border border-border bg-background/30 p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('primary', 'left'),
+                  )}
+                >
                   <p className="text-xs font-semibold uppercase tracking-wider text-amber-200/90 mb-3 flex items-center gap-2">
                     <Target className="h-3.5 w-3.5" />
                     {ws.whatToWatch}
@@ -156,7 +181,12 @@ export default function WeeklyMealsNutritionSection({ weekEndDate }: { weekEndDa
                     ))}
                   </ul>
                 </div>
-                <div className="rounded-lg border border-border bg-background/30 p-4">
+                <div
+                  className={clsx(
+                    'rounded-lg border border-border bg-background/30 p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('info', 'left'),
+                  )}
+                >
                   <p className="text-xs font-semibold uppercase tracking-wider text-cyan-200/90 mb-3 flex items-center gap-2">
                     <TrendingUp className="h-3.5 w-3.5" />
                     {ws.levelUpNextWeek}
@@ -178,7 +208,7 @@ export default function WeeklyMealsNutritionSection({ weekEndDate }: { weekEndDa
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
-                <button type="button" className="btn-secondary text-sm" onClick={() => router.push('/chat?channel=COACH')}>
+                <button type="button" className="btn-info text-sm" onClick={() => router.push('/chat?channel=COACH')}>
                   {ws.discussWeekInChat}
                 </button>
               </div>
@@ -406,14 +436,21 @@ function MacroStatCard({
   value,
   hint,
   icon,
+  strip,
 }: {
   label: string;
   value: string | number;
   hint: string;
   icon: ReactNode;
+  strip?: AccentKind;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-elevated/80 px-3.5 py-3 flex gap-3">
+    <div
+      className={clsx(
+        'rounded-xl border border-border bg-surface-elevated/80 px-3.5 py-3 flex gap-3 shadow-sm shadow-black/5',
+        strip ? accentEdgeClasses(strip, 'left') : null,
+      )}
+    >
       <div className="mt-0.5 text-text-muted">{icon}</div>
       <div className="min-w-0">
         <p className="text-[11px] uppercase tracking-wider text-text-muted">{label}</p>

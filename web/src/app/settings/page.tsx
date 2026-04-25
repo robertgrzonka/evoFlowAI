@@ -1,5 +1,6 @@
 'use client';
 
+import { clsx } from 'clsx';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
@@ -36,6 +37,8 @@ import { AISectionHeader, EvoHintCard } from '@/components/evo';
 import { settingsPageStrings } from '@/lib/i18n/settings-strings';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { persistPublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
+import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 const COACHING_TONE_OPTIONS = ['GENTLE', 'SUPPORTIVE', 'DIRECT', 'STRICT'] as const;
 type CoachingToneUi = (typeof COACHING_TONE_OPTIONS)[number];
@@ -43,7 +46,7 @@ type CoachingToneUi = (typeof COACHING_TONE_OPTIONS)[number];
 export default function SettingsPage() {
   const client = useApolloClient();
   const router = useRouter();
-  const today = new Date().toISOString().split('T')[0];
+  const { dateKey: today, timeZone } = useClientCalendarToday();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [evoDockEnabled, setEvoDockEnabled] = useState(true);
   const [weightKg, setWeightKg] = useState('');
@@ -61,7 +64,7 @@ export default function SettingsPage() {
     onCompleted: () => {
       kickDeferredDashboardAndWeeklyEvo(client);
     },
-    refetchQueries: [{ query: ME_QUERY }, ...buildDayRefetchQueriesAfterLog(today)],
+    refetchQueries: [{ query: ME_QUERY }, ...buildDayRefetchQueriesAfterLog(today, timeZone)],
     awaitRefetchQueries: true,
   });
   const [connectGarminStepSync, { loading: connectingGarmin }] = useMutation(CONNECT_GARMIN_STEP_SYNC_MUTATION);
@@ -181,6 +184,7 @@ export default function SettingsPage() {
     try {
       const result = await syncGarminSteps({ variables: { date: today } });
       await refetchStepSync();
+      kickDeferredDashboardAndWeeklyEvo(client);
       const payload = result.data?.syncGarminSteps;
       appToast.success(
         s.toastGarminSyncedTitle,
@@ -221,14 +225,24 @@ export default function SettingsPage() {
           />
         </div>
 
-        <section className="bg-surface rounded-xl border border-border p-5">
+        <section
+          className={clsx(
+            'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+            accentEdgeClasses('primary', 'left'),
+          )}
+        >
           <h1 className="text-xl font-semibold tracking-tight text-text-primary">{s.pageTitle}</h1>
           <p className="text-text-secondary text-sm mt-1">{s.pageSubtitle}</p>
         </section>
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <section className="xl:col-span-8 space-y-4">
-            <div className="bg-surface rounded-xl border border-border p-5">
+            <div
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('info', 'left'),
+              )}
+            >
               <AISectionHeader title={s.experienceTitle} subtitle={s.experienceSubtitle} />
               <div className="space-y-3">
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
@@ -413,7 +427,7 @@ export default function SettingsPage() {
                         type="button"
                         onClick={handleConnectGarmin}
                         disabled={connectingGarmin || stepSyncLoading || !garminStatus?.configured}
-                        className="btn-secondary inline-flex items-center gap-2"
+                        className="btn-info inline-flex items-center gap-2"
                       >
                         <Cable className="h-4 w-4" />
                         {connectingGarmin ? s.connectingGarmin : s.connectGarmin}
@@ -456,10 +470,18 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="bg-surface rounded-xl border border-border p-5">
+            <div
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('success', 'left'),
+              )}
+            >
               <h2 className="text-base font-semibold tracking-tight text-text-primary mb-4">{s.planSnapshotTitle}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <PlanPill label={s.pillPrimaryGoal} value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))} />
+                <PlanPill
+                  label={s.pillPrimaryGoal}
+                  value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'maintenance'), graphqlAppLocaleToUi(appLocale))}
+                />
                 <PlanPill
                   label={s.pillCoachingTone}
                   value={formatCoachingTone(String(user?.preferences?.coachingTone || 'SUPPORTIVE'), s)}
@@ -489,7 +511,12 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="bg-surface rounded-xl border border-border p-5">
+            <div
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('primary', 'left'),
+              )}
+            >
               <h2 className="text-base font-semibold tracking-tight text-text-primary mb-4">{s.quickDestTitle}</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                 <QuickLinkCard
@@ -521,7 +548,12 @@ export default function SettingsPage() {
           </section>
 
           <aside className="xl:col-span-4 space-y-4">
-            <section className="bg-surface rounded-xl border border-border p-5">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('info', 'left'),
+              )}
+            >
               <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">{s.accountTitle}</h3>
               <div className="space-y-3">
                 <InfoRow icon={<UserRound className="h-4 w-4 text-text-muted" />} label={s.nameLabel} value={user?.name || s.notSet} />
@@ -529,7 +561,12 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section className="bg-surface rounded-xl border border-border p-5">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('primary', 'left'),
+              )}
+            >
               <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">{s.securityTitle}</h3>
               <div className="space-y-2">
                 <button onClick={() => router.push('/forgot-password')} className="btn-secondary w-full">

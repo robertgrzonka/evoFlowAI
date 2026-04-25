@@ -83,6 +83,12 @@ export const WEEKLY_MEALS_NUTRITION_QUERY = gql`
         carbs
         fat
         mealCount
+        dayCalorieBudget
+        workoutCaloriesBurned
+        workoutSessions
+        activityBonusKcal
+        steps
+        stepCaloriesBudget
         meals {
           name
           mealType
@@ -152,8 +158,8 @@ export const WEEKLY_WORKOUTS_COACH_QUERY = gql`
 `;
 
 export const DAILY_STATS_QUERY = gql`
-  query DailyStats($date: String!) {
-    dailyStats(date: $date) {
+  query DailyStats($date: String!, $clientTimeZone: String) {
+    dailyStats(date: $date, clientTimeZone: $clientTimeZone) {
       date
       totalCalories
       totalProtein
@@ -224,8 +230,8 @@ export const NEW_CHAT_MESSAGE_SUBSCRIPTION = gql`
 `;
 
 export const MY_WORKOUTS_QUERY = gql`
-  query MyWorkouts($date: String, $limit: Int, $offset: Int) {
-    myWorkouts(date: $date, limit: $limit, offset: $offset) {
+  query MyWorkouts($date: String, $limit: Int, $offset: Int, $clientTimeZone: String) {
+    myWorkouts(date: $date, limit: $limit, offset: $offset, clientTimeZone: $clientTimeZone) {
       id
       title
       notes
@@ -239,8 +245,8 @@ export const MY_WORKOUTS_QUERY = gql`
 `;
 
 export const WORKOUT_COACH_SUMMARY_QUERY = gql`
-  query WorkoutCoachSummary($date: String!) {
-    workoutCoachSummary(date: $date) {
+  query WorkoutCoachSummary($date: String!, $clientTimeZone: String) {
+    workoutCoachSummary(date: $date, clientTimeZone: $clientTimeZone) {
       date
       consumedCalories
       consumedProtein
@@ -274,11 +280,18 @@ export const NEW_WORKOUT_SUBSCRIPTION = gql`
 `;
 
 export const DASHBOARD_INSIGHT_QUERY = gql`
-  query DashboardInsight($date: String!) {
-    dashboardInsight(date: $date) {
+  query DashboardInsight($date: String!, $clientTimeZone: String) {
+    dashboardInsight(date: $date, clientTimeZone: $clientTimeZone) {
       date
       summary
+      supportLine
       tips
+      nextAction {
+        title
+        description
+        actionLabel
+        target
+      }
       caloriesBurned
       steps
       stepsCalories
@@ -287,6 +300,12 @@ export const DASHBOARD_INSIGHT_QUERY = gql`
       remainingCalories
       remainingProtein
     }
+  }
+`;
+
+export const ROLLING_SEVEN_DAY_AVERAGE_STEPS_QUERY = gql`
+  query RollingSevenDayAverageSteps($endDate: String, $clientTimeZone: String) {
+    rollingSevenDayAverageSteps(endDate: $endDate, clientTimeZone: $clientTimeZone)
   }
 `;
 

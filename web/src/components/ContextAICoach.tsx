@@ -1,13 +1,16 @@
 'use client';
 
+import { clsx } from 'clsx';
 import { useMemo, useState } from 'react';
 import { useMutation } from '@apollo/client';
 import { SEND_MESSAGE_MUTATION } from '@/lib/graphql/mutations';
+import { buildChatStatsContext } from '@/lib/chat-stats-context';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import { ButtonSpinner } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
 import ChatMarkdown from '@/components/ChatMarkdown';
 import { SmartSuggestionChips } from '@/components/evo';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 type ContextAICoachProps = {
   title: string;
@@ -49,7 +52,7 @@ export default function ContextAICoach({
         input: {
           content,
           channel: 'COACH',
-          context: statsReference ? { statsReference } : undefined,
+          context: buildChatStatsContext(statsReference),
         },
       },
     });
@@ -62,7 +65,12 @@ export default function ContextAICoach({
   };
 
   return (
-    <aside className="bg-surface rounded-xl border border-border p-4 md:p-5 space-y-4">
+    <aside
+      className={clsx(
+        'bg-surface rounded-xl border border-border p-4 md:p-5 space-y-4 shadow-sm shadow-black/5',
+        accentEdgeClasses('primary', 'left'),
+      )}
+    >
       <div className="flex items-start gap-3">
         <AICoachAvatar size="md" />
         <div>

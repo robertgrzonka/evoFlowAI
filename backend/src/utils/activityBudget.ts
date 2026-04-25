@@ -1,3 +1,4 @@
+import { calorieDeltaForInferredTone, inferCalorieGoalTone } from '@evoflowai/shared';
 import { calculateMacroGoals } from './nutritionGoals';
 
 export const estimateCaloriesFromSteps = (steps: number): number => {
@@ -6,11 +7,7 @@ export const estimateCaloriesFromSteps = (steps: number): number => {
 };
 
 export const getCalorieDeltaByPrimaryGoal = (primaryGoal: string | undefined | null): number => {
-  const normalized = String(primaryGoal || 'maintenance').toLowerCase();
-  if (normalized === 'fat_loss') return -300;
-  if (normalized === 'muscle_gain') return 300;
-  if (normalized === 'strength') return 150;
-  return 0;
+  return calorieDeltaForInferredTone(inferCalorieGoalTone(primaryGoal));
 };
 
 export const buildDynamicTargets = (input: {

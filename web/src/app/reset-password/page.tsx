@@ -1,5 +1,6 @@
 'use client';
 
+import { clsx } from 'clsx';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -14,6 +15,7 @@ import EvoMark from '@/components/EvoMark';
 import { appToast } from '@/lib/app-toast';
 import { authPagesCopy } from '@/lib/i18n/copy/auth-pages';
 import { usePublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -169,7 +171,12 @@ export default function ResetPasswordPage() {
               </button>
             </form>
           ) : (
-            <div className="rounded-lg border border-border bg-surface/60 p-4">
+            <div
+              className={clsx(
+                'rounded-lg border border-border bg-surface/60 p-4 shadow-sm shadow-black/5',
+                accentEdgeClasses('success', 'left'),
+              )}
+            >
               <p className="text-sm text-text-secondary">{c.missingTokenBody}</p>
               <Link
                 href="/forgot-password"

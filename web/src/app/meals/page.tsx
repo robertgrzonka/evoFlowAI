@@ -7,21 +7,19 @@ import { clsx } from 'clsx';
 import { ChevronDown, ImagePlus, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import { ButtonSpinner, ListRowSkeleton, PageLoader } from '@/components/ui/loading';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { getDestructiveConfirmLabels } from '@/lib/i18n/destructive-confirm';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { DAILY_STATS_QUERY } from '@/lib/graphql/queries';
 import { DELETE_FOOD_ITEM_MUTATION, LOG_MEAL_WITH_AI_MUTATION } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
 import ChatMarkdown from '@/components/ChatMarkdown';
 import { buildDayRefetchQueriesAfterLog, kickDeferredAfterMealLog } from '@/lib/day-data';
-import {
-  AISectionHeader,
-  EvoHintCard,
-  EvoThinkingOverlay,
-  InsightEmptyState,
-  SmartSuggestionChips,
-} from '@/components/evo';
+import { AISectionHeader, EvoThinkingOverlay, InsightEmptyState, SmartSuggestionChips } from '@/components/evo';
 import WeeklyMealsNutritionSection from '@/components/meals/WeeklyMealsNutritionSection';
-import { utcYesterdayDateKey } from '@/lib/calendar-date-key';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
+import { addDaysToDateKey } from '@/lib/calendar-date-key';
+import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
 import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
 import { mealTypeLabels, mealsPageCopy } from '@/lib/i18n/copy/meals-page';
 
@@ -46,9 +44,9 @@ export default function MealsPage() {
   const m = mealsPageCopy[locale];
   const mealTypes = mealTypeLabels[locale];
   const router = useRouter();
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const { dateKey: today, timeZone } = useClientCalendarToday();
   /** Weekly strip: 7 completed days ending yesterday (today still in progress). */
-  const weeklyStatsEndDate = useMemo(() => utcYesterdayDateKey(), []);
+  const weeklyStatsEndDate = useMemo(() => addDaysToDateKey(today, -1), [today]);
   const [selectedDate, setSelectedDate] = useState(today);
   const [content, setContent] = useState('');
   const [mealType, setMealType] = useState<MealType>('lunch');
@@ -57,12 +55,12 @@ export default function MealsPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [readingImage, setReadingImage] = useState(false);
   const [lastInsight, setLastInsight] = useState('');
-  const [pendingReview, setPendingReview] = useState(false);
   const [todayListOpen, setTodayListOpen] = useState(true);
+  const [deleteMealId, setDeleteMealId] = useState<string | null>(null);
   const [addMealOpen, setAddMealOpen] = useState(true);
 
   const { data, loading } = useQuery(DAILY_STATS_QUERY, {
-    variables: { date: selectedDate },
+    variables: { date: selectedDate, clientTimeZone: timeZone },
     fetchPolicy: 'cache-and-network',
   });
 
@@ -71,7 +69,6 @@ export default function MealsPage() {
       setContent('');
       setImageBase64('');
       setImagePreview(null);
-      setPendingReview(false);
       const message = String(result?.logMealWithAI?.message?.content || '').trim();
       if (message) {
         setLastInsight(message);
@@ -82,7 +79,7 @@ export default function MealsPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save meal.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
     awaitRefetchQueries: true,
   });
 
@@ -93,7 +90,7 @@ export default function MealsPage() {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
     awaitRefetchQueries: true,
   });
 
@@ -138,11 +135,6 @@ export default function MealsPage() {
       return;
     }
 
-    if (!pendingReview) {
-      setPendingReview(true);
-      return;
-    }
-
     await logMealWithAI({
       variables: {
         input: {
@@ -156,10 +148,11 @@ export default function MealsPage() {
     });
   };
 
-  const handleDeleteMeal = async (mealId: string) => {
-    const confirmed = window.confirm(m.confirmDelete);
-    if (!confirmed) return;
-    const result = await deleteFoodItem({ variables: { id: mealId } });
+  const handleConfirmDeleteMeal = async () => {
+    if (!deleteMealId) return;
+    const id = deleteMealId;
+    setDeleteMealId(null);
+    const result = await deleteFoodItem({ variables: { id } });
     if (result.data?.deleteFoodItem) {
       appToast.success('Meal deleted', 'Entry removed from your day.');
     }
@@ -170,6 +163,7 @@ export default function MealsPage() {
   }
 
   const meals: MealEntry[] = data?.dailyStats?.meals || [];
+  const delLabels = getDestructiveConfirmLabels(locale);
   const mealSuggestionChips = [
     { id: 'meal-chip-1', label: m.chip1 },
     { id: 'meal-chip-2', label: m.chip2 },
@@ -178,11 +172,22 @@ export default function MealsPage() {
 
   return (
     <AppShell>
+      <ConfirmDialog
+        open={deleteMealId !== null}
+        title={m.deleteMealTitle}
+        description={m.confirmDelete}
+        confirmLabel={delLabels.confirm}
+        cancelLabel={delLabels.cancel}
+        onCancel={() => setDeleteMealId(null)}
+        onConfirm={() => void handleConfirmDeleteMeal()}
+        confirmBusy={deletingMeal}
+        variant="danger"
+      />
       <EvoThinkingOverlay open={savingMeal} locale={locale} intent="meal" />
       <div className="space-y-5">
         <PageTopBar
           rightContent={
-            <button onClick={() => router.push('/chat?channel=COACH')} className="btn-secondary">
+            <button type="button" onClick={() => router.push('/chat?channel=COACH')} className="btn-info">
               {m.openEvoChat}
             </button>
           }
@@ -193,7 +198,12 @@ export default function MealsPage() {
 
         <div className="space-y-6 xl:space-y-8">
           <div className="grid gap-6 xl:gap-8 lg:grid-cols-2 items-start">
-            <section className="bg-surface border border-border rounded-xl p-4 md:p-5 min-w-0">
+            <section
+              className={clsx(
+                'bg-surface border border-border rounded-xl p-4 md:p-5 min-w-0 shadow-sm shadow-black/5',
+                accentEdgeClasses('primary', 'left'),
+              )}
+            >
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-lg font-semibold tracking-tight text-text-primary min-w-0">
                   {m.mealsFor} {selectedDate}
@@ -215,7 +225,12 @@ export default function MealsPage() {
               {todayListOpen ? (
                 <div id="meals-today-panel" className="space-y-4">
                   {lastInsight ? (
-                    <div className="rounded-lg border border-border bg-surface-elevated p-3">
+                    <div
+                      className={clsx(
+                        'rounded-lg border border-border bg-surface-elevated p-3 shadow-sm shadow-black/5',
+                        accentEdgeClasses('info', 'left'),
+                      )}
+                    >
                       <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-2">{m.latestAnalysis}</p>
                       <ChatMarkdown content={lastInsight} />
                     </div>
@@ -235,7 +250,7 @@ export default function MealsPage() {
                         >
                           <button
                             type="button"
-                            onClick={() => handleDeleteMeal(meal.id)}
+                            onClick={() => setDeleteMealId(meal.id)}
                             disabled={deletingMeal}
                             className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
                             title={m.deleteMealTitle}
@@ -268,7 +283,13 @@ export default function MealsPage() {
               ) : null}
             </section>
 
-            <section id="add-meal" className="scroll-mt-6 bg-surface border border-border rounded-xl p-4 md:p-5 min-w-0">
+            <section
+              id="add-meal"
+              className={clsx(
+                'scroll-mt-6 bg-surface border border-border rounded-xl p-4 md:p-5 min-w-0 shadow-sm shadow-black/5',
+                accentEdgeClasses('success', 'left'),
+              )}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <AISectionHeader eyebrow={m.eyebrow} title={m.logTitle} subtitle={m.logSubtitle} />
@@ -289,7 +310,7 @@ export default function MealsPage() {
               {addMealOpen ? (
                 <div id="add-meal-panel">
                   <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                    <div className="rounded-lg border border-border bg-surface-elevated p-3.5 space-y-2">
+                    <div className="accent-drawer-block space-y-2">
                       <label htmlFor="meals-date" className="block text-sm font-medium text-text-primary">
                         {m.dayLabel}
                         <span className="text-text-muted font-normal">{m.dayOptional}</span>
@@ -363,24 +384,6 @@ export default function MealsPage() {
                       )}
                     </div>
 
-                    {pendingReview ? (
-                      <EvoHintCard
-                        title={m.readyTitle}
-                        tone="notice"
-                        content={m.readyContent}
-                        action={
-                          <div className="grid grid-cols-2 gap-2">
-                            <button type="button" className="btn-secondary" onClick={() => setPendingReview(false)}>
-                              {m.editDetails}
-                            </button>
-                            <button type="submit" disabled={savingMeal} className="btn-primary">
-                              {m.confirmAnalyze}
-                            </button>
-                          </div>
-                        }
-                      />
-                    ) : null}
-
                     <button type="submit" disabled={savingMeal} className="btn-primary w-full inline-flex items-center justify-center gap-2">
                       {savingMeal ? (
                         <>
@@ -388,7 +391,7 @@ export default function MealsPage() {
                           {m.analyzing}
                         </>
                       ) : (
-                        pendingReview ? m.analyzeNow : m.reviewBeforeSave
+                        m.saveMeal
                       )}
                     </button>
                   </form>

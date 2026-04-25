@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { clsx } from 'clsx';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { Camera, Dumbbell, Flame, Trash2 } from 'lucide-react';
@@ -14,16 +15,20 @@ import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import ContextAICoach from '@/components/ContextAICoach';
 import { ListRowSkeleton, PageLoader, Skeleton, StatCardSkeleton } from '@/components/ui/loading';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { getDestructiveConfirmLabels } from '@/lib/i18n/destructive-confirm';
 import { DELETE_FOOD_ITEM_MUTATION, DELETE_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
 import { UPSERT_DAILY_ACTIVITY_MUTATION } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
 import {
   buildDayRefetchQueriesAfterLog,
+  buildRollingSevenDayAverageStepsRefetch,
   kickDeferredAfterMealLog,
   kickDeferredAfterWorkoutLog,
   kickDeferredDashboardAndWeeklyEvo,
 } from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
 import { formatPrimaryGoal } from '@/lib/formatters';
 import {
   AISectionHeader,
@@ -32,6 +37,7 @@ import {
 } from '@/components/evo';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { statsPageCopy } from '@/lib/i18n/copy/stats-page';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type AnalysisMode = 'combined' | 'nutrition' | 'training';
@@ -39,14 +45,16 @@ type AnalysisMode = 'combined' | 'nutrition' | 'training';
 export default function StatsPage() {
   const client = useApolloClient();
   const router = useRouter();
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const { dateKey: today, timeZone } = useClientCalendarToday();
   const [selectedDate, setSelectedDate] = useState(today);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('combined');
   const [stepsInput, setStepsInput] = useState(0);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ kind: 'meal' | 'workout'; id: string } | null>(null);
 
   const { data: userData, loading: userLoading, error: userError } = useQuery(ME_QUERY);
   const daySnapshot = useDaySnapshot({
     date: selectedDate,
+    clientTimeZone: timeZone,
     enabled: Boolean(userData?.me),
     includeInsight: true,
   });
@@ -62,7 +70,7 @@ export default function StatsPage() {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
     awaitRefetchQueries: true,
   });
 
@@ -73,7 +81,7 @@ export default function StatsPage() {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete workout.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
     awaitRefetchQueries: true,
   });
   const [upsertDailyActivity, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
@@ -84,7 +92,10 @@ export default function StatsPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not update steps.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    refetchQueries: [
+      ...buildDayRefetchQueriesAfterLog(selectedDate, timeZone),
+      buildRollingSevenDayAverageStepsRefetch(today, timeZone),
+    ],
     awaitRefetchQueries: true,
   });
 
@@ -117,28 +128,30 @@ export default function StatsPage() {
   const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
   const analysisModeLabel =
     analysisMode === 'combined' ? sc.modeCombined : analysisMode === 'nutrition' ? sc.modeNutrition : sc.modeTraining;
+  const delLabels = getDestructiveConfirmLabels(locale);
+  const deleteDialogTitle =
+    deleteConfirm?.kind === 'workout' ? sc.deleteWorkoutTitle : sc.deleteMealTitle;
+  const deleteDialogDescription =
+    deleteConfirm?.kind === 'workout' ? sc.confirmDeleteWorkout : sc.confirmDeleteMeal;
 
-  const handleDeleteMeal = async (mealId: string) => {
-    const confirmed = window.confirm(sc.confirmDeleteMeal);
-    if (!confirmed) return;
-
-    const result = await deleteFoodItem({ variables: { id: mealId } });
-    if (result.data?.deleteFoodItem) {
-      appToast.success('Meal deleted', 'Entry removed for selected day.');
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+    const { kind, id } = deleteConfirm;
+    setDeleteConfirm(null);
+    if (kind === 'meal') {
+      const result = await deleteFoodItem({ variables: { id } });
+      if (result.data?.deleteFoodItem) {
+        appToast.success('Meal deleted', 'Entry removed for selected day.');
+      } else {
+        appToast.error('Delete failed', 'Could not delete meal.');
+      }
     } else {
-      appToast.error('Delete failed', 'Could not delete meal.');
-    }
-  };
-
-  const handleDeleteWorkout = async (workoutId: string) => {
-    const confirmed = window.confirm(sc.confirmDeleteWorkout);
-    if (!confirmed) return;
-
-    const result = await deleteWorkout({ variables: { id: workoutId } });
-    if (result.data?.deleteWorkout) {
-      appToast.success('Workout deleted', 'Workout removed for selected day.');
-    } else {
-      appToast.error('Delete failed', 'Could not delete workout.');
+      const result = await deleteWorkout({ variables: { id } });
+      if (result.data?.deleteWorkout) {
+        appToast.success('Workout deleted', 'Workout removed for selected day.');
+      } else {
+        appToast.error('Delete failed', 'Could not delete workout.');
+      }
     }
   };
 
@@ -161,11 +174,24 @@ export default function StatsPage() {
 
   return (
       <AppShell>
+        <ConfirmDialog
+          open={deleteConfirm !== null}
+          title={deleteDialogTitle}
+          description={deleteDialogDescription}
+          confirmLabel={delLabels.confirm}
+          cancelLabel={delLabels.cancel}
+          onCancel={() => setDeleteConfirm(null)}
+          onConfirm={() => void handleConfirmDelete()}
+          confirmBusy={
+            deleteConfirm?.kind === 'workout' ? deletingWorkout : deleteConfirm?.kind === 'meal' ? deletingMeal : false
+          }
+          variant="danger"
+        />
         <div className="mb-5">
           <PageTopBar
             rightContent={
               <span className="text-sm text-text-secondary">
-                {sc.goalModePrefix} {formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))}
+                {sc.goalModePrefix} {formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'maintenance'), locale)}
               </span>
             }
           />
@@ -173,7 +199,12 @@ export default function StatsPage() {
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <div className="xl:col-span-8">
-            <div className="bg-surface rounded-xl border border-border p-5 mb-6">
+            <div
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 mb-6 shadow-sm shadow-black/5',
+                accentEdgeClasses('primary', 'left'),
+              )}
+            >
               <AISectionHeader eyebrow={sc.eyebrow} title={sc.pickDayTitle} subtitle={sc.pickDaySubtitle} />
               <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                 <div className="inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
@@ -213,7 +244,11 @@ export default function StatsPage() {
 
             {analysisMode === 'combined' && daySnapshot.insight ? (
               <div className="mb-6">
-                <EvoHintCard title={sc.mainInsightTitle} tone="notice" content={daySnapshot.insight.summary} />
+                <EvoHintCard
+                  title={sc.mainInsightTitle}
+                  tone="notice"
+                  content={daySnapshot.insight.summary?.trim() ? daySnapshot.insight.summary : sc.mainInsightPending}
+                />
               </div>
             ) : null}
 
@@ -270,7 +305,12 @@ export default function StatsPage() {
             ) : null}
 
             {(analysisMode === 'combined' || analysisMode === 'nutrition') ? (
-            <section className="bg-surface rounded-xl border border-border p-5">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('info', 'left'),
+              )}
+            >
               <h3 className="text-xl font-semibold tracking-tight text-text-primary mb-5">
                 {sc.mealsFor} {selectedDate}
               </h3>
@@ -289,7 +329,7 @@ export default function StatsPage() {
                     >
                       <button
                         type="button"
-                        onClick={() => handleDeleteMeal(meal.id)}
+                        onClick={() => setDeleteConfirm({ kind: 'meal', id: meal.id })}
                         disabled={deletingMeal}
                         className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
                         title={sc.deleteMealTitle}
@@ -328,15 +368,17 @@ export default function StatsPage() {
             ) : null}
 
             {(analysisMode === 'combined' || analysisMode === 'training') ? (
-            <section className="bg-surface rounded-xl border border-border p-5 mt-4">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-5 mt-4 shadow-sm shadow-black/5',
+                accentEdgeClasses('success', 'left'),
+              )}
+            >
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-xl font-semibold tracking-tight text-text-primary">
                   {sc.workoutsFor} {selectedDate}
                 </h3>
-                <button
-                  onClick={() => router.push('/workouts')}
-                  className="btn-secondary"
-                >
+                <button type="button" onClick={() => router.push('/workouts')} className="btn-info">
                   {sc.openWorkoutCoach}
                 </button>
               </div>
@@ -353,16 +395,19 @@ export default function StatsPage() {
                     icon={<Dumbbell className="h-4 w-4 text-amber-400" />}
                     label={sc.sessions}
                     value={`${workouts.length}`}
+                    accent="primary"
                   />
                   <WorkoutSummaryCard
                     icon={<Flame className="h-4 w-4 text-info-500" />}
                     label={sc.burned}
                     value={`${workoutSummary?.caloriesBurned?.toFixed(0) || '0'} kcal`}
+                    accent="info"
                   />
                   <WorkoutSummaryCard
                     icon={<Camera className="h-4 w-4 text-primary-400" />}
                     label={sc.netCalories}
                     value={`${workoutSummary?.netCalories?.toFixed(0) || '0'} kcal`}
+                    accent="success"
                   />
                 </div>
               )}
@@ -381,7 +426,7 @@ export default function StatsPage() {
                     >
                       <button
                         type="button"
-                        onClick={() => handleDeleteWorkout(workout.id)}
+                        onClick={() => setDeleteConfirm({ kind: 'workout', id: workout.id })}
                         disabled={deletingWorkout}
                         className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
                         title={sc.deleteWorkoutTitle}
@@ -418,7 +463,12 @@ export default function StatsPage() {
           <div className="xl:col-span-4">
             <div className="space-y-4">
               {weeklyReview ? (
-                <section className="bg-surface rounded-xl border border-border p-4">
+                <section
+                  className={clsx(
+                    'bg-surface rounded-xl border border-border p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('info', 'left'),
+                  )}
+                >
                   <h4 className="text-sm font-semibold tracking-tight text-text-primary mb-2">Weekly trend snapshot</h4>
                   {!weeklyReview.isCompleteWeek ? (
                     <div className="rounded-lg border border-dashed border-primary-500/30 bg-primary-500/5 px-3 py-2 mb-3">
@@ -428,25 +478,32 @@ export default function StatsPage() {
                       </p>
                     </div>
                   ) : null}
-                  <p className="text-sm text-text-secondary mb-3 leading-relaxed whitespace-pre-wrap">{weeklyReview.summary}</p>
+                  {weeklyReview.summary?.trim() ? (
+                    <p className="text-sm text-text-secondary mb-3 leading-relaxed whitespace-pre-wrap">{weeklyReview.summary}</p>
+                  ) : (
+                    <p className="text-sm text-text-muted mb-3">{sc.weeklyNarrativePending}</p>
+                  )}
                   <div className="grid grid-cols-3 gap-2 mb-2">
                     <WorkoutSummaryCard
                       icon={<Camera className="h-4 w-4 text-info-400" />}
                       label={locale === 'pl' ? 'Odżywianie' : 'Nutrition'}
                       value={`${weeklyReview.nutritionScore}/100`}
+                      accent="primary"
                     />
                     <WorkoutSummaryCard
                       icon={<Dumbbell className="h-4 w-4 text-amber-300" />}
                       label={locale === 'pl' ? 'Trening' : 'Training'}
                       value={`${weeklyReview.trainingScore}/100`}
+                      accent="info"
                     />
                     <WorkoutSummaryCard
                       icon={<Flame className="h-4 w-4 text-success-400" />}
                       label={locale === 'pl' ? 'Konsekwencja' : 'Consistency'}
                       value={`${weeklyReview.consistencyScore}/100`}
+                      accent="success"
                     />
                   </div>
-                  {weeklyReview.proTip ? (
+                  {weeklyReview.proTip?.trim() ? (
                     <div className="rounded-lg border border-primary-500/25 bg-primary-500/5 px-3 py-2.5 mb-2">
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-primary-200 mb-1">{sc.proTip}</p>
                       <p className="text-xs text-text-primary leading-snug">{weeklyReview.proTip}</p>
@@ -454,7 +511,12 @@ export default function StatsPage() {
                   ) : null}
                 </section>
               ) : (
-                <section className="bg-surface rounded-xl border border-border p-4">
+                <section
+                  className={clsx(
+                    'bg-surface rounded-xl border border-border p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('info', 'left'),
+                  )}
+                >
                   <InsightEmptyState title={sc.weeklyEmptyTitle} description={sc.weeklyEmptyDescription} />
                 </section>
               )}
@@ -480,13 +542,20 @@ function WorkoutSummaryCard({
   icon,
   label,
   value,
+  accent = 'info',
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  accent?: 'primary' | 'info' | 'success';
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface-elevated p-3">
+    <div
+      className={clsx(
+        'rounded-lg border border-border bg-surface-elevated p-3 shadow-sm shadow-black/5',
+        accentEdgeClasses(accent, 'left'),
+      )}
+    >
       <div className="inline-flex items-center gap-1.5 text-xs text-text-muted">
         {icon}
         {label}
@@ -515,14 +584,19 @@ function StatCard({
 }) {
   const percentage = goal ? (parseFloat(value) / goal) * 100 : progress;
   const toneStyles = {
-    brand: { value: 'text-primary-500', bar: 'bg-primary-500' },
-    info: { value: 'text-info-500', bar: 'bg-info-500' },
-    success: { value: 'text-success-500', bar: 'bg-success-500' },
-    brandSoft: { value: 'text-primary-300', bar: 'bg-primary-300' },
-  } satisfies Record<StatTone, { value: string; bar: string }>;
+    brand: { value: 'text-primary-500', bar: 'bg-primary-500', edge: accentEdgeClasses('primary', 'left') },
+    info: { value: 'text-info-500', bar: 'bg-info-500', edge: accentEdgeClasses('info', 'left') },
+    success: { value: 'text-success-500', bar: 'bg-success-500', edge: accentEdgeClasses('success', 'left') },
+    brandSoft: { value: 'text-primary-300', bar: 'bg-primary-300', edge: 'border-l-4 border-l-primary-300' },
+  } satisfies Record<StatTone, { value: string; bar: string; edge: string }>;
 
   return (
-    <div className="bg-surface rounded-xl border border-border p-5">
+    <div
+      className={clsx(
+        'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+        toneStyles[tone].edge,
+      )}
+    >
       <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-text-muted">{title}</h3>
       <div className="mb-3 flex items-baseline space-x-2">
         <span className={`text-2xl font-semibold tracking-tight ${toneStyles[tone].value}`}>{value}</span>

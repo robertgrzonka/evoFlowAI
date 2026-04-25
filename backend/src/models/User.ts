@@ -20,8 +20,9 @@ const userPreferencesSchema = new Schema<UserPreferences>({
   weeklyActiveMinutesGoal: { type: Number, default: 180 },
   primaryGoal: {
     type: String,
-    enum: ['fat_loss', 'maintenance', 'muscle_gain', 'strength'],
-    default: 'maintenance'
+    trim: true,
+    maxlength: 400,
+    default: 'maintenance',
   },
   coachingTone: {
     type: String,

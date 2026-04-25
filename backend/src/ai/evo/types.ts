@@ -12,8 +12,6 @@ export type EvoResponseMode =
   | 'microcopy'
   | 'notification';
 
-export type EvoPrimaryGoal = 'fat_loss' | 'maintenance' | 'muscle_gain' | 'strength';
-
 export type EvoProactivity = 'low' | 'medium' | 'high';
 
 export type EvoChatMessageRole = 'user' | 'assistant' | 'system';
@@ -75,6 +73,10 @@ export type EvoUserContext = {
   todayActivity?: EvoTodayActivity;
   /** YYYY-MM-DD for which todayStats / dayMeals / workouts below were loaded (may differ from "today"). */
   statsDateKey?: string;
+  /** IANA timezone; statsDateKey + logged data buckets use this calendar day. */
+  clientTimeZone?: string;
+  /** Client device clock (ms) when the user sent the message — for "now" / meal timing advice. */
+  clientNowMs?: number;
   /** Logged meals for statsDateKey (names + macros). */
   dayMeals?: EvoDayMealLine[];
   /** Stored preference: UI + default Evo language (beta). */

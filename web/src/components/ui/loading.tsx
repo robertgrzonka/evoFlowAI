@@ -22,7 +22,7 @@ export function PageLoader() {
 
 export function StatCardSkeleton() {
   return (
-    <div className="bg-surface rounded-xl border border-border p-5 space-y-3">
+    <div className="bg-surface rounded-xl border border-border p-5 space-y-3 shadow-sm shadow-black/5 border-l-4 border-l-border">
       <Skeleton className="h-3 w-20" />
       <Skeleton className="h-8 w-24" />
       <Skeleton className="h-2 w-full rounded-full" />
@@ -33,7 +33,7 @@ export function StatCardSkeleton() {
 
 export function ListRowSkeleton() {
   return (
-    <div className="bg-surface-elevated rounded-lg border border-border p-3.5 flex items-center justify-between">
+    <div className="bg-surface-elevated rounded-lg border border-border p-3.5 flex items-center justify-between shadow-sm shadow-black/5 border-l-4 border-l-border">
       <div className="space-y-2">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-24" />

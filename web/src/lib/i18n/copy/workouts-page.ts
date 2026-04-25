@@ -41,6 +41,7 @@ export const workoutsPageCopy: Record<
     saveAndSync: string;
     daySummaryTitle: (date: string, isToday: boolean) => string;
     coachSuggestion: string;
+    coachInsightEmpty: string;
     explainScore: string;
     suggestPostMeal: string;
     noInsightTitle: string;
@@ -110,6 +111,7 @@ export const workoutsPageCopy: Record<
     daySummaryTitle: (date, isToday) =>
       `Day summary for ${date}${isToday ? ' (today)' : ''} — food + training`,
     coachSuggestion: 'Coach suggestion',
+    coachInsightEmpty: 'Full coaching note for this day is on your dashboard (Evo daily brief) or in chat.',
     explainScore: 'Explain this score',
     suggestPostMeal: 'Suggest post-workout meal',
     noInsightTitle: 'No workout insight yet',
@@ -180,6 +182,7 @@ export const workoutsPageCopy: Record<
     daySummaryTitle: (date, isToday) =>
       `Podsumowanie dnia ${date}${isToday ? ' (dziś)' : ''} — jedzenie + trening`,
     coachSuggestion: 'Sugestia coacha',
+    coachInsightEmpty: 'Pełna notatka dla tego dnia jest na pulpicie (dzienny brief Evo) albo w czacie.',
     explainScore: 'Wyjaśnij ten wynik',
     suggestPostMeal: 'Propozycja posiłku po treningu',
     noInsightTitle: 'Brak insightu treningowego',

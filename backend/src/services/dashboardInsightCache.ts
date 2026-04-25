@@ -1,9 +1,19 @@
 import crypto from 'crypto';
 import { DashboardInsightCache } from '../models/DashboardInsightCache';
 
+export type DashboardNextActionAiPayload = {
+  title: string;
+  description: string;
+  actionLabel: string;
+  /** MEALS | WORKOUTS | CHAT_COACH | STATS | GOALS */
+  target: string;
+};
+
 export type DashboardInsightAiPayload = {
   summary: string;
+  supportLine: string;
   tips: string[];
+  nextAction?: DashboardNextActionAiPayload;
 };
 
 const round2 = (n: number) => Math.round(Number(n) * 100) / 100;
@@ -41,10 +51,13 @@ export function fingerprintDashboardInsight(input: {
   mealDetails: string[];
   workoutDetails: string[];
   openaiModel: string;
+  /** Rotates every ~3h so cached copy refreshes without data changes. */
+  voiceRefreshBucket: number;
 }): string {
   const body = {
-    schema: 'dashboard_insight_v1',
+    schema: 'dashboard_insight_v3',
     openaiModel: input.openaiModel,
+    voiceRefreshBucket: input.voiceRefreshBucket,
     dateKey: input.dateKey,
     currentHour: input.currentHour,
     remainingDayPercent: input.remainingDayPercent,
@@ -79,9 +92,23 @@ export async function getDashboardInsightFromCache(
 ): Promise<DashboardInsightAiPayload | null> {
   const doc = await DashboardInsightCache.findOne({ userId, date }).lean();
   if (!doc || doc.fingerprint !== fingerprint) return null;
+  const nextAction =
+    doc.nextActionTitle &&
+    doc.nextActionDescription &&
+    doc.nextActionLabel &&
+    doc.nextActionTarget
+      ? {
+          title: doc.nextActionTitle,
+          description: doc.nextActionDescription,
+          actionLabel: doc.nextActionLabel,
+          target: doc.nextActionTarget,
+        }
+      : undefined;
   return {
     summary: doc.summary,
+    supportLine: String(doc.supportLine || ''),
     tips: [...doc.tips],
+    ...(nextAction ? { nextAction } : {}),
   };
 }
 
@@ -91,16 +118,29 @@ export async function saveDashboardInsightToCache(
   fingerprint: string,
   insight: DashboardInsightAiPayload
 ): Promise<void> {
-  await DashboardInsightCache.findOneAndUpdate(
-    { userId, date },
-    {
-      userId,
-      date,
-      fingerprint,
-      summary: insight.summary,
-      tips: insight.tips.slice(0, 3),
-      updatedAt: new Date(),
-    },
-    { upsert: true, new: true }
-  );
+  const $set: Record<string, unknown> = {
+    userId,
+    date,
+    fingerprint,
+    summary: insight.summary,
+    supportLine: insight.supportLine,
+    tips: insight.tips.slice(0, 3),
+    updatedAt: new Date(),
+  };
+  if (insight.nextAction) {
+    $set.nextActionTitle = insight.nextAction.title;
+    $set.nextActionDescription = insight.nextAction.description;
+    $set.nextActionLabel = insight.nextAction.actionLabel;
+    $set.nextActionTarget = insight.nextAction.target;
+  }
+  const update: Record<string, unknown> = { $set };
+  if (!insight.nextAction) {
+    update.$unset = {
+      nextActionTitle: '',
+      nextActionDescription: '',
+      nextActionLabel: '',
+      nextActionTarget: '',
+    };
+  }
+  await DashboardInsightCache.findOneAndUpdate({ userId, date }, update, { upsert: true, new: true });
 }

@@ -17,6 +17,7 @@ export const statsPageCopy: Record<
     loadingActivity: string;
     stepsTracked: (n: number) => string;
     mainInsightTitle: string;
+    mainInsightPending: string;
     mealsFor: string;
     deleteMealTitle: string;
     noMeals: (date: string) => string;
@@ -32,6 +33,7 @@ export const statsPageCopy: Record<
     weeklyTrendTitle: string;
     partialWeekly: (avail: number, tracked: number) => string;
     proTip: string;
+    weeklyNarrativePending: string;
     weeklyEmptyTitle: string;
     weeklyEmptyDescription: string;
     aiCoachTitle: string;
@@ -61,6 +63,7 @@ export const statsPageCopy: Record<
     loadingActivity: 'Loading activity...',
     stepsTracked: (n) => `Steps tracked: ${n}`,
     mainInsightTitle: 'Main insight for selected day',
+    mainInsightPending: 'Evo has not loaded an insight for this day yet — try refreshing or open chat.',
     mealsFor: 'Meals for',
     deleteMealTitle: 'Delete meal',
     noMeals: (date) => `No meals logged for ${date}`,
@@ -76,7 +79,8 @@ export const statsPageCopy: Record<
     weeklyTrendTitle: 'Weekly trend snapshot',
     partialWeekly: (avail, tracked) =>
       `Partial weekly review for ${avail}/7 available days (${tracked} tracked).`,
-    proTip: 'Pro tip',
+    proTip: 'Focus for the week ahead',
+    weeklyNarrativePending: 'Weekly story from Evo will show here once it is ready.',
     weeklyEmptyTitle: 'Weekly trend is not ready yet',
     weeklyEmptyDescription: 'Evo needs more day snapshots to build a reliable weekly pattern.',
     aiCoachTitle: 'AI Coach',
@@ -105,6 +109,7 @@ export const statsPageCopy: Record<
     loadingActivity: 'Ładowanie aktywności…',
     stepsTracked: (n) => `Kroki: ${n}`,
     mainInsightTitle: 'Główny insight dla wybranego dnia',
+    mainInsightPending: 'Brak insightu Evo dla tego dnia — odśwież lub otwórz czat.',
     mealsFor: 'Posiłki na',
     deleteMealTitle: 'Usuń posiłek',
     noMeals: (date) => `Brak posiłków na ${date}`,
@@ -120,7 +125,8 @@ export const statsPageCopy: Record<
     weeklyTrendTitle: 'Tygodniowy trend',
     partialWeekly: (avail, tracked) =>
       `Częściowy przegląd tygodnia: ${avail}/7 dostępnych dni (${tracked} z logami).`,
-    proTip: 'Pro tip',
+    proTip: 'Skupienie na nadchodzący tydzień',
+    weeklyNarrativePending: 'Tygodniowa narracja Evo pojawi się tu, gdy będzie gotowa.',
     weeklyEmptyTitle: 'Trend tygodniowy jeszcze niedostępny',
     weeklyEmptyDescription: 'Evo potrzebuje więcej dni z danymi, żeby zbudować wiarygodny wzorzec.',
     aiCoachTitle: 'Coach AI',

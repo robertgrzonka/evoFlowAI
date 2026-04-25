@@ -15,17 +15,25 @@ type UseDaySnapshotOptions = {
   date: string;
   enabled?: boolean;
   includeInsight?: boolean;
+  /** IANA TZ; when set, `date` is interpreted as that zone's calendar day on the server. */
+  clientTimeZone?: string | null;
 };
 
-export const useDaySnapshot = ({ date, enabled = true, includeInsight = false }: UseDaySnapshotOptions) => {
+export const useDaySnapshot = ({
+  date,
+  enabled = true,
+  includeInsight = false,
+  clientTimeZone = null,
+}: UseDaySnapshotOptions) => {
   const shouldSkip = !enabled;
+  const tz = clientTimeZone ?? null;
   const statsQuery = useQuery(DAILY_STATS_QUERY, {
-    variables: { date },
+    variables: { date, clientTimeZone: tz },
     skip: shouldSkip,
     fetchPolicy: 'cache-and-network',
   });
   const workoutsQuery = useQuery(MY_WORKOUTS_QUERY, {
-    variables: { date, limit: WORKOUTS_DAY_LIMIT, offset: 0 },
+    variables: { date, limit: WORKOUTS_DAY_LIMIT, offset: 0, clientTimeZone: tz },
     skip: shouldSkip,
     fetchPolicy: 'cache-and-network',
   });
@@ -35,12 +43,12 @@ export const useDaySnapshot = ({ date, enabled = true, includeInsight = false }:
     fetchPolicy: 'cache-and-network',
   });
   const summaryQuery = useQuery(WORKOUT_COACH_SUMMARY_QUERY, {
-    variables: { date },
+    variables: { date, clientTimeZone: tz },
     skip: shouldSkip,
     fetchPolicy: 'cache-and-network',
   });
   const insightQuery = useQuery(DASHBOARD_INSIGHT_QUERY, {
-    variables: { date },
+    variables: { date, clientTimeZone: tz },
     skip: shouldSkip || !includeInsight,
     fetchPolicy: 'cache-and-network',
   });
@@ -109,13 +117,14 @@ export const useDaySnapshot = ({ date, enabled = true, includeInsight = false }:
     summary,
     insight,
     derived,
-    refetchDay: async () => {
+    refetchDay: async (overrideDate?: string) => {
+      const d = overrideDate ?? date;
       await Promise.all([
-        statsQuery.refetch({ date }),
-        workoutsQuery.refetch({ date, limit: WORKOUTS_DAY_LIMIT, offset: 0 }),
-        activityQuery.refetch({ date }),
-        summaryQuery.refetch({ date }),
-        includeInsight ? insightQuery.refetch({ date }) : Promise.resolve(),
+        statsQuery.refetch({ date: d, clientTimeZone: tz }),
+        workoutsQuery.refetch({ date: d, limit: WORKOUTS_DAY_LIMIT, offset: 0, clientTimeZone: tz }),
+        activityQuery.refetch({ date: d }),
+        summaryQuery.refetch({ date: d, clientTimeZone: tz }),
+        includeInsight ? insightQuery.refetch({ date: d, clientTimeZone: tz }) : Promise.resolve(),
       ]);
     },
   };

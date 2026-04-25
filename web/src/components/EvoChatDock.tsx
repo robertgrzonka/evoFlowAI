@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { clsx } from 'clsx';
+import { useEffect, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery, useSubscription } from '@apollo/client';
 import { ImagePlus, MessageCircle, Minus, Send, X } from 'lucide-react';
 import Link from 'next/link';
@@ -24,11 +25,15 @@ import {
   kickDeferredAfterMealLog,
   kickDeferredAfterWorkoutLog,
 } from '@/lib/day-data';
+import { formatLocalDateKey } from '@/lib/calendar-date-key';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
+import { buildChatStatsContext } from '@/lib/chat-stats-context';
 import EvoStatusBadge from '@/components/evo/EvoStatusBadge';
 import EvoThinkingOverlay from '@/components/evo/EvoThinkingOverlay';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import Tooltip from '@/components/ui/atoms/Tooltip';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 type DockTab = 'chat' | 'meal' | 'workout';
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -41,7 +46,7 @@ const mealOptions: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   const client = useApolloClient();
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const { dateKey: today, timeZone, syncNow } = useClientCalendarToday();
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DockTab>('chat');
   const [messageInput, setMessageInput] = useState('');
@@ -60,6 +65,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const daySnapshot = useDaySnapshot({
     date: today,
+    clientTimeZone: timeZone,
     enabled: !hidden && chatChannel === 'COACH',
     includeInsight: true,
   });
@@ -89,6 +95,11 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
     onCompleted: async () => {
       setMessageInput('');
       await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
+      if (chatChannel === 'COACH') {
+        const freshDay = formatLocalDateKey(new Date());
+        syncNow();
+        await daySnapshot.refetchDay(freshDay);
+      }
     },
     awaitRefetchQueries: true,
   });
@@ -106,7 +117,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
       appToast.success('Meal added', 'Evo logged your meal to today.');
       await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
     awaitRefetchQueries: true,
   });
 
@@ -121,7 +132,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
       appToast.success('Workout added', 'Evo logged your training session.');
       await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
     awaitRefetchQueries: true,
   });
 
@@ -159,12 +170,13 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
     const content = messageInput.trim();
     if (!content) return;
 
+    syncNow();
     await sendMessage({
       variables: {
         input: {
           content,
           channel: chatChannel,
-          context: chatChannel === 'COACH' ? { statsReference: today } : undefined,
+          context: buildChatStatsContext(),
         },
       },
     });
@@ -241,7 +253,12 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
       <EvoThinkingOverlay open={dockThinkingOpen} locale={dockLocale} intent={dockThinkingIntent} />
       <div className="fixed bottom-4 right-4 z-50">
       {isOpen ? (
-        <div className="w-[360px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-surface shadow-2xl">
+        <div
+          className={clsx(
+            'w-[360px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-border bg-surface shadow-2xl shadow-black/40',
+            accentEdgeClasses('primary', 'top'),
+          )}
+        >
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
             <div className="flex items-center gap-2">
               <AICoachAvatar size="sm" />

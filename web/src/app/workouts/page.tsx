@@ -6,8 +6,11 @@ import { useApolloClient, useMutation, useQuery, useSubscription } from '@apollo
 import { clsx } from 'clsx';
 import { ChevronDown, Dumbbell, FileUp, Flame, Timer, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, Skeleton } from '@/components/ui/loading';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { getDestructiveConfirmLabels } from '@/lib/i18n/destructive-confirm';
 import {
   DELETE_WORKOUT_MUTATION,
   IMPORT_WORKOUT_FILE_MUTATION,
@@ -18,11 +21,13 @@ import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION } from '@/lib/graphql/queries';
 import { appToast } from '@/lib/app-toast';
 import {
   buildDayRefetchQueriesAfterLog,
+  buildRollingSevenDayAverageStepsRefetch,
   dateKeyToNoonUtcIso,
   kickDeferredAfterWorkoutLog,
   kickDeferredDashboardAndWeeklyEvo,
 } from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
 import {
   AISectionHeader,
   EvoHintCard,
@@ -31,7 +36,7 @@ import {
   SmartSuggestionChips,
 } from '@/components/evo';
 import WeeklyWorkoutsTrainingSection from '@/components/workouts/WeeklyWorkoutsTrainingSection';
-import { utcYesterdayDateKey } from '@/lib/calendar-date-key';
+import { addDaysToDateKey } from '@/lib/calendar-date-key';
 import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
 import { workoutsPageCopy } from '@/lib/i18n/copy/workouts-page';
 
@@ -42,9 +47,10 @@ export default function WorkoutsPage() {
   const locale = useAppUiLocale();
   const w = workoutsPageCopy[locale];
   const router = useRouter();
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const weeklyStatsEndDate = useMemo(() => utcYesterdayDateKey(), []);
+  const { dateKey: today, timeZone } = useClientCalendarToday();
+  const weeklyStatsEndDate = useMemo(() => addDaysToDateKey(today, -1), [today]);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [deleteWorkoutId, setDeleteWorkoutId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(45);
@@ -56,7 +62,12 @@ export default function WorkoutsPage() {
   const [activityBonusDraft, setActivityBonusDraft] = useState('0');
 
   const { data: meData } = useQuery(ME_QUERY);
-  const daySnapshot = useDaySnapshot({ date: selectedDate, enabled: true, includeInsight: false });
+  const daySnapshot = useDaySnapshot({
+    date: selectedDate,
+    clientTimeZone: timeZone,
+    enabled: true,
+    includeInsight: false,
+  });
 
   useEffect(() => {
     const raw = daySnapshot.stats?.activityBonusKcal;
@@ -85,7 +96,7 @@ export default function WorkoutsPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save workout.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
     awaitRefetchQueries: true,
   });
 
@@ -96,7 +107,7 @@ export default function WorkoutsPage() {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete workout.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
     awaitRefetchQueries: true,
   });
   const [upsertDailyActivity, { loading: savingActivityBonus }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
@@ -107,7 +118,10 @@ export default function WorkoutsPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not save.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    refetchQueries: [
+      ...buildDayRefetchQueriesAfterLog(selectedDate, timeZone),
+      buildRollingSevenDayAverageStepsRefetch(today, timeZone),
+    ],
     awaitRefetchQueries: true,
   });
 
@@ -123,7 +137,7 @@ export default function WorkoutsPage() {
     onError: (error) => {
       appToast.error('Import failed', error.message || 'Could not import workout file.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
     awaitRefetchQueries: true,
   });
 
@@ -171,11 +185,11 @@ export default function WorkoutsPage() {
   const minutesOnDay = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
   const dayLabel = selectedDate === today ? w.todayWord : selectedDate;
 
-  const handleDeleteWorkout = async (workoutId: string) => {
-    const confirmed = window.confirm(w.confirmDelete);
-    if (!confirmed) return;
-
-    const result = await deleteWorkout({ variables: { id: workoutId } });
+  const handleConfirmDeleteWorkout = async () => {
+    if (!deleteWorkoutId) return;
+    const id = deleteWorkoutId;
+    setDeleteWorkoutId(null);
+    const result = await deleteWorkout({ variables: { id } });
     if (result.data?.deleteWorkout) {
       appToast.success('Workout deleted', 'Entry was removed from your timeline.');
     } else {
@@ -223,9 +237,21 @@ export default function WorkoutsPage() {
     { id: 'tpl-lower', label: w.tplLower },
     { id: 'tpl-cardio', label: w.tplCardio },
   ];
+  const delLabels = getDestructiveConfirmLabels(locale);
 
   return (
     <AppShell>
+      <ConfirmDialog
+        open={deleteWorkoutId !== null}
+        title={w.deleteWorkoutTitle}
+        description={w.confirmDelete}
+        confirmLabel={delLabels.confirm}
+        cancelLabel={delLabels.cancel}
+        onCancel={() => setDeleteWorkoutId(null)}
+        onConfirm={() => void handleConfirmDeleteWorkout()}
+        confirmBusy={deletingWorkout}
+        variant="danger"
+      />
       <EvoThinkingOverlay
         open={loggingWorkout || importingWorkoutFile}
         locale={locale}
@@ -234,7 +260,7 @@ export default function WorkoutsPage() {
       <div className="space-y-5">
         <PageTopBar
           rightContent={
-            <button type="button" onClick={() => router.push('/chat?channel=COACH')} className="btn-secondary">
+            <button type="button" onClick={() => router.push('/chat?channel=COACH')} className="btn-info">
               {w.openEvoChat}
             </button>
           }
@@ -252,7 +278,12 @@ export default function WorkoutsPage() {
 
         <div className="space-y-6 xl:space-y-8">
           <div className="grid gap-6 xl:gap-8 lg:grid-cols-2 items-start">
-            <section className="bg-surface border border-border rounded-xl p-4 md:p-5 min-w-0">
+            <section
+              className={clsx(
+                'bg-surface border border-border rounded-xl p-4 md:p-5 min-w-0 shadow-sm shadow-black/5',
+                accentEdgeClasses('primary', 'left'),
+              )}
+            >
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="min-w-0 text-lg font-semibold tracking-tight text-text-primary">
                   {w.workoutsFor} {selectedDate}
@@ -273,7 +304,12 @@ export default function WorkoutsPage() {
               </div>
               {dayPanelOpen ? (
                 <div id="workouts-day-panel" className="space-y-4">
-                  <div className="rounded-xl border border-border bg-surface p-4 md:p-5">
+                  <div
+                    className={clsx(
+                      'rounded-xl border border-border bg-surface p-4 md:p-5 shadow-sm shadow-black/5',
+                      accentEdgeClasses('info', 'left'),
+                    )}
+                  >
                     <h3 className="mb-4 text-base font-semibold tracking-tight text-text-primary">
                       {w.daySummaryTitle(selectedDate, selectedDate === today)}
                     </h3>
@@ -304,18 +340,22 @@ export default function WorkoutsPage() {
                         </div>
                         <div className="space-y-3 rounded-lg border border-border bg-surface-elevated p-3.5">
                           <p className="text-xs uppercase tracking-[0.12em] text-text-muted">{w.coachSuggestion}</p>
-                          <p className="whitespace-pre-wrap break-words text-sm text-text-primary">{summary.message}</p>
+                          {summary.message?.trim() ? (
+                            <p className="whitespace-pre-wrap break-words text-sm text-text-primary">{summary.message}</p>
+                          ) : (
+                            <p className="text-sm text-text-muted">{w.coachInsightEmpty}</p>
+                          )}
                           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
                             <button
                               type="button"
-                              className="btn-secondary w-full shrink-0 sm:min-w-[10rem] sm:flex-1"
+                              className="btn-info w-full shrink-0 sm:min-w-[10rem] sm:flex-1"
                               onClick={() => window.location.assign('/chat?channel=COACH')}
                             >
                               {w.explainScore}
                             </button>
                             <button
                               type="button"
-                              className="btn-secondary w-full shrink-0 sm:min-w-[10rem] sm:flex-1"
+                              className="btn-info w-full shrink-0 sm:min-w-[10rem] sm:flex-1"
                               onClick={() => window.location.assign('/chat?channel=COACH')}
                             >
                               {w.suggestPostMeal}
@@ -328,7 +368,12 @@ export default function WorkoutsPage() {
                     )}
                   </div>
 
-                  <div className="rounded-xl border border-border bg-surface p-4 md:p-5 space-y-4">
+                  <div
+                    className={clsx(
+                      'rounded-xl border border-border bg-surface p-4 md:p-5 space-y-4 shadow-sm shadow-black/5',
+                      accentEdgeClasses('success', 'left'),
+                    )}
+                  >
                     <h3 className="text-base font-semibold tracking-tight text-text-primary">
                       {w.dayWorkoutsHeading(selectedDate, selectedDate === today)}
                     </h3>
@@ -351,7 +396,7 @@ export default function WorkoutsPage() {
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteWorkout(workout.id)}
+                                  onClick={() => setDeleteWorkoutId(workout.id)}
                                   disabled={deletingWorkout}
                                   className="inline-flex items-center justify-center rounded-md border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:border-red-400/40 hover:text-red-400"
                                   title={w.deleteWorkoutTitle}
@@ -404,7 +449,13 @@ export default function WorkoutsPage() {
               ) : null}
             </section>
 
-            <section id="log-workout" className="scroll-mt-6 min-w-0 rounded-xl border border-border bg-surface p-4 md:p-5">
+            <section
+              id="log-workout"
+              className={clsx(
+                'scroll-mt-6 min-w-0 rounded-xl border border-border bg-surface p-4 md:p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('info', 'left'),
+              )}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <AISectionHeader

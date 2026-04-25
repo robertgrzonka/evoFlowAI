@@ -1,5 +1,7 @@
 import { AuthenticationError, UserInputError } from 'apollo-server-express';
 import { FoodItem } from '../../models/FoodItem';
+import { Workout } from '../../models/Workout';
+import { DailyActivity } from '../../models/DailyActivity';
 import { Context } from '../context';
 import { OpenAIService } from '../../services/openaiService';
 import {
@@ -11,6 +13,8 @@ import { withFilter } from 'graphql-subscriptions';
 import { normalizeAppLocale } from '../../utils/appLocale';
 import { getDailyMetrics } from '../../utils/dailyMetrics';
 import { buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
+import { buildDynamicTargets } from '../../utils/activityBudget';
+import { inferCalorieGoalTone } from '@evoflowai/shared';
 
 const openAIService = new OpenAIService();
 
@@ -24,6 +28,13 @@ type WeeklyDayRow = {
   fat: number;
   mealCount: number;
   meals: { name: string; mealType: string; calories: number }[];
+  /** Calorie budget that day = rest-day target + logged workout burn + manual activity bonus (same logic as dashboard; steps not in budget). */
+  dayCalorieBudget: number;
+  workoutCaloriesBurned: number;
+  workoutSessions: number;
+  activityBonusKcal: number;
+  steps: number;
+  stepCaloriesBudget: number;
 };
 
 type WeeklyNutritionPayload = {
@@ -54,6 +65,39 @@ const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string 
     byKey.set(key, { calories: 0, protein: 0, carbs: 0, fat: 0, mealCount: 0, mealAcc: [] });
   }
 
+  const [weekWorkouts, weekActivities] = await Promise.all([
+    Workout.find({
+      userId: context.user.id,
+      performedAt: { $gte: startDate, $lt: nextDay },
+    }).lean(),
+    DailyActivity.find({
+      userId: context.user.id,
+      date: { $in: dateKeys },
+    }).lean(),
+  ]);
+
+  const workoutByKey = new Map<string, { caloriesBurned: number; sessions: number; minutes: number }>();
+  for (const key of dateKeys) {
+    workoutByKey.set(key, { caloriesBurned: 0, sessions: 0, minutes: 0 });
+  }
+  for (const w of weekWorkouts) {
+    const key = new Date((w as { performedAt: Date }).performedAt).toISOString().split('T')[0];
+    const b = workoutByKey.get(key);
+    if (!b) continue;
+    b.caloriesBurned += Number((w as { caloriesBurned?: number }).caloriesBurned || 0);
+    b.sessions += 1;
+    b.minutes += Number((w as { durationMinutes?: number }).durationMinutes || 0);
+  }
+
+  const activityByKey = new Map<string, { activityBonusKcal: number; steps: number }>();
+  for (const a of weekActivities) {
+    const dk = String((a as { date: string }).date);
+    activityByKey.set(dk, {
+      activityBonusKcal: Math.max(0, Math.round(Number((a as { activityBonusKcal?: number }).activityBonusKcal ?? 0))),
+      steps: Math.max(0, Math.round(Number((a as { steps?: number }).steps ?? 0))),
+    });
+  }
+
   for (const meal of meals) {
     const key = new Date(meal.createdAt as Date).toISOString().split('T')[0];
     const bucket = byKey.get(key);
@@ -71,11 +115,34 @@ const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string 
     });
   }
 
+  const prefs = context.user.preferences;
+  const calorieGoal = Number(prefs?.dailyCalorieGoal || 2000);
+  const proteinGoal = Number(prefs?.proteinGoal || 150);
+  const carbsGoal = Number(prefs?.carbsGoal || 200);
+  const fatGoal = Number(prefs?.fatGoal || 65);
+
   const days: WeeklyDayRow[] = dateKeys.map((date) => {
     const b = byKey.get(date)!;
     const mealsSorted = [...b.mealAcc]
       .sort((a, z) => a.sortKey - z.sortKey)
       .map(({ name, mealType, calories }) => ({ name, mealType, calories }));
+    const wk = workoutByKey.get(date) || { caloriesBurned: 0, sessions: 0, minutes: 0 };
+    const act = activityByKey.get(date);
+    const activityBonusKcal = act?.activityBonusKcal ?? 0;
+    const steps = act?.steps ?? 0;
+    /** Match dailyStats: steps are shown for context but do not inflate calorie budget. */
+    const stepCaloriesBudget = 0;
+    const dynamicTargets = buildDynamicTargets({
+      baseCalories: calorieGoal,
+      activityLevel: prefs?.activityLevel,
+      primaryGoal: prefs?.primaryGoal,
+      workoutCalories: wk.caloriesBurned,
+      stepCalories: 0,
+      manualActivityBonusKcal: activityBonusKcal,
+      manualProtein: proteinGoal,
+      manualCarbs: carbsGoal,
+      manualFat: fatGoal,
+    });
     return {
       date,
       calories: b.calories,
@@ -84,14 +151,14 @@ const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string 
       fat: b.fat,
       mealCount: b.mealCount,
       meals: mealsSorted,
+      dayCalorieBudget: dynamicTargets.calorieBudget,
+      workoutCaloriesBurned: wk.caloriesBurned,
+      workoutSessions: wk.sessions,
+      activityBonusKcal,
+      steps,
+      stepCaloriesBudget,
     };
   });
-
-  const prefs = context.user.preferences;
-  const calorieGoal = Number(prefs?.dailyCalorieGoal || 2000);
-  const proteinGoal = Number(prefs?.proteinGoal || 150);
-  const carbsGoal = Number(prefs?.carbsGoal || 200);
-  const fatGoal = Number(prefs?.fatGoal || 65);
 
   let totalCalories = 0;
   let totalProtein = 0;
@@ -116,13 +183,17 @@ const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string 
     fat: totalFat / periodDays,
   };
 
+  const avgDayCalorieBudget = Math.round(
+    days.reduce((sum, d) => sum + d.dayCalorieBudget, 0) / periodDays
+  );
+
   return {
     weekStart: dateKeys[0] || startKey,
     weekEnd: dateKeys[6] || endKey,
     days,
     daysWithMeals,
     totalMealsLogged,
-    goals: { calories: calorieGoal, protein: proteinGoal, carbs: carbsGoal, fat: fatGoal },
+    goals: { calories: avgDayCalorieBudget, protein: proteinGoal, carbs: carbsGoal, fat: fatGoal },
     totals: { calories: totalCalories, protein: totalProtein, carbs: totalCarbs, fat: totalFat },
     averages,
   };
@@ -130,9 +201,13 @@ const loadWeeklyMealsNutrition = async (context: Context, endDateInput?: string 
 
 const buildFallbackWeeklyCoach = (payload: WeeklyNutritionPayload, prefs: any) => {
   const { averages, totals, goals, daysWithMeals, days } = payload;
+  const staticCalorieBase = Math.round(Number(prefs?.dailyCalorieGoal || 2000));
   const pRatio = goals.protein > 0 ? averages.protein / goals.protein : 0;
-  const cRatio = goals.calories > 0 ? averages.calories / goals.calories : 0;
+  const meanDayBudget =
+    days.length > 0 ? days.reduce((s, d) => s + d.dayCalorieBudget, 0) / days.length : goals.calories;
+  const cRatio = meanDayBudget > 0 ? averages.calories / meanDayBudget : 0;
   const highest = [...days].sort((a, b) => b.calories - a.calories)[0];
+  const hadTraining = days.some((d) => d.workoutSessions > 0);
 
   const headline =
     daysWithMeals === 0
@@ -150,7 +225,7 @@ const buildFallbackWeeklyCoach = (payload: WeeklyNutritionPayload, prefs: any) =
   const summary =
     daysWithMeals === 0
       ? 'No meals in this 7-day window yet. Log a few days in a row and Evo can read variance, weekends, and protein pacing.'
-      : `You averaged ${Math.round(averages.calories)} kcal/day vs a ${Math.round(goals.calories)} kcal target, with ~${Math.round(averages.protein)}g protein/day vs ${Math.round(goals.protein)}g. ${
+      : `You averaged ${Math.round(averages.calories)} kcal/day vs ~${Math.round(meanDayBudget)} kcal/day when training and activity bonuses are included (static base ~${staticCalorieBase} kcal), with ~${Math.round(averages.protein)}g protein/day vs ${Math.round(goals.protein)}g. ${
           highest?.mealCount ? `Peak intake landed on ${highest.date} (${Math.round(highest.calories)} kcal).` : ''
         }`.trim();
 
@@ -165,8 +240,8 @@ const buildFallbackWeeklyCoach = (payload: WeeklyNutritionPayload, prefs: any) =
   );
   focusAreas.push(
     cRatio > 1.05
-      ? `Calories averaged ${Math.round(averages.calories)} kcal/day vs ${Math.round(goals.calories)} kcal — watch energy-dense extras.`
-      : `Calorie average (~${Math.round(averages.calories)} kcal/day) vs ${Math.round(goals.calories)} kcal target is a useful pacing signal.`
+      ? `Calories averaged ${Math.round(averages.calories)} kcal/day vs ~${Math.round(meanDayBudget)} kcal/day budget${hadTraining ? ' (includes logged training)' : ''} — watch energy-dense extras.`
+      : `Calorie average (~${Math.round(averages.calories)} kcal/day) vs ~${Math.round(meanDayBudget)} kcal/day budget${hadTraining ? ' with training credit' : ''} is a useful pacing signal.`
   );
   while (focusAreas.length < 3) {
     focusAreas.push('Track meal timing to see if late-day calories cluster.');
@@ -175,7 +250,11 @@ const buildFallbackWeeklyCoach = (payload: WeeklyNutritionPayload, prefs: any) =
   const improvements: string[] = [];
   improvements.push(
     pRatio < 0.9
-      ? `Next week: add one 30–40g protein serving before ${prefs?.primaryGoal === 'weight_loss' ? 'snack-heavy' : 'late'} evening.`
+      ? `Next week: add one 30–40g protein serving before ${
+          ['fat_loss', 'light_deficit'].includes(inferCalorieGoalTone(prefs?.primaryGoal))
+            ? 'snack-heavy'
+            : 'late'
+        } evening.`
       : 'Next week: keep a repeatable high-protein lunch template 4+ days.'
   );
   improvements.push(
@@ -195,7 +274,7 @@ const buildFallbackWeeklyCoach = (payload: WeeklyNutritionPayload, prefs: any) =
   const closingLine =
     daysWithMeals === 0
       ? 'This window has no meal logs, so weekly averages and macro gaps cannot be inferred. Log at least breakfast and dinner tomorrow so the next 7-day rollup has real numbers to compare against your targets.'
-      : `You averaged about ${Math.round(averages.calories)} kcal and ${Math.round(averages.protein)} g protein per day vs goals of ${Math.round(goals.calories)} kcal and ${Math.round(goals.protein)} g protein. Next week, repeat your highest-protein day template on one extra weekday to lift the weekly mean without a full diet overhaul.`;
+      : `You averaged about ${Math.round(averages.calories)} kcal and ${Math.round(averages.protein)} g protein per day vs ~${Math.round(meanDayBudget)} kcal/day budget (training-adjusted where logged) and ${Math.round(goals.protein)} g protein. Next week, repeat your highest-protein day template on one extra weekday to lift the weekly mean without a full diet overhaul.`;
 
   return {
     headline,
@@ -235,7 +314,11 @@ export const foodResolvers = {
       return foodItem;
     },
 
-    dailyStats: async (_: any, { date }: { date: string }, context: Context) => {
+    dailyStats: async (
+      _: any,
+      { date, clientTimeZone }: { date: string; clientTimeZone?: string | null },
+      context: Context
+    ) => {
       if (!context.user) {
         throw new AuthenticationError('You must be logged in');
       }
@@ -244,6 +327,7 @@ export const foodResolvers = {
         userId: context.user.id,
         dateKey: date,
         preferences: context.user.preferences,
+        clientTimeZone: clientTimeZone ?? undefined,
       });
 
       return {
@@ -294,6 +378,21 @@ export const foodResolvers = {
       }
 
       try {
+        const prefCalories = Number(prefs?.dailyCalorieGoal || 2000);
+        const pG = Number(prefs?.proteinGoal || 150);
+        const cG = Number(prefs?.carbsGoal || 200);
+        const fG = Number(prefs?.fatGoal || 65);
+        const restTargets = buildDynamicTargets({
+          baseCalories: prefCalories,
+          activityLevel: prefs?.activityLevel,
+          primaryGoal: prefs?.primaryGoal,
+          workoutCalories: 0,
+          stepCalories: 0,
+          manualActivityBonusKcal: 0,
+          manualProtein: pG,
+          manualCarbs: cG,
+          manualFat: fG,
+        });
         const insight = await openAIService.generateWeeklyMealsCoachInsight({
           weekStart: payload.weekStart,
           weekEnd: payload.weekEnd,
@@ -301,7 +400,8 @@ export const foodResolvers = {
           primaryGoal: prefs?.primaryGoal,
           coachingTone: prefs?.coachingTone,
           proactivityLevel: prefs?.proactivityLevel,
-          calorieGoal: payload.goals.calories,
+          averageDayCalorieBudget: payload.goals.calories,
+          restDayCalorieTarget: restTargets.calorieBudget,
           proteinGoal: payload.goals.protein,
           carbsGoal: payload.goals.carbs,
           fatGoal: payload.goals.fat,

@@ -6,7 +6,13 @@ export interface DashboardInsightCacheDocument extends Document {
   date: string;
   fingerprint: string;
   summary: string;
+  supportLine?: string;
   tips: string[];
+  /** Optional AI “suggested next step” (dashboard v2). */
+  nextActionTitle?: string;
+  nextActionDescription?: string;
+  nextActionLabel?: string;
+  nextActionTarget?: string;
   updatedAt: Date;
 }
 
@@ -16,7 +22,12 @@ const dashboardInsightCacheSchema = new Schema<DashboardInsightCacheDocument>(
     date: { type: String, required: true },
     fingerprint: { type: String, required: true },
     summary: { type: String, required: true },
+    supportLine: { type: String },
     tips: { type: [String], required: true },
+    nextActionTitle: { type: String },
+    nextActionDescription: { type: String },
+    nextActionLabel: { type: String },
+    nextActionTarget: { type: String },
     updatedAt: { type: Date, default: () => new Date() },
   },
   { versionKey: false }

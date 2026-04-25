@@ -1,4 +1,5 @@
 export * from './types';
+export * from './primaryGoal';
 
 // Utility functions
 export const formatDate = (date: Date): string => {

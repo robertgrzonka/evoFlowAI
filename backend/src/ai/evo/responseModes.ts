@@ -34,10 +34,10 @@ export const evoResponseModeInstructions: Record<EvoResponseMode, string[]> = {
     'Do not use humor in warnings.',
   ],
   insight: [
-    'Summarize day/week with concise, decision-ready language.',
-    'Base the summary on provided numbers, not generic templates.',
-    'Return structured recommendations that map to nutrition, training, and recovery.',
-    'When data is incomplete, state that explicitly before guidance.',
+    'Summarize the day like a sharp friend who actually looked at their log — not like a status dashboard.',
+    'Ground every line in the provided numbers and meal/workout names; ban generic filler and repeated templates.',
+    'Return structured recommendations that map to nutrition, training, and recovery — each line must feel specific to THIS user.',
+    'When data is incomplete, say so honestly in a human way, then offer one small next step.',
   ],
   onboarding: [
     'Be clear, friendly, and concise.',

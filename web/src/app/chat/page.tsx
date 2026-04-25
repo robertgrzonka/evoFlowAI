@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { clsx } from 'clsx';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useSubscription } from '@apollo/client';
@@ -20,7 +21,10 @@ import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
 import { CHAT_HISTORY_LIMIT } from '@/lib/day-data';
+import { formatLocalDateKey } from '@/lib/calendar-date-key';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
+import { buildChatStatsContext } from '@/lib/chat-stats-context';
 import {
   AISectionHeader,
   EvoHintCard,
@@ -31,6 +35,8 @@ import {
 } from '@/components/evo';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { chatPageCopy, getCoachPromptsForLocale, getGeneralPromptsForLocale } from '@/lib/i18n/copy/chat-page';
+import { coachPromptModeFromPrimaryGoal } from '@evoflowai/shared';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 type ChatChannel = 'GENERAL' | 'COACH';
 type ChatRole = 'USER' | 'ASSISTANT';
@@ -39,7 +45,7 @@ type ChatMessage = { id: string; role: ChatRole; content: string; channel: ChatC
 export default function ChatPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const { dateKey: today, timeZone, syncNow } = useClientCalendarToday();
   const [conversationChannel, setConversationChannel] = useState<ChatChannel>('GENERAL');
   const [prompt, setPrompt] = useState('');
   const [showCoachDebug, setShowCoachDebug] = useState(false);
@@ -49,9 +55,10 @@ export default function ChatPage() {
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const locale = graphqlAppLocaleToUi(meData?.me?.preferences?.appLocale);
   const cc = chatPageCopy[locale];
-  const goalMode = String(meData?.me?.preferences?.primaryGoal || 'MAINTENANCE').toUpperCase();
+  const goalMode = coachPromptModeFromPrimaryGoal(meData?.me?.preferences?.primaryGoal);
   const daySnapshot = useDaySnapshot({
     date: today,
+    clientTimeZone: timeZone,
     enabled: Boolean(meData?.me?.id) && conversationChannel === 'COACH',
     includeInsight: false,
   });
@@ -79,6 +86,11 @@ export default function ChatPage() {
       setConversationChannel('GENERAL');
     }
   }, [searchParams]);
+
+  /** Refresh calendar key when switching channel (e.g. crossed midnight while on General). */
+  useEffect(() => {
+    syncNow();
+  }, [conversationChannel, syncNow]);
 
   useEffect(() => {
     if (!historyError) return;
@@ -124,12 +136,13 @@ export default function ChatPage() {
     }
 
     setWaitingForEvo(true);
+    syncNow();
     await sendMessage({
       variables: {
         input: {
           content,
           channel: conversationChannel,
-          context: conversationChannel === 'COACH' ? { statsReference: today } : undefined,
+          context: buildChatStatsContext(),
         },
       },
       refetchQueries: [{ query: MY_CHAT_HISTORY_QUERY, variables: { channel: conversationChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 } }],
@@ -163,7 +176,12 @@ export default function ChatPage() {
         <PageTopBar rightContent={<h1 className="text-lg font-semibold tracking-tight text-text-primary">{cc.pageTitle}</h1>} />
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-          <section className="xl:col-span-7 bg-surface border border-border rounded-xl p-4 md:p-5">
+          <section
+            className={clsx(
+              'xl:col-span-7 bg-surface border border-border rounded-xl p-4 md:p-5 shadow-sm shadow-black/5',
+              accentEdgeClasses('info', 'left'),
+            )}
+          >
             <AISectionHeader
               eyebrow={cc.eyebrow}
               title={cc.conversationTitle}
@@ -220,7 +238,12 @@ export default function ChatPage() {
             )}
           </section>
 
-          <section className="xl:col-span-5 bg-surface border border-border rounded-xl p-4 md:p-5">
+          <section
+            className={clsx(
+              'xl:col-span-5 bg-surface border border-border rounded-xl p-4 md:p-5 shadow-sm shadow-black/5',
+              accentEdgeClasses('primary', 'left'),
+            )}
+          >
             <AISectionHeader
               title={conversationChannel === 'COACH' ? cc.coachModeTitle : cc.generalModeTitle}
               subtitle={
@@ -282,7 +305,12 @@ export default function ChatPage() {
             </form>
 
             {conversationChannel === 'COACH' && process.env.NODE_ENV === 'development' ? (
-              <div className="mt-4 rounded-lg border border-border bg-surface-elevated p-3">
+              <div
+                className={clsx(
+                  'mt-4 rounded-lg border border-border bg-surface-elevated p-3 shadow-sm shadow-black/5',
+                  accentEdgeClasses('success', 'left'),
+                )}
+              >
                 <button
                   type="button"
                   onClick={() => setShowCoachDebug((prev) => !prev)}

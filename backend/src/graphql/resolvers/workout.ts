@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+import { coachPromptModeFromPrimaryGoal } from '@evoflowai/shared';
 import { AuthenticationError, UserInputError } from 'apollo-server-express';
 import { withFilter } from 'graphql-subscriptions';
 import { FoodItem } from '../../models/FoodItem';
@@ -16,261 +18,103 @@ import {
   getDashboardInsightFromCache,
   saveDashboardInsightToCache,
 } from '../../services/dashboardInsightCache';
+import {
+  fingerprintWeeklyEvoReview,
+  getWeeklyEvoReviewFromCache,
+  saveWeeklyEvoReviewToCache,
+} from '../../services/weeklyEvoReviewCache';
+import { normalizeAppLocale } from '../../utils/appLocale';
 import { GarminStepService } from '../../services/garminStepService';
 import { parseWorkoutFile } from '../../services/workoutImportService';
-import { getDailyMetrics, getDayRangeByDateKey, normalizeDateKey } from '../../utils/dailyMetrics';
+import { getDailyMetrics, normalizeDateKey, resolveDayRangeForMetrics } from '../../utils/dailyMetrics';
 import { buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
-import { normalizeCoachingToneKey } from '../../utils/coachingTone';
-
+import { buildDynamicTargets } from '../../utils/activityBudget';
 const parseIntensity = (value: string) => value.toLowerCase();
 const openAIService = new OpenAIService();
 
-const buildCoachMessage = ({
-  remainingProtein,
-  remainingCalories,
-  netCalories,
-}: {
+/** Workout day panel: coaching copy comes from dashboard AI / chat — no template strings here. */
+const buildCoachMessage = (_: {
   remainingProtein: number;
   remainingCalories: number;
   netCalories: number;
-}) => {
-  const lines: string[] = [];
-
-  if (remainingProtein <= 10) {
-    lines.push('Great job! Protein target is almost done today.');
-  } else if (remainingProtein <= 35) {
-    lines.push(`Solid progress. Try adding around ${Math.ceil(remainingProtein)}g protein in the next meal.`);
-  } else {
-    lines.push(`You still need about ${Math.ceil(remainingProtein)}g protein. Prioritize lean protein first.`);
-  }
-
-  if (remainingCalories < -150) {
-    lines.push('You are above your calorie target. Keep your next meal lighter and focus on protein + vegetables.');
-  } else if (remainingCalories <= 250) {
-    lines.push('Calorie target is close. Keep portions controlled for the rest of the day.');
-  } else {
-    lines.push(`You have about ${Math.ceil(remainingCalories)} kcal left. Good moment for a balanced meal.`);
-  }
-
-  if (netCalories < 0) {
-    lines.push('High training output today. Remember hydration and a proper recovery meal.');
-  }
-
-  return lines.join(' ');
-};
-
-const buildFallbackTips = (remainingProtein: number, remainingCalories: number, netCalories: number) => {
-  const nutritionTip =
-    remainingProtein > 0
-      ? `Aim for about ${Math.ceil(remainingProtein)}g protein in your next meal to stay on target.`
-      : 'Protein goal is done. Keep meals lighter and focus on quality carbs and vegetables.';
-
-  const trainingTip =
-    remainingCalories < -150
-      ? 'You are above net calories, so skip extra training volume and keep movement light today.'
-      : netCalories < 0
-        ? 'Training output is high today, so keep the next session moderate and prioritize technique.'
-        : 'If energy feels good, a short easy session or walk can support consistency.';
-
-  const recoveryTip =
-    remainingCalories > 250
-      ? `You still have around ${Math.ceil(remainingCalories)} kcal left, so use part of it for a recovery meal and hydration.`
-      : 'Focus on hydration, sleep, and a balanced final meal to recover well.';
-
-  return [nutritionTip, trainingTip, recoveryTip];
-};
-
-const buildLivelyDashboardFallback = (input: {
-  currentHour: number;
-  remainingProtein: number;
-  remainingCalories: number;
-  meals: any[];
-  workouts: any[];
-}) => {
-  const { currentHour, remainingProtein, remainingCalories, meals, workouts } = input;
-  const latestMeal = meals[meals.length - 1];
-  const latestWorkout = workouts[workouts.length - 1];
-  const mealRef = latestMeal
-    ? `Latest meal: ${String(latestMeal.name || 'meal')} (${Math.round(Number(latestMeal.nutrition?.protein || 0))}g protein).`
-    : 'No meal logged yet today.';
-  const workoutRef = latestWorkout
-    ? `Latest workout: ${String(latestWorkout.title || 'session')} (${Math.round(Number(latestWorkout.durationMinutes || 0))} min).`
-    : 'No workout logged yet today.';
-
-  const pacingLine =
-    remainingProtein <= 20
-      ? `Protein pacing is solid for ${String(currentHour).padStart(2, '0')}:00. Keep this rhythm.`
-      : `Protein is still behind for ${String(currentHour).padStart(2, '0')}:00 by about ${Math.ceil(remainingProtein)}g.`;
-
-  const summary = `${mealRef} ${workoutRef} ${pacingLine}`.trim();
-  const nutritionTip = remainingProtein > 20
-    ? `Add a protein-first meal now (30-40g protein) so the gap does not spill into late evening.`
-    : 'Protein target is on pace; keep the next meal balanced and avoid empty calories.';
-  const trainingTip = workouts.length === 0
-    ? 'No session yet today; a short focused workout can still improve your day balance.'
-    : 'You already moved today; keep the next effort moderate and technique-focused.';
-  const recoveryTip = remainingCalories < 0
-    ? 'You are over budget, so keep the rest of the day light and prioritize hydration.'
-    : 'Plan the final meal timing around sleep and hydration for cleaner recovery.';
-
-  return { summary, tips: [nutritionTip, trainingTip, recoveryTip] };
-};
-
-const normalizeText = (value: string) => String(value || '').toLowerCase();
-
-const hasConcreteDataReference = (text: string, dayMetrics: any) => {
-  const normalized = normalizeText(text);
-  if (!normalized) return false;
-
-  if (/\d+\s?(kcal|g|min|steps)/i.test(normalized)) {
-    return true;
-  }
-
-  const mealNames = (dayMetrics?.meals || [])
-    .map((meal: any) => normalizeText(meal?.name))
-    .filter(Boolean);
-  const workoutNames = (dayMetrics?.workouts || [])
-    .map((workout: any) => normalizeText(workout?.title))
-    .filter(Boolean);
-
-  return [...mealNames, ...workoutNames].some((name) => name.length > 2 && normalized.includes(name));
-};
-
-const buildConcreteDashboardInsight = (input: {
-  dayMetrics: any;
-  currentHour: number;
-  estimatedMealsLeft: number;
-  remainingDayPercent: number;
-}) => {
-  const { dayMetrics, currentHour, estimatedMealsLeft, remainingDayPercent } = input;
-  const proteinGoal = Number(dayMetrics.dynamicTargets?.proteinGoal || 0);
-  const consumedProtein = Number(dayMetrics.totals?.protein || 0);
-  const remainingProtein = Math.max(0, Number(dayMetrics.remainingProtein || 0));
-  const consumedCalories = Number(dayMetrics.totals?.calories || 0);
-  const remainingCalories = Number(dayMetrics.remainingCalories || 0);
-  const meals = Array.isArray(dayMetrics.meals) ? dayMetrics.meals : [];
-  const workouts = Array.isArray(dayMetrics.workouts) ? dayMetrics.workouts : [];
-  const latestMeal = meals[meals.length - 1];
-  const latestWorkout = workouts[workouts.length - 1];
-
-  const expectedProteinByNow = proteinGoal > 0 ? proteinGoal * (currentHour / 24) : 0;
-  const proteinPacingDelta = consumedProtein - expectedProteinByNow;
-  const proteinPacingLine =
-    proteinGoal <= 0
-      ? `Protein goal is not configured yet, so Evo uses meal quality instead of target pace.`
-      : proteinPacingDelta >= 10
-        ? `Protein pace is strong for ${String(currentHour).padStart(2, '0')}:00 (+${Math.round(proteinPacingDelta)}g vs expected pace).`
-        : proteinPacingDelta <= -10
-          ? `Protein pace is behind for ${String(currentHour).padStart(2, '0')}:00 (${Math.round(Math.abs(proteinPacingDelta))}g under expected pace).`
-          : `Protein pace is close to target for ${String(currentHour).padStart(2, '0')}:00.`;
-
-  const mealLine = latestMeal
-    ? `Latest meal was ${String(latestMeal.name || 'a meal')} (${Math.round(Number(latestMeal.nutrition?.protein || 0))}g protein, ${Math.round(Number(latestMeal.nutrition?.calories || 0))} kcal).`
-    : 'No meals logged yet today.';
-  const workoutLine = latestWorkout
-    ? `Latest workout was ${String(latestWorkout.title || 'a session')} (${Math.round(Number(latestWorkout.durationMinutes || 0))} min, ${Math.round(Number(latestWorkout.caloriesBurned || 0))} kcal).`
-    : 'No workouts logged yet today.';
-
-  const opportunitiesLeft = Math.max(1, estimatedMealsLeft || 1);
-  const proteinPerMeal = Math.ceil(remainingProtein / opportunitiesLeft);
-  const nutritionTip =
-    remainingProtein > 0
-      ? `You still need ${Math.round(remainingProtein)}g protein, so target about ${proteinPerMeal}g in each of your next ${opportunitiesLeft} meal opportunity/opportunities.`
-      : `Protein target is already covered; use the remaining day for balanced carbs, fats, and hydration.`;
-  const trainingTip =
-    workouts.length > 0
-      ? `You already trained today, so next move is recovery-focused movement and sleep quality rather than extra volume.`
-      : remainingDayPercent > 35
-        ? `You still have time today for one focused workout block to improve your day balance.`
-        : `Training window is short now, so prioritize consistency and schedule your next workout slot.`;
-  const recoveryTip =
-    remainingCalories < 0
-      ? `You are above calorie budget by ${Math.round(Math.abs(remainingCalories))} kcal, so keep the rest of day lighter and hydrate well.`
-      : `You have about ${Math.round(remainingCalories)} kcal left for the remaining ${remainingDayPercent}% of day; close with controlled portions and hydration.`;
-
-  return {
-    summary: `${mealLine} ${workoutLine} ${proteinPacingLine}`.trim(),
-    tips: [nutritionTip, trainingTip, recoveryTip],
-    consumedCalories,
-    consumedProtein,
-    remainingCalories,
-    remainingProtein,
-  };
-};
+}) => '';
 
 const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
 
-type WeeklyProTipInput = {
-  nutritionScore: number;
-  trainingScore: number;
-  consistencyScore: number;
+function weeklyEvoEmptyWindowHighlights(
+  locale: ReturnType<typeof normalizeAppLocale>,
+  availableDays: number
+): string[] {
+  if (locale === 'pl') {
+    return [
+      `Na razie brak logów posiłków w ${availableDays}-dniowym oknie — nie widać jeszcze profilu kalorycznego.`,
+      `Nie ma też zapisanych treningów w tym oknie, więc obciążenie ruchem pozostaje niewiadomą.`,
+      `Dodaj choć jeden dzień z posiłkiem lub treningiem, a Evo ułoży z tego sensowny tygodniowy obraz.`,
+    ];
+  }
+  return [
+    `No meal logs in this ${availableDays}-day window yet — calories are still a blank page.`,
+    `No workouts logged here either — training load is unknown so far.`,
+    `Add one day with a meal or a session and Evo can shape a real weekly trend.`,
+  ];
+}
+
+function weeklyEvoFallbackHighlights(opts: {
+  locale: ReturnType<typeof normalizeAppLocale>;
+  availableDays: number;
+  periodDays: number;
+  trackedDays: number;
+  mealDays: number;
+  workoutDays: number;
+  totalCalories: number;
+  targetPeriodCalories: number;
+  staticWeekKcal: number;
+  calorieGoalBase: number;
   avgDailyProtein: number;
   proteinGoal: number;
   workoutsCount: number;
-  weeklyWorkoutsGoal: number;
-  totalSteps: number;
-  highlights: string[];
-};
+  totalMinutes: number;
+  totalStepsTracked: number;
+  scaledWorkoutGoal: number;
+  scaledMinutesGoal: number;
+  weeklyWorkoutGoal: number;
+  weeklyMinutesGoal: number;
+}): string[] {
+  const isPl = opts.locale === 'pl';
+  const {
+    availableDays,
+    periodDays,
+    trackedDays,
+    mealDays,
+    workoutDays,
+    totalCalories,
+    targetPeriodCalories,
+    staticWeekKcal,
+    calorieGoalBase,
+    avgDailyProtein,
+    proteinGoal,
+    workoutsCount,
+    totalMinutes,
+    totalStepsTracked,
+    scaledWorkoutGoal,
+    scaledMinutesGoal,
+    weeklyWorkoutGoal,
+    weeklyMinutesGoal,
+  } = opts;
 
-const emptyWeeklyProTipForTone = (toneKey: ReturnType<typeof normalizeCoachingToneKey>): string => {
-  switch (toneKey) {
-    case 'strict':
-      return 'No data this window: logging is the baseline. Add one meal and one training block before the week closes — without data there is nothing to optimize.';
-    case 'direct':
-      return 'No data this window: log one meal and one training block before the week rolls—Evo cannot optimize ghosts.';
-    case 'gentle':
-      return 'It is okay if this week is quiet in the log. Whenever you feel ready, one meal note and one movement note are enough for Evo to begin helping.';
-    default:
-      return 'Start tiny: one honest meal log and one movement log unlocks a weekly story worth optimizing next Sunday.';
+  if (isPl) {
+    return [
+      `Odżywianie: ok. ${Math.round(totalCalories)} kcal przy szacunku ~${Math.round(targetPeriodCalories)} kcal (suma dziennych celów z paleniem z treningu i bonusami; „goła” baza 7×${calorieGoalBase} kcal to ${staticWeekKcal} kcal). Średnio ${Math.round(avgDailyProtein)} g białka dziennie przy celu ${proteinGoal} g.`,
+      `Trening: ${workoutsCount} sesji, ${Math.round(totalMinutes)} aktywnych minut, ${Math.round(totalStepsTracked)} kroków w logu. Dla tego okna skalowane cele to ~${Math.round(scaledWorkoutGoal)} sesji i ~${Math.round(scaledMinutesGoal)} min (pełny tydzień: ${weeklyWorkoutGoal} sesji / ${weeklyMinutesGoal} min).`,
+      `Konsekwencja: dni z jedzeniem ${mealDays}/${periodDays}, z treningiem ${workoutDays}/${periodDays}; ${trackedDays} dni miało jakikolwiek wpis w śledzonym oknie.`,
+    ];
   }
-};
-
-const buildFallbackWeeklyProTip = (prefs: any, ctx: WeeklyProTipInput): string => {
-  const proactivity = String(prefs?.proactivityLevel || 'MEDIUM').toUpperCase();
-  const toneKey = normalizeCoachingToneKey(prefs?.coachingTone);
-  const goal = String(prefs?.primaryGoal || 'MAINTENANCE');
-  const restrictions = Array.isArray(prefs?.dietaryRestrictions) ? prefs.dietaryRestrictions.filter(Boolean) : [];
-
-  const weakest =
-    ctx.nutritionScore <= ctx.trainingScore && ctx.nutritionScore <= ctx.consistencyScore
-      ? 'nutrition'
-      : ctx.trainingScore <= ctx.consistencyScore
-        ? 'training'
-        : 'consistency';
-
-  let core = '';
-
-  if (restrictions.length > 0) {
-    core = `Build one repeatable dinner that satisfies ${restrictions.slice(0, 2).join(' + ')} and hits ~${Math.round(
-      ctx.proteinGoal * 0.35
-    )}g protein—duplicate it twice this week so ${goal.replace('_', ' ').toLowerCase()} stays on autopilot.`;
-  } else if (weakest === 'nutrition' && ctx.avgDailyProtein < ctx.proteinGoal * 0.88) {
-    core = `Your protein averaged ${Math.round(ctx.avgDailyProtein)}g vs ${ctx.proteinGoal}g—batch one lean protein on Sunday and reuse it Mon/Wed/Fri${
-      goal === 'FAT_LOSS' ? ' (keep Fri portions tighter)' : ''
-    }.`;
-  } else if (weakest === 'training') {
-    core = `You logged ${ctx.workoutsCount} sessions vs a ${ctx.weeklyWorkoutsGoal}/week target—book two ${ctx.totalSteps > 14000 ? 'shorter strength' : 'brisk movement + strength'} blocks on fixed weekdays before tweaking macros.`;
-  } else {
-    core = `Consistency is the bottleneck—same two anchors daily for five days: log lunch + log your hardest training block; skip optional snacks in the app until that rhythm holds.`;
-  }
-
-  if (proactivity === 'LOW') {
-    core = `${core} (Micro-step version: do only the first half this week.)`;
-  } else if (proactivity === 'HIGH') {
-    core = `${core} (High-agency version: add a 10-minute Thursday audit against these three highlights.)`;
-  }
-
-  if (toneKey === 'strict') {
-    return `Standard for next week: ${core}`;
-  }
-  if (toneKey === 'direct') {
-    return core;
-  }
-  if (toneKey === 'gentle') {
-    return `When you have capacity, consider: ${core}`;
-  }
-  return `Gentle nudge: ${core}`;
-};
+  return [
+    `Nutrition: about ${Math.round(totalCalories)} kcal vs a ~${Math.round(targetPeriodCalories)} kcal budget (daily targets with workout burn and bonuses; flat 7×${calorieGoalBase} kcal would be ${staticWeekKcal} kcal). Avg protein ~${Math.round(avgDailyProtein)} g/day vs ${proteinGoal} g.`,
+    `Training: ${workoutsCount} sessions, ${Math.round(totalMinutes)} active minutes, ${Math.round(totalStepsTracked)} tracked steps. Scaled targets for this span: ~${Math.round(scaledWorkoutGoal)} sessions, ~${Math.round(scaledMinutesGoal)} min (full week: ${weeklyWorkoutGoal} / ${weeklyMinutesGoal}).`,
+    `Consistency: ${mealDays}/${periodDays} days with meals, ${workoutDays}/${periodDays} with workouts; ${trackedDays} days had any log.`,
+  ];
+}
 
 const ENV_GARMIN_API_TOKEN = process.env.GARMIN_API_TOKEN || '';
 const GARMIN_PROVIDER = 'GARMIN' as const;
@@ -412,7 +256,8 @@ const loadWeeklyWorkoutsTraining = async (context: Context, endDateInput?: strin
 };
 
 const buildFallbackWeeklyWorkoutsCoach = (prefs: any, payload: WeeklyWorkoutsPayload) => {
-  const goal = String(prefs?.primaryGoal || 'MAINTENANCE');
+  const goalMode = coachPromptModeFromPrimaryGoal(prefs?.primaryGoal);
+  const goalPhrase = String(prefs?.primaryGoal || 'maintenance').replace(/_/g, ' ');
   const sessionsTarget = payload.goals.weeklySessionsTarget;
   const minutesTarget = payload.goals.weeklyActiveMinutesTarget;
   const totalM = payload.totals.minutes;
@@ -440,7 +285,9 @@ const buildFallbackWeeklyWorkoutsCoach = (prefs: any, payload: WeeklyWorkoutsPay
   focusAreas.push(
     payload.daysWithWorkouts < 4
       ? `Only ${payload.daysWithWorkouts}/7 days had movement—pattern risk (weekend pile-ups) stays invisible.`
-      : `Consistency across ${payload.daysWithWorkouts} active days is your main signal for ${goal.replace('_', ' ').toLowerCase()}.`
+      : `Consistency across ${payload.daysWithWorkouts} active days is your main signal for ${
+          goalPhrase.length > 56 ? `${goalPhrase.slice(0, 53)}…` : goalPhrase
+        }.`
   );
   focusAreas.push(
     totalM < minutesTarget * 0.5
@@ -465,7 +312,7 @@ const buildFallbackWeeklyWorkoutsCoach = (prefs: any, payload: WeeklyWorkoutsPay
       : 'Add one 20-minute easy zone-2 finisher after strength for aerobic base without extra joint load.'
   );
   improvements.push(
-    goal === 'FAT_LOSS' || goal === 'STRENGTH'
+    goalMode === 'FAT_LOSS' || goalMode === 'STRENGTH'
       ? 'Log RPE or top set each session so next week’s progression is honest, not guessed.'
       : 'Rotate one new movement pattern weekly to keep adherence high without boredom.'
   );
@@ -492,7 +339,12 @@ export const workoutResolvers = {
   Query: {
     myWorkouts: async (
       _: any,
-      { date, limit = 20, offset = 0 }: { date?: string; limit?: number; offset?: number },
+      {
+        date,
+        limit = 20,
+        offset = 0,
+        clientTimeZone,
+      }: { date?: string; limit?: number; offset?: number; clientTimeZone?: string | null },
       context: Context
     ) => {
       if (!context.user) {
@@ -501,7 +353,7 @@ export const workoutResolvers = {
 
       const filter: any = { userId: context.user.id };
       if (date) {
-        const { startDate, endDate } = getDayRangeByDateKey(date);
+        const { startDate, endDate } = resolveDayRangeForMetrics(date, clientTimeZone ?? null);
         filter.performedAt = { $gte: startDate, $lt: endDate };
       }
 
@@ -526,7 +378,30 @@ export const workoutResolvers = {
       };
     },
 
-    workoutCoachSummary: async (_: any, { date }: { date: string }, context: Context) => {
+    rollingSevenDayAverageSteps: async (
+      _: any,
+      { endDate }: { endDate?: string | null; clientTimeZone?: string | null },
+      context: Context
+    ) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+
+      const endKey = normalizeDateKey(endDate ?? undefined);
+      const keys = buildWeekDateKeys(endKey);
+      const rows = await DailyActivity.find({
+        userId: context.user.id,
+        date: { $in: keys },
+      }).lean();
+      const total = rows.reduce((acc, r) => acc + Math.max(0, Number(r.steps || 0)), 0);
+      return Math.round(total / keys.length);
+    },
+
+    workoutCoachSummary: async (
+      _: any,
+      { date, clientTimeZone }: { date: string; clientTimeZone?: string | null },
+      context: Context
+    ) => {
       if (!context.user) {
         throw new AuthenticationError('You must be logged in');
       }
@@ -535,6 +410,7 @@ export const workoutResolvers = {
         userId: context.user.id,
         dateKey: date,
         preferences: context.user.preferences,
+        clientTimeZone: clientTimeZone ?? undefined,
       });
 
       return {
@@ -558,7 +434,11 @@ export const workoutResolvers = {
       };
     },
 
-    dashboardInsight: async (_: any, { date }: { date: string }, context: Context) => {
+    dashboardInsight: async (
+      _: any,
+      { date, clientTimeZone }: { date: string; clientTimeZone?: string | null },
+      context: Context
+    ) => {
       if (!context.user) {
         throw new AuthenticationError('You must be logged in');
       }
@@ -567,6 +447,7 @@ export const workoutResolvers = {
         userId: context.user.id,
         dateKey: date,
         preferences: context.user.preferences,
+        clientTimeZone: clientTimeZone ?? undefined,
       });
       const primaryGoal = context.user.preferences?.primaryGoal || 'maintenance';
       const now = new Date();
@@ -575,12 +456,7 @@ export const workoutResolvers = {
       const remainingDayPercent = Math.max(0, Math.min(100, Math.round((remainingHours / 24) * 100)));
       const estimatedMealsLeft =
         currentHour < 11 ? 3 : currentHour < 16 ? 2 : currentHour < 21 ? 1 : 0;
-      const concreteInsight = buildConcreteDashboardInsight({
-        dayMetrics,
-        currentHour,
-        estimatedMealsLeft,
-        remainingDayPercent,
-      });
+      const voiceRefreshBucket = Math.floor(Date.now() / (3 * 60 * 60 * 1000));
       const mealDetails = dayMetrics.meals
         .slice(0, 5)
         .map((meal: any) => {
@@ -626,6 +502,7 @@ export const workoutResolvers = {
         mealDetails,
         workoutDetails,
         openaiModel,
+        voiceRefreshBucket,
       });
 
       let aiInsight = await getDashboardInsightFromCache(
@@ -671,8 +548,10 @@ export const workoutResolvers = {
           console.error('dashboardInsight AI error:', error);
           return {
             date: dayMetrics.dateKey,
-            summary: concreteInsight.summary,
-            tips: concreteInsight.tips,
+            summary: '',
+            supportLine: '',
+            tips: [],
+            nextAction: null,
             caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
             steps: dayMetrics.steps,
             stepsCalories: dayMetrics.stepsCalories,
@@ -684,19 +563,12 @@ export const workoutResolvers = {
         }
       }
 
-      const summary = hasConcreteDataReference(aiInsight.summary, dayMetrics)
-        ? aiInsight.summary
-        : concreteInsight.summary;
-      const tips = (Array.isArray(aiInsight.tips) ? aiInsight.tips : [])
-        .slice(0, 3)
-        .map((tip: string, index: number) =>
-          hasConcreteDataReference(tip, dayMetrics) ? tip : concreteInsight.tips[index]
-        );
-
       return {
         date: dayMetrics.dateKey,
-        summary,
-        tips,
+        summary: aiInsight.summary,
+        supportLine: aiInsight.supportLine || '',
+        tips: Array.isArray(aiInsight.tips) ? aiInsight.tips.slice(0, 3) : [],
+        nextAction: aiInsight.nextAction || null,
         caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
         steps: dayMetrics.steps,
         stepsCalories: dayMetrics.stepsCalories,
@@ -738,8 +610,6 @@ export const workoutResolvers = {
 
       const totalCalories = meals.reduce((acc, meal) => acc + meal.nutrition.calories, 0);
       const totalProtein = meals.reduce((acc, meal) => acc + meal.nutrition.protein, 0);
-      const totalWorkoutBurned = workouts.reduce((acc, workout) => acc + (workout.caloriesBurned || 0), 0);
-      const totalBurned = totalWorkoutBurned;
       const totalMinutes = workouts.reduce((acc, workout) => acc + (workout.durationMinutes || 0), 0);
 
       const mealDays = new Set(
@@ -766,38 +636,71 @@ export const workoutResolvers = {
       const periodRatio = Math.min(1, periodDays / 7);
 
       const prefs = context.user.preferences;
+      const uiLocale = normalizeAppLocale(String(prefs?.appLocale));
       const totalStepsTracked = activityDays.reduce((acc, day) => acc + Number(day.steps || 0), 0);
 
       if (trackedDays === 0) {
-        const emptyProTip = emptyWeeklyProTipForTone(normalizeCoachingToneKey(prefs?.coachingTone));
         return {
           startDate: startDate.toISOString().split('T')[0],
           endDate: endKey,
           trackedDays,
           availableDays,
           isCompleteWeek,
-          summary: 'No weekly pattern yet. Log meals, workouts, or steps and Evo will build your weekly trend.',
-          highlights: [
-            `No nutrition logs captured in the current ${availableDays}/7-day window yet.`,
-            `No workouts captured in the current ${availableDays}/7-day window yet.`,
-            'Add at least one tracked day so Evo can generate a practical weekly trend.',
-          ],
-          proTip: emptyProTip,
+          summary: '',
+          highlights: weeklyEvoEmptyWindowHighlights(uiLocale, availableDays),
+          proTip: '',
           nutritionScore: 0,
           trainingScore: 0,
           consistencyScore: 0,
         };
       }
 
-      const netWeeklyCalories = totalCalories - totalBurned;
-      const targetPeriodCalories = calorieGoal * periodDays;
+      // Weekly calorie *target* = sum of each day's dynamic budget (same as dashboard day view:
+      // base + goal delta + logged workout burn + steps estimate + manual activity bonus). Avoids flat 7×base e.g. 14000.
+      const weekDateKeys = buildWeekDateKeys(endKey);
+      const workoutBurnByDate = new Map<string, number>();
+      for (const dk of weekDateKeys) workoutBurnByDate.set(dk, 0);
+      for (const workout of workouts) {
+        const dk = new Date(workout.performedAt).toISOString().split('T')[0];
+        if (!workoutBurnByDate.has(dk)) continue;
+        workoutBurnByDate.set(dk, (workoutBurnByDate.get(dk) || 0) + Number(workout.caloriesBurned || 0));
+      }
+      const activityBonusByDate = new Map<string, number>();
+      for (const day of activityDays) {
+        activityBonusByDate.set(
+          String(day.date),
+          Math.max(0, Math.round(Number(day.activityBonusKcal ?? 0)))
+        );
+      }
+      const carbsGoalNum = Number(prefs?.carbsGoal ?? 200);
+      const fatGoalNum = Number(prefs?.fatGoal ?? 65);
+      let sumWeeklyCalorieBudget = 0;
+      for (const dk of weekDateKeys) {
+        const burn = workoutBurnByDate.get(dk) || 0;
+        const bonus = activityBonusByDate.get(dk) || 0;
+        const dt = buildDynamicTargets({
+          baseCalories: Number(calorieGoal),
+          activityLevel: prefs?.activityLevel,
+          primaryGoal: prefs?.primaryGoal,
+          workoutCalories: burn,
+          stepCalories: 0,
+          manualActivityBonusKcal: bonus,
+          manualProtein: Number(proteinGoal),
+          manualCarbs: carbsGoalNum,
+          manualFat: fatGoalNum,
+        });
+        sumWeeklyCalorieBudget += dt.calorieBudget;
+      }
+
+      const targetPeriodCalories = sumWeeklyCalorieBudget;
       const avgDailyProtein = totalProtein / periodDays;
       const scaledWorkoutGoal = weeklyWorkoutGoal > 0 ? Math.max(1, weeklyWorkoutGoal * periodRatio) : 0;
       const scaledMinutesGoal = weeklyMinutesGoal > 0 ? Math.max(1, weeklyMinutesGoal * periodRatio) : 0;
 
-      const calorieDeltaRatio = targetPeriodCalories > 0
-        ? Math.abs(netWeeklyCalories - targetPeriodCalories) / targetPeriodCalories
-        : 1;
+      const calorieDeltaRatio =
+        targetPeriodCalories > 0
+          ? Math.abs(totalCalories - targetPeriodCalories) / targetPeriodCalories
+          : 1;
       const proteinRatio = proteinGoal > 0 ? avgDailyProtein / proteinGoal : 0;
       const workoutGoalRatio = scaledWorkoutGoal > 0 ? workouts.length / scaledWorkoutGoal : 1;
       const minutesGoalRatio = scaledMinutesGoal > 0 ? totalMinutes / scaledMinutesGoal : 1;
@@ -806,72 +709,138 @@ export const workoutResolvers = {
       const trainingScore = clampScore(Math.min(1, workoutGoalRatio) * 55 + Math.min(1, minutesGoalRatio) * 45);
       const consistencyScore = clampScore(((mealDays / periodDays) * 50) + ((workoutDays / periodDays) * 50));
 
-      const highlights = [
-        `Calories net for current ${availableDays}/7-day window: ${Math.round(netWeeklyCalories)} kcal vs target ${Math.round(targetPeriodCalories)} kcal.`,
-        `Avg daily protein: ${Math.round(avgDailyProtein)}g (goal ${proteinGoal}g).`,
-        `Training volume: ${workouts.length} sessions, ${Math.round(totalMinutes)} active minutes, and ${totalStepsTracked} tracked steps.`,
-      ];
+      const staticWeekKcal = Math.round(Number(calorieGoal) * weekDateKeys.length);
 
-      const baselineSummary = isCompleteWeek
-        ? [
-            `Weekly review: nutrition score ${nutritionScore}/100, training score ${trainingScore}/100, consistency ${consistencyScore}/100.`,
-            nutritionScore >= 75
-              ? 'Great nutritional control this week.'
-              : 'Nutrition needs a tighter plan next week.',
-            trainingScore >= 75
-              ? 'Training rhythm is solid.'
-              : 'Add 1-2 focused sessions or more active minutes next week.',
-          ].join(' ')
-        : [
-            `Weekly review (partial): based on ${availableDays}/7 available days (${trackedDays} tracked), nutrition score ${nutritionScore}/100, training score ${trainingScore}/100, consistency ${consistencyScore}/100.`,
-            nutritionScore >= 75
-              ? 'Nutrition trend is promising so far.'
-              : 'Nutrition trend needs tighter control in the next days.',
-            trainingScore >= 75
-              ? 'Training trend is on pace.'
-              : 'Try adding one focused session or more active minutes before week closes.',
-          ].join(' ');
-
-      let summary = baselineSummary;
-      let proTip = buildFallbackWeeklyProTip(prefs, {
-        nutritionScore,
-        trainingScore,
-        consistencyScore,
+      const fallbackHighlights = weeklyEvoFallbackHighlights({
+        locale: uiLocale,
+        availableDays,
+        periodDays,
+        trackedDays,
+        mealDays,
+        workoutDays,
+        totalCalories,
+        targetPeriodCalories,
+        staticWeekKcal,
+        calorieGoalBase: Number(calorieGoal),
         avgDailyProtein,
         proteinGoal,
         workoutsCount: workouts.length,
-        weeklyWorkoutsGoal: weeklyWorkoutGoal,
-        totalSteps: totalStepsTracked,
-        highlights,
+        totalMinutes,
+        totalStepsTracked,
+        scaledWorkoutGoal,
+        scaledMinutesGoal,
+        weeklyWorkoutGoal: weeklyWorkoutGoal,
+        weeklyMinutesGoal: weeklyMinutesGoal,
       });
 
-      try {
-        const aiNarrative = await openAIService.generateWeeklyEvoReviewNarrative({
-          userName: context.user.name,
-          coachingTone: prefs?.coachingTone,
-          proactivityLevel: prefs?.proactivityLevel,
-          primaryGoal: prefs?.primaryGoal,
-          activityLevel: prefs?.activityLevel,
-          dietaryRestrictions: prefs?.dietaryRestrictions,
-          weightKg: typeof prefs?.weightKg === 'number' ? prefs.weightKg : undefined,
-          weeklyWorkoutsGoal: weeklyWorkoutGoal,
-          weeklyActiveMinutesGoal: weeklyMinutesGoal,
-          isCompleteWeek,
-          availableDays,
-          trackedDays,
-          nutritionScore,
-          trainingScore,
-          consistencyScore,
-          highlightLines: highlights,
-          weekStart: startKey,
-          weekEnd: endKey,
-          baselineSummary,
-          appLocale: prefs?.appLocale,
-        });
-        summary = aiNarrative.summary;
-        proTip = aiNarrative.proTip;
-      } catch (error) {
-        console.error('weeklyEvoReview narrative error:', error);
+      let summary = '';
+      let proTip = '';
+      let highlightsOut = fallbackHighlights;
+
+      const sampleMealNames = [
+        ...new Set(
+          meals
+            .map((m) => String(m.name || '').trim())
+            .filter((n) => n.length > 1)
+        ),
+      ].slice(0, 10);
+      const sampleWorkoutTitles = [
+        ...new Set(
+          workouts
+            .map((w) => String(w.title || '').trim())
+            .filter((t) => t.length > 1)
+        ),
+      ].slice(0, 8);
+      const narrativeLens =
+        parseInt(crypto.createHash('sha256').update(`${context.user.id}:${endKey}`).digest('hex').slice(0, 8), 16) % 4;
+
+      const openaiModel = (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+      const voiceRefreshBucket = Math.floor(Date.now() / (3 * 60 * 60 * 1000));
+      const weeklyFingerprint = fingerprintWeeklyEvoReview({
+        weekEnd: endKey,
+        voiceRefreshBucket,
+        openaiModel,
+        appLocale: prefs?.appLocale,
+        coachingTone: prefs?.coachingTone,
+        proactivityLevel: prefs?.proactivityLevel,
+        primaryGoal: prefs?.primaryGoal,
+        nutritionScore,
+        trainingScore,
+        consistencyScore,
+        totalCalories,
+        totalProtein,
+        avgDailyProtein,
+        targetPeriodCalories,
+        staticWeekKcal,
+        calorieGoal: Number(calorieGoal),
+        proteinGoal: Number(proteinGoal),
+        workoutsCount: workouts.length,
+        totalMinutes,
+        totalStepsTracked,
+        mealDays,
+        workoutDays,
+        trackedDays,
+        availableDays,
+        isCompleteWeek,
+        periodDays,
+        scaledWeeklySessionsTarget: scaledWorkoutGoal,
+        scaledWeeklyMinutesTarget: scaledMinutesGoal,
+      });
+
+      const cachedWeekly = await getWeeklyEvoReviewFromCache(context.user.id, endKey, weeklyFingerprint);
+      if (cachedWeekly) {
+        summary = cachedWeekly.summary;
+        proTip = cachedWeekly.proTip;
+        highlightsOut = cachedWeekly.highlights;
+      } else {
+        try {
+          const aiNarrative = await openAIService.generateWeeklyEvoReviewNarrative({
+            userName: context.user.name,
+            coachingTone: prefs?.coachingTone,
+            proactivityLevel: prefs?.proactivityLevel,
+            primaryGoal: prefs?.primaryGoal,
+            activityLevel: prefs?.activityLevel,
+            dietaryRestrictions: prefs?.dietaryRestrictions,
+            weightKg: typeof prefs?.weightKg === 'number' ? prefs.weightKg : undefined,
+            weeklyWorkoutsGoal: weeklyWorkoutGoal,
+            weeklyActiveMinutesGoal: weeklyMinutesGoal,
+            isCompleteWeek,
+            availableDays,
+            trackedDays,
+            periodDays,
+            nutritionScore,
+            trainingScore,
+            consistencyScore,
+            weekStart: startKey,
+            weekEnd: endKey,
+            appLocale: prefs?.appLocale,
+            narrativeLens,
+            loggedMealNames: sampleMealNames,
+            loggedWorkoutTitles: sampleWorkoutTitles,
+            totalCalories,
+            targetPeriodCalories,
+            staticWeekKcal,
+            calorieGoalBase: Number(calorieGoal),
+            avgDailyProtein,
+            proteinGoal,
+            workoutsCount: workouts.length,
+            totalActiveMinutes: totalMinutes,
+            totalStepsTracked,
+            mealDays,
+            workoutDays,
+            scaledWeeklySessionsTarget: scaledWorkoutGoal,
+            scaledWeeklyMinutesTarget: scaledMinutesGoal,
+          });
+          summary = aiNarrative.summary;
+          proTip = aiNarrative.proTip;
+          highlightsOut = aiNarrative.highlights;
+          await saveWeeklyEvoReviewToCache(context.user.id, endKey, weeklyFingerprint, aiNarrative);
+        } catch (error) {
+          console.error('weeklyEvoReview narrative error:', error);
+          summary = '';
+          proTip = '';
+          highlightsOut = fallbackHighlights;
+        }
       }
 
       return {
@@ -881,7 +850,7 @@ export const workoutResolvers = {
         availableDays,
         isCompleteWeek,
         summary,
-        highlights,
+        highlights: highlightsOut,
         proTip,
         nutritionScore,
         trainingScore,

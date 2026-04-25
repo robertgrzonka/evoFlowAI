@@ -17,7 +17,8 @@ export interface UserPreferences {
   fatGoal: number;
   weeklyWorkoutsGoal: number;
   weeklyActiveMinutesGoal: number;
-  primaryGoal: 'fat_loss' | 'maintenance' | 'muscle_gain' | 'strength';
+  /** Preset slugs (fat_loss, …) or free-text goal for Evo / UI. */
+  primaryGoal: string;
   coachingTone: 'gentle' | 'supportive' | 'direct' | 'strict';
   proactivityLevel: 'low' | 'medium' | 'high';
   dietaryRestrictions: string[];

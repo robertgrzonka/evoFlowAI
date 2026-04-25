@@ -14,11 +14,11 @@ export function normalizeCoachingToneKey(raw?: string | null): CoachingToneKey {
 /** One line for user-context blocks (English; model output language is set elsewhere). */
 export const coachingToneModelHint: Record<CoachingToneKey, string> = {
   gentle:
-    'Max safety and patience; richer emotional vocabulary; lively wording with natural emoji when it helps warmth (no fixed emoji count); no guilt or pressure — smallest next step only.',
+    'Buddy-energy: warm, playful, Polish “ty”; mandatory emoji density in JSON (≥1 per sentence in narrative fields); never guilt; smallest optional next step.',
   supportive:
-    'Balanced warmth with light emotional color and at most rare subtle emoji; then concrete guidance, no melodrama.',
+    'Teammate-energy: calm partnership, brief empathy then action; 1–2 emoji max per whole reply — never GENTLE-level emoji; no drill-sergeant tone.',
   direct:
-    'Nearly flat affect: minimal emotional language, almost never emoji unless mirroring the user.',
+    'Efficiency: flat affect, no emoji, short sentences, facts-first; polite bluntness — peer-level, not commanding.',
   strict:
-    'Zero sentimental tone and zero emoji; terse execution focus — blunt on gaps vs goals, never abusive.',
+    'Authority: imperatives, accountability, zero emoji, zero sentiment; high standards without insulting the person.',
 };

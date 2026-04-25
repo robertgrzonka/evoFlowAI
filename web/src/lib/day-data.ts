@@ -5,6 +5,7 @@ import {
   DAILY_STATS_QUERY,
   DASHBOARD_INSIGHT_QUERY,
   MY_WORKOUTS_QUERY,
+  ROLLING_SEVEN_DAY_AVERAGE_STEPS_QUERY,
   WEEKLY_EVO_REVIEW_QUERY,
   WEEKLY_MEALS_COACH_QUERY,
   WEEKLY_MEALS_NUTRITION_QUERY,
@@ -42,30 +43,49 @@ const weeklyEvoReviewRefetches = (impactedDate: string) => {
  * coach blocks, so the mutation can finish and the UI can unblock before heavy refetches.
  */
 export const buildDayRefetchQueriesAfterLog = (
-  date: string
-): Array<{ query: DocumentNode; variables: Record<string, unknown> }> => [
-  { query: DAILY_STATS_QUERY, variables: { date } },
-  { query: MY_WORKOUTS_QUERY, variables: { date, limit: WORKOUTS_DAY_LIMIT, offset: 0 } },
-  { query: DAILY_ACTIVITY_QUERY, variables: { date } },
-  { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date } },
-];
+  date: string,
+  clientTimeZone?: string | null
+): Array<{ query: DocumentNode; variables: Record<string, unknown> }> => {
+  const tz = clientTimeZone ?? null;
+  return [
+    { query: DAILY_STATS_QUERY, variables: { date, clientTimeZone: tz } },
+    { query: MY_WORKOUTS_QUERY, variables: { date, limit: WORKOUTS_DAY_LIMIT, offset: 0, clientTimeZone: tz } },
+    { query: DAILY_ACTIVITY_QUERY, variables: { date } },
+    { query: WORKOUT_COACH_SUMMARY_QUERY, variables: { date, clientTimeZone: tz } },
+  ];
+};
 
-const buildDayDeferredRefetchQueries = (date: string) => [
-  { query: DASHBOARD_INSIGHT_QUERY, variables: { date } },
-  ...weeklyEvoReviewRefetches(date),
-];
+const buildDayDeferredRefetchQueries = (date: string, clientTimeZone?: string | null) => {
+  const tz = clientTimeZone ?? null;
+  return [
+    { query: DASHBOARD_INSIGHT_QUERY, variables: { date, clientTimeZone: tz } },
+    ...weeklyEvoReviewRefetches(date),
+  ];
+};
+
+/** Rolling 7-day average daily steps; window ends on `weekEndDate` (dashboard uses calendar today). */
+export const buildRollingSevenDayAverageStepsRefetch = (
+  weekEndDate: string,
+  clientTimeZone?: string | null
+): { query: DocumentNode; variables: Record<string, unknown> } => ({
+  query: ROLLING_SEVEN_DAY_AVERAGE_STEPS_QUERY,
+  variables: { endDate: weekEndDate, clientTimeZone: clientTimeZone ?? null },
+});
 
 /** Full day refetch (legacy): core + dashboard insight + weekly Evo review. */
-export const buildDayRefetchQueries = (date: string): Array<{ query: DocumentNode; variables: Record<string, unknown> }> => [
-  ...buildDayRefetchQueriesAfterLog(date),
-  ...buildDayDeferredRefetchQueries(date),
+export const buildDayRefetchQueries = (
+  date: string,
+  clientTimeZone?: string | null
+): Array<{ query: DocumentNode; variables: Record<string, unknown> }> => [
+  ...buildDayRefetchQueriesAfterLog(date, clientTimeZone),
+  ...buildDayDeferredRefetchQueries(date, clientTimeZone),
 ];
 
 /** Dashboard insight + weekly Evo only (e.g. after steps / activity bonus). */
 export function kickDeferredDashboardAndWeeklyEvo(client: ApolloClient<object>): void {
   void client
     .refetchQueries({
-      include: [DASHBOARD_INSIGHT_QUERY, WEEKLY_EVO_REVIEW_QUERY],
+      include: [DASHBOARD_INSIGHT_QUERY, WEEKLY_EVO_REVIEW_QUERY, ROLLING_SEVEN_DAY_AVERAGE_STEPS_QUERY],
     })
     .catch(() => {});
 }

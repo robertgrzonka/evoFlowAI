@@ -26,6 +26,7 @@ import EvoMark from '@/components/EvoMark';
 import EvoChatDock from '@/components/EvoChatDock';
 import ProBadge from '@/components/ui/atoms/ProBadge';
 import Tooltip from '@/components/ui/atoms/Tooltip';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
 import { AppShellLayoutProvider, useAppShellLayout } from '@/components/app-shell-layout';
 import type { LucideIcon } from 'lucide-react';
 
@@ -228,7 +229,8 @@ function AppShellInner({ children }: AppShellProps) {
 
           <div
             className={clsx(
-              'mt-3 rounded-lg border border-border bg-surface shrink-0',
+              'mt-3 rounded-lg border border-border bg-surface shrink-0 shadow-sm shadow-black/5',
+              accentEdgeClasses('info', 'left'),
               sidebarCollapsed ? 'p-2 flex flex-col items-center gap-2' : 'p-3'
             )}
           >

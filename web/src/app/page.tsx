@@ -13,6 +13,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import Link from 'next/link';
+import { clsx } from 'clsx';
+import { accentEdgeClasses, type AccentKind } from '@/components/ui/accent-cards';
 import { hasAuthToken } from '@/lib/auth-token';
 import EvoMark from '@/components/EvoMark';
 
@@ -57,7 +59,10 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
-            className="rounded-2xl border border-border bg-surface p-6 md:p-8"
+            className={clsx(
+              'rounded-2xl border border-border bg-surface p-6 md:p-8 shadow-sm shadow-black/5',
+              accentEdgeClasses('primary', 'left'),
+            )}
           >
             <div className="max-w-3xl">
               <p className="inline-flex items-center rounded-full border border-primary-500/30 bg-primary-500/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-primary-300 mb-4">
@@ -90,14 +95,19 @@ export default function HomePage() {
             <p className="text-text-secondary mt-1">Everything aligned to your daily execution and weekly decisions.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {productPillars.map((pillar, index) => (
+            {productPillars.map((pillar, index) => {
+              const strip: AccentKind = index % 3 === 0 ? 'primary' : index % 3 === 1 ? 'info' : 'success';
+              return (
               <motion.div
                 key={pillar.title}
                 initial={{ opacity: 0, y: 12 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: index * 0.04 }}
                 viewport={{ once: true }}
-                className="rounded-xl border border-border bg-surface-elevated p-4"
+                className={clsx(
+                  'rounded-xl border border-border bg-surface-elevated p-4 shadow-sm shadow-black/5',
+                  accentEdgeClasses(strip, 'left'),
+                )}
               >
                 <div className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border mb-3">
                   <pillar.icon className="h-4 w-4 text-text-primary" />
@@ -105,7 +115,8 @@ export default function HomePage() {
                 <h3 className="font-semibold text-text-primary">{pillar.title}</h3>
                 <p className="text-sm text-text-secondary mt-1">{pillar.desc}</p>
               </motion.div>
-            ))}
+            );
+            })}
           </div>
         </div>
       </section>

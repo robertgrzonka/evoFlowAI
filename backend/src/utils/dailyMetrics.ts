@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import { FoodItem } from '../models/FoodItem';
 import { addDaysToDateKey } from './weekRange';
 import { Workout } from '../models/Workout';
@@ -34,13 +35,47 @@ export const getDayRangeByDateKey = (dateKey: string): { startDate: Date; endDat
   return { startDate, endDate };
 };
 
+const safeClientTimeZone = (timeZone?: string | null): string | null => {
+  const tz = String(timeZone || '').trim();
+  if (!tz) return null;
+  return DateTime.now().setZone(tz).isValid ? tz : null;
+};
+
+/** Interpret `dateKey` as a calendar day in `timeZone` (local midnight → next local midnight), converted to UTC instants for Mongo queries. */
+export const getDayRangeByDateKeyInTimeZone = (
+  dateKey: string,
+  timeZone: string
+): { startDate: Date; endDate: Date } => {
+  const normalized = normalizeDateKey(dateKey);
+  const start = DateTime.fromISO(`${normalized}T00:00:00.000`, { zone: timeZone });
+  if (!start.isValid) {
+    return getDayRangeByDateKey(normalized);
+  }
+  const end = start.plus({ days: 1 });
+  return { startDate: start.toJSDate(), endDate: end.toJSDate() };
+};
+
+export const resolveDayRangeForMetrics = (
+  dateKey: string,
+  clientTimeZone?: string | null
+): { startDate: Date; endDate: Date } => {
+  const normalized = normalizeDateKey(dateKey);
+  const tz = safeClientTimeZone(clientTimeZone);
+  if (tz) {
+    return getDayRangeByDateKeyInTimeZone(normalized, tz);
+  }
+  return getDayRangeByDateKey(normalized);
+};
+
 export const getDailyMetrics = async (input: {
   userId: string;
   dateKey?: string;
   preferences?: UserPreferencesShape;
+  /** IANA zone (e.g. Europe/Warsaw). When set, `dateKey` is that zone's calendar day. */
+  clientTimeZone?: string | null;
 }) => {
   const dateKey = normalizeDateKey(input.dateKey);
-  const { startDate, endDate } = getDayRangeByDateKey(dateKey);
+  const { startDate, endDate } = resolveDayRangeForMetrics(dateKey, input.clientTimeZone);
 
   const [meals, workouts, dayActivity] = await Promise.all([
     FoodItem.find({
@@ -78,6 +113,7 @@ export const getDailyMetrics = async (input: {
 
   const steps = Math.max(0, Number(dayActivity?.steps || 0));
   const activityBonusKcal = Math.max(0, Math.round(Number(dayActivity?.activityBonusKcal ?? 0)));
+  /** Step kcal are not added to the calorie budget (dashboard / goals); steps still surface as a signal. */
   const stepsCalories = 0;
   const dynamicTargets = buildDynamicTargets({
     baseCalories: input.preferences?.dailyCalorieGoal || 2000,

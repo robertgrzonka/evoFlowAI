@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 import { motion } from 'framer-motion';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import {
   ME_QUERY,
+  ROLLING_SEVEN_DAY_AVERAGE_STEPS_QUERY,
   WEEKLY_EVO_REVIEW_QUERY,
 } from '@/lib/graphql/queries';
 import { Camera, ChartColumnIncreasing, Dumbbell, Plus, Target, Trash2 } from 'lucide-react';
@@ -30,11 +31,13 @@ import {
 import { appToast } from '@/lib/app-toast';
 import {
   buildDayRefetchQueriesAfterLog,
+  buildRollingSevenDayAverageStepsRefetch,
   kickDeferredAfterMealLog,
   kickDeferredAfterWorkoutLog,
   kickDeferredDashboardAndWeeklyEvo,
 } from '@/lib/day-data';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
+import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
 import { formatPrimaryGoal } from '@/lib/formatters';
 import {
   AISectionHeader,
@@ -46,13 +49,14 @@ import {
   NextBestActionCard,
 } from '@/components/evo';
 import Tooltip from '@/components/ui/atoms/Tooltip';
+import { accentEdgeClasses } from '@/components/ui/accent-cards';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { getDestructiveConfirmLabels } from '@/lib/i18n/destructive-confirm';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import {
-  buildDashboardDynamicGuidance,
-  buildDashboardEvoPresence,
   buildDashboardGoalHoverHint,
-  buildDashboardNextAction,
   getDashboardStrings,
+  resolveDashboardInsightNextActionPath,
 } from '@/lib/i18n/copy/dashboard';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
@@ -64,22 +68,29 @@ export default function DashboardPage() {
   const router = useRouter();
   const { sidebarCollapsed } = useAppShellLayout();
   const [mounted, setMounted] = useState(false);
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const { dateKey: today, timeZone } = useClientCalendarToday();
   const [quickWorkoutTitle, setQuickWorkoutTitle] = useState('');
   const [quickWorkoutDuration, setQuickWorkoutDuration] = useState(35);
   const [quickWorkoutBurned, setQuickWorkoutBurned] = useState(250);
   const [quickWorkoutIntensity, setQuickWorkoutIntensity] = useState<WorkoutIntensity>('MEDIUM');
   const [quickSteps, setQuickSteps] = useState(6000);
+  const [deleteMealId, setDeleteMealId] = useState<string | null>(null);
 
   const { data: userData, loading: userLoading, error: userError } = useQuery(ME_QUERY);
   const daySnapshot = useDaySnapshot({
     date: today,
+    clientTimeZone: timeZone,
     enabled: Boolean(userData?.me),
     includeInsight: true,
   });
   const { data: weeklyReviewData, loading: weeklyReviewLoading } = useQuery(WEEKLY_EVO_REVIEW_QUERY, {
     variables: { endDate: today },
     skip: !userData?.me,
+  });
+  const { data: rollingStepsData } = useQuery(ROLLING_SEVEN_DAY_AVERAGE_STEPS_QUERY, {
+    variables: { endDate: today, clientTimeZone: timeZone },
+    skip: !userData?.me,
+    fetchPolicy: 'cache-and-network',
   });
 
   const [deleteFoodItem, { loading: deletingMeal }] = useMutation(DELETE_FOOD_ITEM_MUTATION, {
@@ -89,7 +100,7 @@ export default function DashboardPage() {
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
     awaitRefetchQueries: true,
   });
   const [logWorkout, { loading: quickWorkoutSaving }] = useMutation(LOG_WORKOUT_MUTATION, {
@@ -101,7 +112,7 @@ export default function DashboardPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not add workout.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
     awaitRefetchQueries: true,
   });
   const [upsertDailyActivity, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
@@ -112,7 +123,10 @@ export default function DashboardPage() {
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not update daily activity.');
     },
-    refetchQueries: [...buildDayRefetchQueriesAfterLog(today)],
+    refetchQueries: [
+      ...buildDayRefetchQueriesAfterLog(today, timeZone),
+      buildRollingSevenDayAverageStepsRefetch(today, timeZone),
+    ],
     awaitRefetchQueries: true,
   });
 
@@ -148,6 +162,11 @@ export default function DashboardPage() {
   const user = userData?.me;
   const locale = graphqlAppLocaleToUi(user?.preferences?.appLocale);
   const d = getDashboardStrings(locale);
+  const rollingStepsAvg = Number(rollingStepsData?.rollingSevenDayAverageSteps ?? 0);
+  const steps7Display = new Intl.NumberFormat(locale === 'pl' ? 'pl-PL' : 'en-US').format(
+    rollingStepsAvg
+  );
+  const delLabels = getDestructiveConfirmLabels(locale);
   const stats = daySnapshot.stats;
   const workouts = daySnapshot.workouts || [];
   const insight = daySnapshot.insight;
@@ -161,23 +180,12 @@ export default function DashboardPage() {
       ? `${workouts.length} ${workouts.length > 1 ? d.sessionsMany : d.sessionsOne} • ${totalTrainingMinutes} min`
       : d.noSessions;
 
-  const guidance = insight
-    ? buildDashboardDynamicGuidance(locale, {
-        remainingCalories: insight.remainingCalories,
-        remainingProtein: insight.remainingProtein,
-        workoutCount: daySnapshot.derived.workoutCount,
-        steps: daySnapshot.derived.steps,
-        tips: insight.tips,
-      })
-    : d.noGuidance;
-  const evoPresence = insight
-    ? buildDashboardEvoPresence(locale, {
-        remainingCalories: insight.remainingCalories,
-        remainingProtein: insight.remainingProtein,
-        workoutCount: daySnapshot.derived.workoutCount,
-        steps: daySnapshot.derived.steps,
-      })
-    : d.evoWaiting;
+  const tipsFromAi = (insight?.tips || []).map((t) => String(t || '').trim()).filter(Boolean);
+  const hasAiBrief =
+    Boolean(insight) &&
+    String(insight?.summary || '').trim().length >= 20 &&
+    tipsFromAi.length === 3 &&
+    tipsFromAi.every((t) => t.length >= 12);
 
   const progressTone = insight
     ? insight.remainingProtein <= 10 && insight.remainingCalories >= -100
@@ -187,23 +195,65 @@ export default function DashboardPage() {
         : d.progressInProgress
     : d.progressInProgress;
 
-  const categorizedTips = [
-    { label: d.tipNutrition, tip: insight?.tips?.[0] || d.tipNutritionFallback },
-    { label: d.tipTraining, tip: insight?.tips?.[1] || d.tipTrainingFallback },
-    { label: d.tipRecovery, tip: insight?.tips?.[2] || d.tipRecoveryFallback },
-  ];
-  const nextAction = buildDashboardNextAction(locale, {
-    remainingCalories: Number(insight?.remainingCalories || 0),
-    remainingProtein: Number(insight?.remainingProtein || 0),
-    mealsCount: completedMeals,
-    workoutCount: daySnapshot.derived.workoutCount,
-  });
+  const categorizedTips = hasAiBrief
+    ? [
+        { label: d.tipNutrition, tip: tipsFromAi[0] },
+        { label: d.tipTraining, tip: tipsFromAi[1] },
+        { label: d.tipRecovery, tip: tipsFromAi[2] },
+      ]
+    : [];
+  const aiNext = insight?.nextAction;
+  const nextAction =
+    aiNext &&
+    typeof aiNext.title === 'string' &&
+    aiNext.title.trim() &&
+    typeof aiNext.description === 'string' &&
+    aiNext.description.trim() &&
+    typeof aiNext.actionLabel === 'string' &&
+    aiNext.actionLabel.trim() &&
+    aiNext.target
+      ? {
+          title: aiNext.title.trim(),
+          description: aiNext.description.trim(),
+          actionLabel: aiNext.actionLabel.trim(),
+          targetPath: resolveDashboardInsightNextActionPath(String(aiNext.target)),
+        }
+      : {
+          title: d.nextActionOpenChatTitle,
+          description: d.nextActionOpenChatDesc,
+          actionLabel: d.nextActionOpenChatLabel,
+          targetPath: '/chat?channel=COACH',
+        };
 
-  const handleDeleteMeal = async (mealId: string) => {
-    const confirmed = window.confirm(d.confirmDeleteMeal);
-    if (!confirmed) return;
+  const metricsGrid =
+    insight ? (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 lg:gap-4">
+        <EmojiMetric
+          emoji="🎯"
+          value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'maintenance'), locale)}
+          tooltip={d.metricGoal}
+        />
+        <EmojiMetric
+          emoji="🍽️"
+          value={`${completedMeals} ${d.mealsLoggedWord}`}
+          tooltip={d.metricMealsToday}
+        />
+        <EmojiMetric
+          emoji="🏋️"
+          value={`${daySnapshot.derived.workoutCount} • ${totalTrainingMinutes} min`}
+          tooltip={`${d.metricTrainingToday} (${dailyTrainingLabel})`}
+        />
+        <EmojiMetric emoji="👟" value={steps7Display} tooltip={d.metricSteps7d} />
+        <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)} kcal`} tooltip={d.metricKcalLeft} />
+        <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)} g`} tooltip={d.metricProteinLeft} />
+      </div>
+    ) : null;
 
-    const result = await deleteFoodItem({ variables: { id: mealId } });
+  const handleConfirmDeleteMeal = async () => {
+    if (!deleteMealId) return;
+    const id = deleteMealId;
+    setDeleteMealId(null);
+    const result = await deleteFoodItem({ variables: { id } });
     if (result.data?.deleteFoodItem) {
       appToast.success('Meal deleted', 'Entry was removed from your day.');
     } else {
@@ -250,6 +300,17 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
+      <ConfirmDialog
+        open={deleteMealId !== null}
+        title={d.deleteMeal}
+        description={d.confirmDeleteMeal}
+        confirmLabel={delLabels.confirm}
+        cancelLabel={delLabels.cancel}
+        onCancel={() => setDeleteMealId(null)}
+        onConfirm={() => void handleConfirmDeleteMeal()}
+        confirmBusy={deletingMeal}
+        variant="danger"
+      />
       <EvoThinkingOverlay
         open={daySnapshot.insightBootstrapping || quickWorkoutSaving}
         locale={locale}
@@ -271,7 +332,10 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.03, ease: 'easeOut' }}
-          className="bg-surface rounded-xl border border-border p-4 md:p-5"
+          className={clsx(
+            'bg-surface rounded-xl border border-border p-4 md:p-5 shadow-sm shadow-black/5',
+            accentEdgeClasses('primary', 'left'),
+          )}
         >
           <AISectionHeader
             eyebrow={d.missionEyebrow}
@@ -296,51 +360,65 @@ export default function DashboardPage() {
             </div>
           ) : insight ? (
             <div className="space-y-4">
-              <HeroInsightCard
-                layout="split"
-                title={d.mainInsight}
-                insight={insight.summary}
-                supportLine={evoPresence}
-                cta={
-                  <NextBestActionCard
-                    fillHeight
-                    eyebrow={d.nextStepEyebrow}
-                    title={nextAction.title}
-                    description={nextAction.description}
-                    actionLabel={nextAction.actionLabel}
-                    onAction={() => router.push(nextAction.targetPath)}
-                  />
-                }
-              >
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 lg:gap-4">
-                  <EmojiMetric
-                    emoji="🎯"
-                    value={formatPrimaryGoal(String(user?.preferences?.primaryGoal || 'MAINTENANCE'))}
-                    tooltip={d.metricGoal}
-                  />
-                  <EmojiMetric
-                    emoji="🍽️"
-                    value={`${completedMeals} ${d.mealsLoggedWord}`}
-                    tooltip={d.metricMealsToday}
-                  />
-                  <EmojiMetric
-                    emoji="🏋️"
-                    value={`${daySnapshot.derived.workoutCount} • ${totalTrainingMinutes} min`}
-                    tooltip={`${d.metricTrainingToday} (${dailyTrainingLabel})`}
-                  />
-                  <EmojiMetric emoji="⚖️" value={`${insight.netCalories.toFixed(0)} kcal`} tooltip={d.metricNetKcal} />
-                  <EmojiMetric emoji="🔥" value={`${insight.remainingCalories.toFixed(0)} kcal`} tooltip={d.metricKcalLeft} />
-                  <EmojiMetric emoji="🥚" value={`${Math.max(0, insight.remainingProtein).toFixed(0)} g`} tooltip={d.metricProteinLeft} />
+              {!hasAiBrief && !daySnapshot.insightBootstrapping ? (
+                <EvoHintCard
+                  title={d.insightBriefFailedTitle}
+                  content={d.insightBriefFailedBody}
+                  tone="warning"
+                  action={
+                    <button type="button" className="btn-info text-sm" onClick={() => void daySnapshot.refetchDay()}>
+                      {d.refetchBriefLabel}
+                    </button>
+                  }
+                />
+              ) : null}
+              {hasAiBrief ? (
+                <HeroInsightCard
+                  layout="split"
+                  title={d.mainInsight}
+                  insight={insight.summary}
+                  supportLine={insight.supportLine?.trim() || undefined}
+                  cta={
+                    <NextBestActionCard
+                      fillHeight
+                      eyebrow={d.nextStepEyebrow}
+                      title={nextAction.title}
+                      description={nextAction.description}
+                      actionLabel={nextAction.actionLabel}
+                      onAction={() => router.push(nextAction.targetPath)}
+                    />
+                  }
+                >
+                  {metricsGrid}
+                </HeroInsightCard>
+              ) : !daySnapshot.insightBootstrapping ? (
+                <div
+                  className={clsx(
+                    'rounded-xl border border-border bg-surface p-4 md:p-5 shadow-sm shadow-black/5',
+                    accentEdgeClasses('info', 'left'),
+                  )}
+                >
+                  <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-3">{d.mainInsight}</p>
+                  {metricsGrid}
+                  <div className="mt-4 max-w-md">
+                    <NextBestActionCard
+                      eyebrow={d.nextStepEyebrow}
+                      title={nextAction.title}
+                      description={nextAction.description}
+                      actionLabel={nextAction.actionLabel}
+                      onAction={() => router.push(nextAction.targetPath)}
+                    />
+                  </div>
                 </div>
-              </HeroInsightCard>
+              ) : null}
 
-              <EvoHintCard title={d.quickReadTitle} content={guidance} tone="notice" />
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 2xl:gap-4 w-full">
-                {categorizedTips.map((item) => (
-                  <EvoHintCard key={item.label} title={item.label} content={item.tip} tone="positive" />
-                ))}
-              </div>
+              {hasAiBrief ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 2xl:gap-4 w-full">
+                  {categorizedTips.map((item) => (
+                    <EvoHintCard key={item.label} title={item.label} content={item.tip} tone="positive" />
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : (
             <InsightEmptyState
@@ -352,7 +430,12 @@ export default function DashboardPage() {
           )}
         </motion.section>
 
-        <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
+        <section
+          className={clsx(
+            'bg-surface rounded-xl border border-border p-4 md:p-5 shadow-sm shadow-black/5',
+            accentEdgeClasses('info', 'left'),
+          )}
+        >
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.weeklyTitle}</h3>
             <span className="text-xs text-text-secondary">{d.weeklyLast7}</span>
@@ -369,7 +452,11 @@ export default function DashboardPage() {
                   <p className="text-xs text-primary-200">{d.weeklyPartial(weeklyReview.availableDays, weeklyReview.trackedDays)}</p>
                 </div>
               ) : null}
-              <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{weeklyReview.summary}</p>
+              {weeklyReview.summary?.trim() ? (
+                <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">{weeklyReview.summary}</p>
+              ) : (
+                <p className="text-sm text-text-muted">{d.weeklyNarrativePending}</p>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <ScorePill label={d.scoreNutrition} score={weeklyReview.nutritionScore} />
                 <ScorePill label={d.scoreTraining} score={weeklyReview.trainingScore} />
@@ -377,12 +464,18 @@ export default function DashboardPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 2xl:gap-4 w-full">
                 {weeklyReview.highlights.map((highlight: string) => (
-                  <div key={highlight} className="rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm text-text-secondary">
+                  <div
+                    key={highlight}
+                    className={clsx(
+                      'rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm text-text-secondary shadow-sm shadow-black/5',
+                      accentEdgeClasses('success', 'left'),
+                    )}
+                  >
                     {highlight}
                   </div>
                 ))}
               </div>
-              {weeklyReview.proTip ? (
+              {weeklyReview.proTip?.trim() ? (
                 <div className="rounded-xl border border-primary-500/25 bg-gradient-to-br from-primary-500/10 via-surface-elevated/80 to-amber-400/5 px-4 py-3.5">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-200/95 mb-1.5">{d.proTip}</p>
                   <p className="text-sm text-text-primary leading-snug">{weeklyReview.proTip}</p>
@@ -401,13 +494,18 @@ export default function DashboardPage() {
           )}
         >
           <section className={clsx('space-y-4', sidebarCollapsed ? 'lg:col-span-8 2xl:col-span-9' : 'lg:col-span-8')}>
-            <div className="bg-surface rounded-xl border border-border p-4 md:p-5">
+            <div
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-4 md:p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('success', 'left'),
+              )}
+            >
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold tracking-tight text-text-primary">{d.todayGoals}</h3>
                   <p className="text-sm text-text-secondary">{d.todayGoalsSub(today)}</p>
                 </div>
-                <button onClick={() => router.push('/goals')} className="btn-secondary">
+                <button type="button" onClick={() => router.push('/goals')} className="btn-info">
                   {d.setGoals}
                 </button>
               </div>
@@ -491,7 +589,12 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="bg-surface rounded-xl border border-border p-4 md:p-5">
+            <div
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-4 md:p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('primary', 'left'),
+              )}
+            >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.quickActions}</h3>
               </div>
@@ -520,7 +623,12 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="bg-surface rounded-xl border border-border p-4 md:p-5">
+            <div
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-4 md:p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('info', 'left'),
+              )}
+            >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.todayMeals}</h3>
                 <button onClick={() => router.push('/meals')} className="text-info-400 hover:text-info-300 text-sm transition-colors">
@@ -542,7 +650,7 @@ export default function DashboardPage() {
                     >
                       <button
                         type="button"
-                        onClick={() => handleDeleteMeal(meal.id)}
+                        onClick={() => setDeleteMealId(meal.id)}
                         disabled={deletingMeal}
                         className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
                         title={d.deleteMeal}
@@ -576,7 +684,12 @@ export default function DashboardPage() {
           </section>
 
           <aside className={clsx('space-y-4', sidebarCollapsed ? 'lg:col-span-4 2xl:col-span-3' : 'lg:col-span-4')}>
-            <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-4 md:p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('primary', 'left'),
+              )}
+            >
               <div className="flex items-center justify-between mb-3.5">
                 <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.quickWorkout}</h3>
                 <button onClick={() => router.push('/workouts')} className="text-amber-300 hover:text-amber-200 text-xs transition-colors">
@@ -633,7 +746,12 @@ export default function DashboardPage() {
               </form>
             </section>
 
-            <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-4 md:p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('success', 'left'),
+              )}
+            >
               <div className="flex items-center justify-between mb-3.5">
                 <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.dailySteps}</h3>
                 <span className="text-xs text-text-secondary">{d.trackedOnly}</span>
@@ -661,7 +779,12 @@ export default function DashboardPage() {
               </form>
             </section>
 
-            <section className="bg-surface rounded-xl border border-border p-4 md:p-5">
+            <section
+              className={clsx(
+                'bg-surface rounded-xl border border-border p-4 md:p-5 shadow-sm shadow-black/5',
+                accentEdgeClasses('info', 'left'),
+              )}
+            >
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-base font-semibold tracking-tight text-text-primary">{d.todayTraining}</h3>
                 <button onClick={() => router.push('/workouts')} className="text-xs text-text-secondary hover:text-text-primary transition-colors">
@@ -722,26 +845,35 @@ function StatCard({
       value: 'text-primary-500',
       bar: 'bg-primary-500',
       tooltip: 'border-primary-500/45 text-primary-200',
+      edge: accentEdgeClasses('primary', 'left'),
     },
     info: {
       value: 'text-info-500',
       bar: 'bg-info-500',
       tooltip: 'border-info-500/45 text-info-200',
+      edge: accentEdgeClasses('info', 'left'),
     },
     success: {
       value: 'text-success-500',
       bar: 'bg-success-500',
       tooltip: 'border-success-500/45 text-success-200',
+      edge: accentEdgeClasses('success', 'left'),
     },
     brandSoft: {
       value: 'text-primary-300',
       bar: 'bg-primary-300',
       tooltip: 'border-primary-300/55 text-primary-100',
+      edge: 'border-l-4 border-l-primary-300',
     },
-  } satisfies Record<StatTone, { value: string; bar: string; tooltip: string }>;
+  } satisfies Record<StatTone, { value: string; bar: string; tooltip: string; edge: string }>;
   
   const cardContent = (
-    <div className="bg-surface rounded-xl border border-border p-5">
+    <div
+      className={clsx(
+        'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
+        toneStyles[tone].edge,
+      )}
+    >
       <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-text-muted">{title}</h3>
       <div className="mb-3 flex items-baseline space-x-2">
         <span className={`text-2xl font-semibold tracking-tight ${toneStyles[tone].value}`}>{value}</span>

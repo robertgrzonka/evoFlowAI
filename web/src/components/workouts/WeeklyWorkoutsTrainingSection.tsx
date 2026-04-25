@@ -1,5 +1,6 @@
 'use client';
 
+import { clsx } from 'clsx';
 import { useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@apollo/client';
@@ -10,6 +11,7 @@ import { AISectionHeader } from '@/components/evo';
 import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
 import { weeklySectionsCopy } from '@/lib/i18n/copy/weekly-sections';
 import { formatDayWeekCardHeading } from '@/lib/i18n/format-day-label';
+import { accentEdgeClasses, type AccentKind } from '@/components/ui/accent-cards';
 
 type DayRow = {
   date: string;
@@ -54,7 +56,12 @@ export default function WeeklyWorkoutsTrainingSection({ weekEndDate }: { weekEnd
   const targetSessionsPerDay = goals ? goals.weeklySessionsTarget / 7 : 0;
 
   return (
-    <section className="rounded-2xl border border-border bg-surface overflow-hidden">
+    <section
+      className={clsx(
+        'rounded-2xl border border-border bg-surface overflow-hidden shadow-sm shadow-black/5',
+        accentEdgeClasses('info', 'left'),
+      )}
+    >
       <div className="relative px-4 py-5 md:px-6 md:py-6 border-b border-border/80 bg-gradient-to-br from-amber-400/10 via-transparent to-cyan-500/5">
         <AISectionHeader eyebrow={ws.workoutsEyebrow} title={ws.workoutsTitle} subtitle={ws.workoutsSubtitle} />
         {summary ? (
@@ -163,31 +170,40 @@ export default function WeeklyWorkoutsTrainingSection({ weekEndDate }: { weekEnd
                   value={Math.round(summary.averages.minutes)}
                   hint={`~${targetMinutesPerDay} ${ws.avgMinutesHint}`}
                   icon={<Timer className="h-4 w-4 text-cyan-400" />}
+                  strip="info"
                 />
                 <MacroStatCard
                   label={ws.avgSessionsDay}
                   value={summary.averages.sessions.toFixed(2)}
                   hint={ws.sessionsGoalHint(goals.weeklySessionsTarget, targetSessionsPerDay.toFixed(1))}
                   icon={<Dumbbell className="h-4 w-4 text-amber-400" />}
+                  strip="primary"
                 />
                 <MacroStatCard
                   label={ws.avgKcalBurnedDay}
                   value={Math.round(summary.averages.caloriesBurned)}
                   hint={ws.fromLoggedSessions}
                   icon={<Flame className="h-4 w-4 text-orange-400" />}
+                  strip="success"
                 />
                 <MacroStatCard
                   label={ws.highIntensityShare}
                   value={`${highPctOfWeek}%`}
                   hint={ws.ofWeeklyTrainingMinutes}
                   icon={<TrendingUp className="h-4 w-4 text-rose-300" />}
+                  strip="info"
                 />
               </div>
             ) : null}
           </>
         ) : null}
 
-        <div className="rounded-xl border border-border/90 bg-gradient-to-br from-surface-elevated to-background/40 p-4 md:p-5 space-y-4">
+        <div
+          className={clsx(
+            'rounded-xl border border-border/90 bg-gradient-to-br from-surface-elevated to-background/40 p-4 md:p-5 space-y-4 shadow-sm shadow-black/5',
+            accentEdgeClasses('success', 'left'),
+          )}
+        >
           {coachLoading && !coach ? (
             <div className="space-y-3">
               <Skeleton className="h-7 w-2/3 max-w-md rounded-md" />
@@ -211,7 +227,12 @@ export default function WeeklyWorkoutsTrainingSection({ weekEndDate }: { weekEnd
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
-                <div className="rounded-lg border border-border bg-background/30 p-4">
+                <div
+                  className={clsx(
+                    'rounded-lg border border-border bg-background/30 p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('primary', 'left'),
+                  )}
+                >
                   <p className="text-xs font-semibold uppercase tracking-wider text-amber-200/90 mb-3 flex items-center gap-2">
                     <Target className="h-3.5 w-3.5" />
                     {ws.whatToWatch}
@@ -225,7 +246,12 @@ export default function WeeklyWorkoutsTrainingSection({ weekEndDate }: { weekEnd
                     ))}
                   </ul>
                 </div>
-                <div className="rounded-lg border border-border bg-background/30 p-4">
+                <div
+                  className={clsx(
+                    'rounded-lg border border-border bg-background/30 p-4 shadow-sm shadow-black/5',
+                    accentEdgeClasses('info', 'left'),
+                  )}
+                >
                   <p className="text-xs font-semibold uppercase tracking-wider text-cyan-200/90 mb-3 flex items-center gap-2">
                     <TrendingUp className="h-3.5 w-3.5" />
                     {ws.levelUpNextWeek}
@@ -247,7 +273,7 @@ export default function WeeklyWorkoutsTrainingSection({ weekEndDate }: { weekEnd
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
-                <button type="button" className="btn-secondary text-sm" onClick={() => router.push('/chat?channel=COACH')}>
+                <button type="button" className="btn-info text-sm" onClick={() => router.push('/chat?channel=COACH')}>
                   {ws.discussWeekInChat}
                 </button>
               </div>
@@ -264,14 +290,21 @@ function MacroStatCard({
   value,
   hint,
   icon,
+  strip,
 }: {
   label: string;
   value: string | number;
   hint: string;
   icon: ReactNode;
+  strip?: AccentKind;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-elevated/80 px-3.5 py-3 flex gap-3">
+    <div
+      className={clsx(
+        'rounded-xl border border-border bg-surface-elevated/80 px-3.5 py-3 flex gap-3 shadow-sm shadow-black/5',
+        strip ? accentEdgeClasses(strip, 'left') : null,
+      )}
+    >
       <div className="mt-0.5 text-text-muted">{icon}</div>
       <div className="min-w-0">
         <p className="text-[11px] uppercase tracking-wider text-text-muted">{label}</p>

@@ -9,6 +9,8 @@ export interface ChatMessageDocument extends Document {
   context?: {
     relatedFoodItems?: string[];
     statsReference?: string;
+    clientTimeZone?: string;
+    clientNowMs?: number;
   };
 }
 
@@ -41,7 +43,9 @@ const chatMessageSchema = new Schema<ChatMessageDocument>({
   },
   context: {
     relatedFoodItems: [String],
-    statsReference: String
+    statsReference: String,
+    clientTimeZone: String,
+    clientNowMs: Number,
   }
 }, {
   timestamps: true,

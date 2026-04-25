@@ -165,7 +165,19 @@ export const chatResolvers = {
   Mutation: {
     sendMessage: async (
       _: unknown,
-      { input }: { input: { content: string; channel?: ChatChannel; context?: { statsReference?: string } } },
+      {
+        input,
+      }: {
+        input: {
+          content: string;
+          channel?: ChatChannel;
+          context?: {
+            statsReference?: string;
+            clientTimeZone?: string;
+            clientNowMs?: number;
+          };
+        };
+      },
       context: Context
     ) => {
       if (!context.user) {
@@ -231,7 +243,11 @@ export const chatResolvers = {
             channel,
             context: {
               relatedFoodItems: [String(foodItem.id)],
-              statsReference: getTodayDateKey(),
+              statsReference: normalizeDateKey(
+                input.context?.statsReference != null && String(input.context.statsReference).trim() !== ''
+                  ? String(input.context.statsReference)
+                  : getTodayDateKey()
+              ),
             },
             timestamp: new Date(),
           });
@@ -296,10 +312,21 @@ export const chatResolvers = {
             ? String(explicitStatsRef)
             : dateInMessage || getTodayDateKey()
         );
+        const clientTzRaw = input.context?.clientTimeZone;
+        const clientTimeZone =
+          typeof clientTzRaw === 'string' && clientTzRaw.trim() !== '' ? clientTzRaw.trim() : undefined;
+        const rawNow = input.context?.clientNowMs;
+        const clientNowMs =
+          typeof rawNow === 'number' && Number.isFinite(rawNow)
+            ? rawNow
+            : typeof rawNow === 'string' && String(rawNow).trim() !== '' && Number.isFinite(Number(rawNow))
+              ? Number(rawNow)
+              : undefined;
         const dayMetrics = await getDailyMetrics({
           userId: context.user.id,
           dateKey: statsReference,
           preferences: context.user.preferences,
+          clientTimeZone,
         });
 
         // Ensure chat uses dynamic targets for that calendar day as single source of truth.
@@ -316,6 +343,12 @@ export const chatResolvers = {
           activityBonusKcal: dayMetrics.activityBonusKcal,
         };
         userContext.statsDateKey = statsReference;
+        if (clientTimeZone) {
+          userContext.clientTimeZone = clientTimeZone;
+        }
+        if (clientNowMs != null) {
+          userContext.clientNowMs = clientNowMs;
+        }
         userContext.dayMeals = dayMetrics.meals.map((m: { name?: string; mealType?: string; nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number } }) => ({
           name: String(m.name || '').trim() || 'Meal',
           mealType: String(m.mealType || 'snack'),

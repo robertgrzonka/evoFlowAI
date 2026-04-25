@@ -21,7 +21,7 @@ export const typeDefs = gql`
     fatGoal: Int!
     weeklyWorkoutsGoal: Int!
     weeklyActiveMinutesGoal: Int!
-    primaryGoal: PrimaryGoal!
+    primaryGoal: String!
     coachingTone: CoachingTone!
     proactivityLevel: ProactivityLevel!
     dietaryRestrictions: [String!]!
@@ -37,13 +37,6 @@ export const typeDefs = gql`
     MODERATE
     ACTIVE
     VERY_ACTIVE
-  }
-
-  enum PrimaryGoal {
-    FAT_LOSS
-    MAINTENANCE
-    MUSCLE_GAIN
-    STRENGTH
   }
 
   enum CoachingTone {
@@ -208,10 +201,29 @@ export const typeDefs = gql`
     message: String!
   }
 
+  enum DashboardNextActionTarget {
+    MEALS
+    WORKOUTS
+    CHAT_COACH
+    STATS
+    GOALS
+  }
+
+  type DashboardInsightNextAction {
+    title: String!
+    description: String!
+    actionLabel: String!
+    target: DashboardNextActionTarget!
+  }
+
   type DashboardInsight {
     date: String!
     summary: String!
+    """Short warm vibe line from AI — not a duplicate of summary."""
+    supportLine: String!
     tips: [String!]!
+    """AI-personalized next step; when null, open chat from the client."""
+    nextAction: DashboardInsightNextAction
     caloriesBurned: Float!
     steps: Int!
     stepsCalories: Float!
@@ -257,6 +269,14 @@ export const typeDefs = gql`
     fat: Float!
     mealCount: Int!
     meals: [WeeklyMealsDayLoggedMeal!]!
+    """Calorie budget that day (rest-day target + logged workout burn + manual activity bonus; steps do not add kcal)."""
+    dayCalorieBudget: Float!
+    workoutCaloriesBurned: Float!
+    workoutSessions: Int!
+    activityBonusKcal: Float!
+    steps: Int!
+    """Reserved: kcal from steps are not applied to budget in this app (always 0)."""
+    stepCaloriesBudget: Float!
   }
 
   type WeeklyMealsMacroTotals {
@@ -572,7 +592,7 @@ export const typeDefs = gql`
     fatGoal: Int
     weeklyWorkoutsGoal: Int
     weeklyActiveMinutesGoal: Int
-    primaryGoal: PrimaryGoal
+    primaryGoal: String
     coachingTone: CoachingTone
     proactivityLevel: ProactivityLevel
     dietaryRestrictions: [String!]
@@ -629,6 +649,10 @@ export const typeDefs = gql`
   input MessageContextInput {
     relatedFoodItems: [ID!]
     statsReference: String
+    """IANA timezone from the client (e.g. Europe/Warsaw). Used with statsReference for day bucketing."""
+    clientTimeZone: String
+    """Device clock when the message was sent (ms since epoch). Used for local-time coaching (meal timing, sleep)."""
+    clientNowMs: Float
   }
 
   input StatsQueryInput {
@@ -834,7 +858,7 @@ export const typeDefs = gql`
     # Food
     myFoodItems(limit: Int, offset: Int): [FoodItem!]!
     foodItem(id: ID!): FoodItem
-    dailyStats(date: String!): DailyStats!
+    dailyStats(date: String!, clientTimeZone: String): DailyStats!
     weeklyMealsNutrition(endDate: String): WeeklyMealsNutritionSummary!
     weeklyMealsCoachInsight(endDate: String): WeeklyMealsCoachInsight!
     
@@ -848,10 +872,11 @@ export const typeDefs = gql`
     myRecommendations(unreadOnly: Boolean): [AIRecommendation!]!
 
     # Workouts
-    myWorkouts(date: String, limit: Int, offset: Int): [Workout!]!
+    myWorkouts(date: String, limit: Int, offset: Int, clientTimeZone: String): [Workout!]!
     dailyActivity(date: String!): DailyActivity!
-    workoutCoachSummary(date: String!): WorkoutCoachSummary!
-    dashboardInsight(date: String!): DashboardInsight!
+    workoutCoachSummary(date: String!, clientTimeZone: String): WorkoutCoachSummary!
+    dashboardInsight(date: String!, clientTimeZone: String): DashboardInsight!
+    rollingSevenDayAverageSteps(endDate: String, clientTimeZone: String): Int!
     weeklyEvoReview(endDate: String): WeeklyEvoReview!
     weeklyWorkoutsTraining(endDate: String): WeeklyWorkoutsTrainingSummary!
     weeklyWorkoutsCoachInsight(endDate: String): WeeklyWorkoutsCoachInsight!
