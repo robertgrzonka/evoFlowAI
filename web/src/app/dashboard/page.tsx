@@ -65,6 +65,7 @@ import {
 } from '@/components/dashboard';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Tooltip from '@/components/ui/atoms/Tooltip';
+import { NumericInput } from '@/components/ui/atoms/NumericInput';
 import { getDestructiveConfirmLabels } from '@/lib/i18n/destructive-confirm';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import {
@@ -187,10 +188,11 @@ export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
   const { dateKey: today, timeZone } = useClientCalendarToday();
   const [quickWorkoutTitle, setQuickWorkoutTitle] = useState('');
-  const [quickWorkoutDuration, setQuickWorkoutDuration] = useState(35);
-  const [quickWorkoutBurned, setQuickWorkoutBurned] = useState(250);
+  const [quickWorkoutDurationInput, setQuickWorkoutDurationInput] = useState('35');
+  const [quickWorkoutBurnedInput, setQuickWorkoutBurnedInput] = useState('250');
   const [quickWorkoutIntensity, setQuickWorkoutIntensity] = useState<WorkoutIntensity>('MEDIUM');
-  const [quickSteps, setQuickSteps] = useState(6000);
+  /** String while editing so the field can be cleared without forcing 0 */
+  const [quickStepsInput, setQuickStepsInput] = useState('');
   const [deleteMealId, setDeleteMealId] = useState<string | null>(null);
   const [briefExpanded, setBriefExpanded] = useState(false);
   const [reasoningOpen, setReasoningOpen] = useState(false);
@@ -276,7 +278,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const steps = daySnapshot.activity?.steps;
     if (steps !== undefined && steps !== null) {
-      setQuickSteps(Number(steps));
+      setQuickStepsInput(String(Math.round(Number(steps))));
     }
   }, [daySnapshot.activity?.steps]);
 
@@ -610,12 +612,23 @@ export default function DashboardPage() {
       return;
     }
 
+    const durationMinutes = Number(quickWorkoutDurationInput.trim());
+    const caloriesBurned = Number(quickWorkoutBurnedInput.trim());
+    if (!Number.isFinite(durationMinutes) || durationMinutes < 1) {
+      appToast.info('Invalid duration', d.invalidWorkoutMinutes);
+      return;
+    }
+    if (!Number.isFinite(caloriesBurned) || caloriesBurned < 0) {
+      appToast.info('Invalid kcal', d.invalidWorkoutCalories);
+      return;
+    }
+
     await logWorkout({
       variables: {
         input: {
           title: quickWorkoutTitle.trim(),
-          durationMinutes: Number(quickWorkoutDuration),
-          caloriesBurned: Number(quickWorkoutBurned),
+          durationMinutes: Math.round(durationMinutes),
+          caloriesBurned: Math.round(caloriesBurned),
           intensity: quickWorkoutIntensity,
           performedAt: new Date().toISOString(),
         },
@@ -625,7 +638,13 @@ export default function DashboardPage() {
 
   const handleQuickSteps = async (event: FormEvent) => {
     event.preventDefault();
-    if (!Number.isFinite(quickSteps) || quickSteps < 0 || quickSteps > 120000) {
+    const trimmed = quickStepsInput.trim();
+    if (trimmed === '') {
+      appToast.info('Steps', d.stepsCountRequired);
+      return;
+    }
+    const steps = Number(trimmed);
+    if (!Number.isFinite(steps) || steps < 0 || steps > 120000) {
       appToast.info('Invalid steps', d.invalidSteps);
       return;
     }
@@ -634,7 +653,7 @@ export default function DashboardPage() {
       variables: {
         input: {
           date: today,
-          steps: Math.round(quickSteps),
+          steps: Math.round(steps),
         },
       },
     });
@@ -973,9 +992,13 @@ export default function DashboardPage() {
               collapseLabel={d.quickLogCollapse}
               summary={
                 <p className="text-[11px] text-text-muted tabular-nums">
-                  <span className="text-text-secondary">{quickWorkoutDuration}′</span>
+                  <span className="text-text-secondary">
+                    {quickWorkoutDurationInput.trim() === '' ? '—' : quickWorkoutDurationInput}′
+                  </span>
                   <span className="mx-1 text-border">·</span>
-                  <span className="text-text-secondary">{quickWorkoutBurned} kcal</span>
+                  <span className="text-text-secondary">
+                    {quickWorkoutBurnedInput.trim() === '' ? '—' : quickWorkoutBurnedInput} kcal
+                  </span>
                   <span className="mx-1 text-border">·</span>
                   {String(quickWorkoutIntensity).toLowerCase()}
                 </p>
@@ -989,20 +1012,18 @@ export default function DashboardPage() {
                   className="input-field w-full"
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
+                  <NumericInput
                     min={1}
-                    value={quickWorkoutDuration}
-                    onChange={(event) => setQuickWorkoutDuration(Number(event.target.value))}
-                    className="input-field w-full"
+                    value={quickWorkoutDurationInput}
+                    onChange={(event) => setQuickWorkoutDurationInput(event.target.value)}
+                    className="w-full"
                     placeholder={d.minutesPh}
                   />
-                  <input
-                    type="number"
+                  <NumericInput
                     min={0}
-                    value={quickWorkoutBurned}
-                    onChange={(event) => setQuickWorkoutBurned(Number(event.target.value))}
-                    className="input-field w-full"
+                    value={quickWorkoutBurnedInput}
+                    onChange={(event) => setQuickWorkoutBurnedInput(event.target.value)}
+                    className="w-full"
                     placeholder={d.kcalPh}
                   />
                 </div>
@@ -1068,13 +1089,12 @@ export default function DashboardPage() {
               }
             >
               <form onSubmit={handleQuickSteps} className="space-y-3">
-                <input
-                  type="number"
+                <NumericInput
                   min={0}
                   max={120000}
-                  value={quickSteps}
-                  onChange={(event) => setQuickSteps(Number(event.target.value))}
-                  className="input-field w-full"
+                  value={quickStepsInput}
+                  onChange={(event) => setQuickStepsInput(event.target.value)}
+                  className="w-full"
                   placeholder={d.stepsPlaceholder}
                 />
                 <button

@@ -38,6 +38,7 @@ import {
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { statsPageCopy } from '@/lib/i18n/copy/stats-page';
 import { accentEdgeClasses } from '@/components/ui/accent-cards';
+import { NumericInput } from '@/components/ui/atoms/NumericInput';
 
 type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type AnalysisMode = 'combined' | 'nutrition' | 'training';
@@ -48,7 +49,7 @@ export default function StatsPage() {
   const { dateKey: today, timeZone } = useClientCalendarToday();
   const [selectedDate, setSelectedDate] = useState(today);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('combined');
-  const [stepsInput, setStepsInput] = useState(0);
+  const [stepsInput, setStepsInput] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ kind: 'meal' | 'workout'; id: string } | null>(null);
 
   const { data: userData, loading: userLoading, error: userError } = useQuery(ME_QUERY);
@@ -110,7 +111,7 @@ export default function StatsPage() {
   }, [userError, router]);
 
   useEffect(() => {
-    setStepsInput(Number(daySnapshot.activity?.steps || 0));
+    setStepsInput(String(Math.round(Number(daySnapshot.activity?.steps ?? 0))));
   }, [daySnapshot.activity?.steps, selectedDate]);
 
   if (userLoading) {
@@ -157,7 +158,13 @@ export default function StatsPage() {
 
   const handleSaveSteps = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!Number.isFinite(stepsInput) || stepsInput < 0 || stepsInput > 120000) {
+    const trimmed = stepsInput.trim();
+    if (trimmed === '') {
+      appToast.info('Invalid steps', locale === 'pl' ? 'Podaj liczbę kroków.' : 'Enter a step count.');
+      return;
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n < 0 || n > 120000) {
       appToast.info('Invalid steps', locale === 'pl' ? 'Kroki: 0–120000.' : 'Steps must be between 0 and 120000.');
       return;
     }
@@ -166,7 +173,7 @@ export default function StatsPage() {
       variables: {
         input: {
           date: selectedDate,
-          steps: Math.round(stepsInput),
+          steps: Math.round(n),
         },
       },
     });
@@ -224,13 +231,12 @@ export default function StatsPage() {
                 className="input-field w-full max-w-sm"
               />
               <form onSubmit={handleSaveSteps} className="mt-3 grid grid-cols-1 sm:grid-cols-[200px_auto] gap-2 max-w-md">
-                <input
-                  type="number"
+                <NumericInput
                   min={0}
                   max={120000}
                   value={stepsInput}
-                  onChange={(event) => setStepsInput(Number(event.target.value))}
-                  className="input-field w-full"
+                  onChange={(event) => setStepsInput(event.target.value)}
+                  className="w-full"
                   placeholder={sc.stepsPlaceholder}
                 />
                 <button type="submit" className="btn-secondary" disabled={savingSteps}>

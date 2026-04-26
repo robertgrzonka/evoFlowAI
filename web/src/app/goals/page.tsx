@@ -19,6 +19,7 @@ import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { getGoalMicrocopyLocalized, goalsPageCopy, inferredStrategyLabel } from '@/lib/i18n/copy/goals-page';
 import { calorieDeltaForInferredTone, inferCalorieGoalTone } from '@evoflowai/shared';
 import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
+import { NumericInput } from '@/components/ui/atoms/NumericInput';
 
 export default function GoalsPage() {
   const router = useRouter();
@@ -280,42 +281,39 @@ export default function GoalsPage() {
                 <label htmlFor="daily-goal" className="mb-2 block text-sm text-text-secondary">
                   {g.restingCalories}
                 </label>
-                <input
+                <NumericInput
                   id="daily-goal"
-                  type="number"
                   min={800}
                   max={5000}
                   value={dailyCalorieGoal}
                   onChange={(event) => setDailyCalorieGoal(event.target.value)}
-                  className="input-field w-full"
+                  className="w-full"
                 />
               </div>
               <div>
                 <label htmlFor="weekly-workouts-goal" className="mb-2 block text-sm text-text-secondary">
                   {g.weeklyWorkouts}
                 </label>
-                <input
+                <NumericInput
                   id="weekly-workouts-goal"
-                  type="number"
                   min={0}
                   max={14}
                   value={weeklyWorkoutsGoal}
                   onChange={(event) => setWeeklyWorkoutsGoal(event.target.value)}
-                  className="input-field w-full"
+                  className="w-full"
                 />
               </div>
               <div>
                 <label htmlFor="weekly-active-minutes-goal" className="mb-2 block text-sm text-text-secondary">
                   {g.weeklyActiveMinutes}
                 </label>
-                <input
+                <NumericInput
                   id="weekly-active-minutes-goal"
-                  type="number"
                   min={0}
                   max={2000}
                   value={weeklyActiveMinutesGoal}
                   onChange={(event) => setWeeklyActiveMinutesGoal(event.target.value)}
-                  className="input-field w-full"
+                  className="w-full"
                 />
               </div>
               <div>
@@ -342,42 +340,39 @@ export default function GoalsPage() {
                 <label htmlFor="protein-goal" className="mb-2 block text-sm text-text-secondary">
                   {g.proteinGoal} (g)
                 </label>
-                <input
+                <NumericInput
                   id="protein-goal"
-                  type="number"
                   min={30}
                   max={500}
                   value={proteinGoal}
                   onChange={(event) => setProteinGoal(event.target.value)}
-                  className="input-field w-full"
+                  className="w-full"
                 />
               </div>
               <div>
                 <label htmlFor="carbs-goal" className="mb-2 block text-sm text-text-secondary">
                   {g.carbsGoal} (g)
                 </label>
-                <input
+                <NumericInput
                   id="carbs-goal"
-                  type="number"
                   min={20}
                   max={900}
                   value={carbsGoal}
                   onChange={(event) => setCarbsGoal(event.target.value)}
-                  className="input-field w-full"
+                  className="w-full"
                 />
               </div>
               <div>
                 <label htmlFor="fat-goal" className="mb-2 block text-sm text-text-secondary">
                   {g.fatGoal} (g)
                 </label>
-                <input
+                <NumericInput
                   id="fat-goal"
-                  type="number"
                   min={15}
                   max={400}
                   value={fatGoal}
                   onChange={(event) => setFatGoal(event.target.value)}
-                  className="input-field w-full"
+                  className="w-full"
                 />
               </div>
             </div>

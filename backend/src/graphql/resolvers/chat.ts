@@ -1,11 +1,17 @@
 import { AuthenticationError, UserInputError } from 'apollo-server-express';
+import { DateTime } from 'luxon';
 import { ChatMessage } from '../../models/ChatMessage';
 import { FoodItem } from '../../models/FoodItem';
 import { OpenAIService } from '../../services/openaiService';
 import { Context } from '../context';
 import { withFilter } from 'graphql-subscriptions';
 import { EvoUserContext } from '../../ai/evo';
-import { getDailyMetrics, getTodayDateKey, normalizeDateKey } from '../../utils/dailyMetrics';
+import {
+  getDailyMetrics,
+  getTodayDateKey,
+  normalizeDateKey,
+  safeClientTimeZone,
+} from '../../utils/dailyMetrics';
 import { normalizeAppLocale } from '../../utils/appLocale';
 
 const openAIService = new OpenAIService();
@@ -411,19 +417,28 @@ export const chatResolvers = {
       }
 
       const rawLoggedDate = input.loggedDate != null && input.loggedDate !== '' ? String(input.loggedDate).trim() : '';
-      let loggedDateKey = getTodayDateKey();
+      const tz = safeClientTimeZone(input.clientTimeZone);
+      const calendarTodayKey = tz
+        ? DateTime.now().setZone(tz).toISODate()!
+        : getTodayDateKey();
+
+      let loggedDateKey = calendarTodayKey;
       if (rawLoggedDate) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(rawLoggedDate)) {
           throw new UserInputError('loggedDate must be YYYY-MM-DD');
         }
         loggedDateKey = normalizeDateKey(rawLoggedDate);
       }
-      const todayKey = getTodayDateKey();
-      if (loggedDateKey > todayKey) {
+      if (loggedDateKey > calendarTodayKey) {
         throw new UserInputError('Cannot log meals for a future date');
       }
 
-      const loggedAt = new Date(`${loggedDateKey}T12:00:00.000Z`);
+      const loggedAt =
+        loggedDateKey === calendarTodayKey
+          ? new Date()
+          : tz
+            ? DateTime.fromISO(`${loggedDateKey}T12:00:00.000`, { zone: tz }).toJSDate()
+            : new Date(`${loggedDateKey}T12:00:00.000Z`);
       const appLocale = normalizeAppLocale(context.user.preferences?.appLocale);
 
       try {

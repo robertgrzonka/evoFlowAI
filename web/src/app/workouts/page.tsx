@@ -7,6 +7,7 @@ import { clsx } from 'clsx';
 import { ChevronDown, Dumbbell, FileUp, Flame, Timer, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import { accentEdgeClasses } from '@/components/ui/accent-cards';
+import { NumericInput, NumericInputNumber } from '@/components/ui/atoms/NumericInput';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import { ButtonSpinner, Skeleton } from '@/components/ui/loading';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -422,14 +423,13 @@ export default function WorkoutsPage() {
                       <div className="flex flex-wrap items-end gap-2 pt-1">
                         <label className="block min-w-[10rem] flex-1">
                           <span className="text-xs text-text-muted">{w.activityBonusLabel}</span>
-                          <input
-                            type="number"
+                          <NumericInput
                             min={0}
                             max={1500}
                             step={25}
                             value={activityBonusDraft}
                             onChange={(e) => setActivityBonusDraft(e.target.value)}
-                            className="input-field mt-1 w-full tabular-nums"
+                            className="mt-1 w-full tabular-nums"
                             aria-label={w.activityBonusLabel}
                           />
                         </label>
@@ -578,26 +578,24 @@ export default function WorkoutsPage() {
                   <label htmlFor="durationMinutes" className="block text-sm font-medium text-text-primary mb-2">
                     {w.duration}
                   </label>
-                  <input
+                  <NumericInputNumber
                     id="durationMinutes"
-                    type="number"
                     min={1}
                     value={durationMinutes}
-                    onChange={(event) => setDurationMinutes(Number(event.target.value))}
-                    className="input-field w-full"
+                    onValueChange={setDurationMinutes}
+                    className="w-full"
                   />
                 </div>
                 <div>
                   <label htmlFor="caloriesBurned" className="block text-sm font-medium text-text-primary mb-2">
                     {w.kcalBurned}
                   </label>
-                  <input
+                  <NumericInputNumber
                     id="caloriesBurned"
-                    type="number"
                     min={0}
                     value={caloriesBurned}
-                    onChange={(event) => setCaloriesBurned(Number(event.target.value))}
-                    className="input-field w-full"
+                    onValueChange={setCaloriesBurned}
+                    className="w-full"
                   />
                 </div>
               </div>

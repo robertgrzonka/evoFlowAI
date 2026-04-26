@@ -29,6 +29,7 @@ import { accentEdgeClasses } from '@/components/ui/accent-cards';
 import AICoachAvatar from '@/components/AICoachAvatar';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
 import Tooltip from '@/components/ui/atoms/Tooltip';
+import { NumericInputNumber } from '@/components/ui/atoms/NumericInput';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
 import { AISectionHeader, EvoHintCard, EvoStatusBadge, InsightEmptyState } from '@/components/evo';
 import {
@@ -1835,14 +1836,7 @@ function NumberInput({
   return (
     <div>
       <label className="block text-xs text-text-secondary mb-1">{label}</label>
-      <input
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="input-field w-full"
-      />
+      <NumericInputNumber min={min} max={max} value={value} onValueChange={onChange} className="w-full" />
     </div>
   );
 }

@@ -35,7 +35,7 @@ export const getDayRangeByDateKey = (dateKey: string): { startDate: Date; endDat
   return { startDate, endDate };
 };
 
-const safeClientTimeZone = (timeZone?: string | null): string | null => {
+export const safeClientTimeZone = (timeZone?: string | null): string | null => {
   const tz = String(timeZone || '').trim();
   if (!tz) return null;
   return DateTime.now().setZone(tz).isValid ? tz : null;

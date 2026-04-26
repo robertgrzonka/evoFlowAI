@@ -648,6 +648,8 @@ export const typeDefs = gql`
     additionalContext: String
     """Calendar day for this entry (YYYY-MM-DD). Defaults to today; cannot be in the future."""
     loggedDate: String
+    """IANA zone from the client (e.g. Europe/Warsaw). Used for “today” and backdated meal timestamps."""
+    clientTimeZone: String
   }
 
   input MessageContextInput {

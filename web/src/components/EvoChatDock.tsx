@@ -33,6 +33,7 @@ import EvoStatusBadge from '@/components/evo/EvoStatusBadge';
 import EvoThinkingOverlay from '@/components/evo/EvoThinkingOverlay';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import Tooltip from '@/components/ui/atoms/Tooltip';
+import { NumericInputNumber } from '@/components/ui/atoms/NumericInput';
 import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 type DockTab = 'chat' | 'meal' | 'workout';
@@ -221,6 +222,8 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
           imageBase64: mealImageBase64 || null,
           imageMimeType: mealImageBase64 ? mealImageMimeType : null,
           mealType,
+          loggedDate: today,
+          clientTimeZone: timeZone,
         },
       },
     });
@@ -417,20 +420,18 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                 placeholder="Workout title"
               />
               <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="number"
+                <NumericInputNumber
                   min={1}
                   value={workoutDuration}
-                  onChange={(event) => setWorkoutDuration(Number(event.target.value))}
-                  className="input-field w-full"
+                  onValueChange={setWorkoutDuration}
+                  className="w-full"
                   placeholder="minutes"
                 />
-                <input
-                  type="number"
+                <NumericInputNumber
                   min={0}
                   value={workoutCalories}
-                  onChange={(event) => setWorkoutCalories(Number(event.target.value))}
-                  className="input-field w-full"
+                  onValueChange={setWorkoutCalories}
+                  className="w-full"
                   placeholder="kcal burned"
                 />
               </div>

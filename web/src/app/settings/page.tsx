@@ -38,6 +38,7 @@ import { settingsPageStrings } from '@/lib/i18n/settings-strings';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { persistPublicUiLocale } from '@/lib/i18n/use-public-ui-locale';
 import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
+import { NumericInput } from '@/components/ui/atoms/NumericInput';
 import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
 const COACHING_TONE_OPTIONS = ['GENTLE', 'SUPPORTIVE', 'DIRECT', 'STRICT'] as const;
@@ -357,15 +358,14 @@ export default function SettingsPage() {
                       <label htmlFor="weight-kg" className="block text-xs text-text-secondary mb-1">
                         {s.weightLabel}
                       </label>
-                      <input
+                      <NumericInput
                         id="weight-kg"
-                        type="number"
                         min={30}
                         max={300}
                         step={0.1}
                         value={weightKg}
                         onChange={(event) => setWeightKg(event.target.value)}
-                        className="input-field w-full"
+                        className="w-full"
                         placeholder={s.weightPlaceholder}
                       />
                     </div>
@@ -373,15 +373,14 @@ export default function SettingsPage() {
                       <label htmlFor="height-cm" className="block text-xs text-text-secondary mb-1">
                         {s.heightLabel}
                       </label>
-                      <input
+                      <NumericInput
                         id="height-cm"
-                        type="number"
                         min={120}
                         max={260}
                         step={1}
                         value={heightCm}
                         onChange={(event) => setHeightCm(event.target.value)}
-                        className="input-field w-full"
+                        className="w-full"
                         placeholder={s.heightPlaceholder}
                       />
                     </div>

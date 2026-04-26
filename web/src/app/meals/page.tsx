@@ -143,6 +143,7 @@ export default function MealsPage() {
           imageMimeType: imageBase64 ? imageMimeType : null,
           mealType,
           loggedDate: selectedDate,
+          clientTimeZone: timeZone,
         },
       },
     });
