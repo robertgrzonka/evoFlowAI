@@ -98,12 +98,15 @@ const C = {
     nextStepEyebrow: 'Next step',
     briefShowMore: 'More detail',
     briefShowLess: 'Less',
-    reasoningTitle: 'Why Evo thinks this',
-    reasoningTriggerShort: 'Why Evo?',
+    reasoningTitle: 'Analysis details',
+    reasoningTriggerShort: 'Details',
     reasoningIntro:
-      'Based on your logs for today: meals, workouts, steps, and your dynamic targets. Full tips below.',
-    reasoningTipsHeading: 'Coach tips',
-    reasoningDataHeading: 'Signals used',
+      'The same day summary, your logged numbers, and coaching tips you already see in the brief—nothing is hidden “behind the scenes” in this panel.',
+    reasoningSummaryHeading: 'Summary',
+    reasoningTipsHeading: 'Tips and next steps',
+    reasoningDataHeading: 'Data from your logs',
+    nextActionHeuristicTagsCaption:
+      'Quick math from your logged totals.',
     addSuggestedMeal: 'Log suggested meal',
     seeOtherOptions: 'More options',
     macroHintLine: (kcalLeft: string, proteinLeft: string) =>
@@ -154,6 +157,9 @@ const C = {
     weeklyFallbackTrainingFocus: 'Plan two short sessions you can repeat weekly and log them right after.',
     weeklyFallbackConsistencyInsight: 'Consistency is hard to judge when logging is uneven across the week.',
     weeklyFallbackConsistencyFocus: 'Pick two anchor meals per day (same rough time) and log them every day.',
+    insightFreshnessJustNow: 'Generated just now',
+    insightFreshnessToday: (time: string) => `Refreshed today, ${time}`,
+    insightFreshnessDated: (label: string) => `Last analysis: ${label}`,
   },
   pl: {
     welcomeSub: 'Posiłki, trening i kolejne kroki od Evo w jednym miejscu.',
@@ -250,12 +256,15 @@ const C = {
     nextStepEyebrow: 'Kolejny krok',
     briefShowMore: 'Więcej',
     briefShowLess: 'Mniej',
-    reasoningTitle: 'Dlaczego Evo tak uważa?',
-    reasoningTriggerShort: 'Dlaczego Evo?',
+    reasoningTitle: 'Szczegóły analizy',
+    reasoningTriggerShort: 'Szczegóły',
     reasoningIntro:
-      'Na podstawie dzisiejszych logów: posiłki, trening, kroki oraz dynamiczne cele. Pełne wskazówki niżej.',
-    reasoningTipsHeading: 'Wskazówki coacha',
-    reasoningDataHeading: 'Użyte sygnały',
+      'To ten sam skrót dnia, liczby z logów i wskazówki co w briefie — panel nie pokazuje nic „poza sceną”.',
+    reasoningSummaryHeading: 'Streszczenie',
+    reasoningTipsHeading: 'Wskazówki i kolejne kroki',
+    reasoningDataHeading: 'Dane z Twoich logów',
+    nextActionHeuristicTagsCaption:
+      'Szybki przelicznik z dzisiejszych logów.',
     addSuggestedMeal: 'Dodaj sugerowany posiłek',
     seeOtherOptions: 'Zobacz inne opcje',
     macroHintLine: (kcalLeft: string, proteinLeft: string) =>
@@ -306,6 +315,9 @@ const C = {
     weeklyFallbackTrainingFocus: 'Zaplanuj dwie krótkie sesje do powtórzenia co tydzień i od razu je loguj.',
     weeklyFallbackConsistencyInsight: 'Logowanie jest nierówne — wzorce tygodnia są tylko częściowe.',
     weeklyFallbackConsistencyFocus: 'Ustal dwa kotwicowe posiłki dziennie (podobna pora) i loguj je codziennie.',
+    insightFreshnessJustNow: 'Wygenerowane przed chwilą',
+    insightFreshnessToday: (time: string) => `Odświeżone: dziś, ${time}`,
+    insightFreshnessDated: (label: string) => `Ostatnia analiza: ${label}`,
   },
 } as const;
 

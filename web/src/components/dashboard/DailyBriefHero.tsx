@@ -32,6 +32,8 @@ export type DailyBriefHeroProps = {
   insightCardsSlot: ReactNode;
   alertSlot?: ReactNode;
   emptySlot?: ReactNode;
+  /** Human-readable “when this brief was last written” (no raw model internals). */
+  insightFreshnessText?: string;
 };
 
 export default function DailyBriefHero({
@@ -57,6 +59,7 @@ export default function DailyBriefHero({
   insightCardsSlot,
   alertSlot,
   emptySlot,
+  insightFreshnessText,
 }: DailyBriefHeroProps) {
   const reasoningLabel = reasoningTriggerLabel ?? ui.reasoningTitle;
 
@@ -77,6 +80,12 @@ export default function DailyBriefHero({
         rightAction={<AICoachAvatar size="sm" />}
       />
 
+      {insightFreshnessText && !loading ? (
+        <p className="text-[10px] text-text-muted mt-1.5 leading-snug" role="status">
+          {insightFreshnessText}
+        </p>
+      ) : null}
+
       {loading ? (
         <div className="mt-1.5 space-y-1.5 animate-pulse">
           <div className="h-9 rounded-lg bg-surface-elevated/70 max-w-xl" />
@@ -85,12 +94,18 @@ export default function DailyBriefHero({
       ) : emptySlot ? (
         <div className="mt-1.5">{emptySlot}</div>
       ) : (
-        <div className="mt-1.5 space-y-2">
+        <div className="mt-1.5 space-y-1.5">
           {alertSlot}
 
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-4">
-            <div className="min-w-0 flex-1 flex flex-col gap-2">
-              <div>
+          {/*
+            Grid (lg): one row, both columns stretch to the same height (taller of insight vs next-action).
+            Left column: headline stays top; goal+metrics sit in a flex-1 column with justify-end so they
+            pin to the bottom next to the tall card. Plain flex+mt-auto was unreliable without a definite
+            block-axis size chain.
+          */}
+          <div className="grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_min(16.75rem,100%)] lg:items-stretch lg:gap-4">
+            <div className="flex min-h-0 min-w-0 flex-col gap-2 lg:h-full lg:min-h-0">
+              <div className="min-w-0 shrink-0">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary-200/80 mb-0.5">
                   {ui.mainInsight}
                 </p>
@@ -137,24 +152,31 @@ export default function DailyBriefHero({
               </div>
 
               {metricGoalSlot || metricStatsSlot ? (
-                <div className="w-full space-y-2 rounded-xl bg-background/35 p-2 ring-1 ring-white/[0.06]">
-                  {metricGoalSlot ? <div className="w-full min-w-0">{metricGoalSlot}</div> : null}
-                  {metricStatsSlot ? (
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">{metricStatsSlot}</div>
-                  ) : null}
+                <div
+                  className={clsx(
+                    'w-full min-h-0',
+                    'lg:flex lg:flex-1 lg:flex-col lg:justify-end'
+                  )}
+                >
+                  <div className="w-full space-y-2 rounded-xl bg-background/35 p-1.5 sm:p-2 ring-1 ring-white/[0.06]">
+                    {metricGoalSlot ? <div className="w-full min-w-0">{metricGoalSlot}</div> : null}
+                    {metricStatsSlot ? (
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">{metricStatsSlot}</div>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
             </div>
 
             {nextActionSlot ? (
-              <aside className="flex min-h-0 w-full flex-col lg:w-[min(100%,16.75rem)] lg:shrink-0">
+              <aside className="flex h-full min-h-0 w-full min-w-0 flex-col self-stretch lg:w-[min(100%,16.75rem)]">
                 {nextActionSlot}
               </aside>
             ) : null}
           </div>
 
           {insightCardsSlot ? (
-            <div className="grid grid-cols-1 gap-1.5 border-t border-border/25 pt-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-1.5 border-t border-border/25 pt-1.5 sm:grid-cols-2 lg:grid-cols-3">
               {insightCardsSlot}
             </div>
           ) : null}

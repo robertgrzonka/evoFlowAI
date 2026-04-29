@@ -60,23 +60,11 @@ export default function AiReasoningDrawer({
           <p className="text-text-secondary leading-relaxed">{ui.reasoningIntro}</p>
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
-              {ui.mainInsight}
+              {ui.reasoningSummaryHeading}
             </h3>
             <p className="text-text-primary leading-relaxed">{mainInsight}</p>
             {supportLine ? <p className="mt-2 text-text-secondary leading-relaxed">{supportLine}</p> : null}
           </section>
-          {tips.length > 0 ? (
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
-                {ui.reasoningTipsHeading}
-              </h3>
-              <ul className="list-disc space-y-2 pl-4 text-text-secondary">
-                {tips.map((t) => (
-                  <li key={t.slice(0, 48)}>{t}</li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
           {dataBullets.length > 0 ? (
             <section>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
@@ -85,6 +73,18 @@ export default function AiReasoningDrawer({
               <ul className="list-disc space-y-1.5 pl-4 text-text-secondary text-xs">
                 {dataBullets.map((b) => (
                   <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {tips.length > 0 ? (
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
+                {ui.reasoningTipsHeading}
+              </h3>
+              <ul className="list-disc space-y-2 pl-4 text-text-secondary">
+                {tips.map((t) => (
+                  <li key={t.slice(0, 48)}>{t}</li>
                 ))}
               </ul>
             </section>

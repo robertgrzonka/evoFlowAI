@@ -1,7 +1,9 @@
 'use client';
 
+import { clsx } from 'clsx';
 import type { ReactNode } from 'react';
 
+/** Banners and panel headers: `eyebrow` = small caps section title, `title` = primary line, `subtitle` = body copy (e.g. hide when a card is collapsed). */
 type AISectionHeaderProps = {
   title: string;
   subtitle?: string;
@@ -10,6 +12,8 @@ type AISectionHeaderProps = {
   rightAction?: ReactNode;
   /** Tighter typography and spacing for compact panels (e.g. dashboard hero). */
   compact?: boolean;
+  /** Merged onto the root; use e.g. `!mb-0` for collapsible cards where spacing comes from the panel. */
+  className?: string;
 };
 
 export default function AISectionHeader({
@@ -19,9 +23,15 @@ export default function AISectionHeader({
   status,
   rightAction,
   compact = false,
+  className,
 }: AISectionHeaderProps) {
   return (
-    <div className={compact ? 'mb-2 flex items-start justify-between gap-2' : 'mb-4 flex items-start justify-between gap-3'}>
+    <div
+      className={clsx(
+        compact ? 'mb-2 flex items-start justify-between gap-2' : 'mb-4 flex items-start justify-between gap-3',
+        className
+      )}
+    >
       <div className="min-w-0">
         {eyebrow ? (
           <p

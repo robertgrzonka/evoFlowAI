@@ -38,6 +38,7 @@ import {
 import {
   DELETE_FOOD_ITEM_MUTATION,
   LOG_WORKOUT_MUTATION,
+  UPDATE_FOOD_ITEM_MUTATION,
   UPSERT_DAILY_ACTIVITY_MUTATION,
 } from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
@@ -63,6 +64,7 @@ import {
   WeeklyTrendMetricCard,
   type MealTimelineItem,
 } from '@/components/dashboard';
+import EditMealDialog from '@/components/meals/EditMealDialog';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Tooltip from '@/components/ui/atoms/Tooltip';
 import { NumericInput } from '@/components/ui/atoms/NumericInput';
@@ -73,7 +75,9 @@ import {
   getDashboardStrings,
   resolveDashboardInsightNextActionPath,
 } from '@/lib/i18n/copy/dashboard';
+import { mealsPageCopy, mealTypeLabels } from '@/lib/i18n/copy/meals-page';
 import { buildWeeklyScoreNarratives } from '@/lib/dashboard/weeklyScoreNarratives';
+import { formatInsightFreshness } from '@/lib/format-insight-freshness';
 
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 type ActionTone = 'brand' | 'info' | 'success';
@@ -194,6 +198,7 @@ export default function DashboardPage() {
   /** String while editing so the field can be cleared without forcing 0 */
   const [quickStepsInput, setQuickStepsInput] = useState('');
   const [deleteMealId, setDeleteMealId] = useState<string | null>(null);
+  const [mealToEditId, setMealToEditId] = useState<string | null>(null);
   const [briefExpanded, setBriefExpanded] = useState(false);
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [weeklyExpanded, setWeeklyExpanded] = useState(false);
@@ -226,6 +231,16 @@ export default function DashboardPage() {
     },
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete meal.');
+    },
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
+    awaitRefetchQueries: true,
+  });
+  const [updateFoodItem, { loading: updatingDashboardMeal }] = useMutation(UPDATE_FOOD_ITEM_MUTATION, {
+    onCompleted: () => {
+      kickDeferredAfterMealLog(client);
+    },
+    onError: (error) => {
+      appToast.error('Update failed', error.message || 'Could not save meal.');
     },
     refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
     awaitRefetchQueries: true,
@@ -294,10 +309,30 @@ export default function DashboardPage() {
     rollingStepsAvg
   );
   const delLabels = getDestructiveConfirmLabels(locale);
+  const mMeals = mealsPageCopy[locale];
+  const mealEditOptions = (['breakfast', 'lunch', 'dinner', 'snack'] as const).map((o) => ({
+    value: o,
+    label: mealTypeLabels[locale][o] || o,
+  }));
   const stats = daySnapshot.stats;
   const workouts = daySnapshot.workouts || [];
   const insight = daySnapshot.insight;
   const activity = daySnapshot.activity;
+  const insightFreshnessText: string | undefined = insight?.insightUpdatedAt
+    ? (() => {
+        const s = formatInsightFreshness(
+          String(insight.insightUpdatedAt),
+          Date.now(),
+          locale,
+          {
+            justNow: d.insightFreshnessJustNow,
+            todayPrefix: d.insightFreshnessToday,
+            dayAndTime: d.insightFreshnessDated,
+          }
+        );
+        return s || undefined;
+      })()
+    : undefined;
   const weeklyReview = weeklyReviewData?.weeklyEvoReview;
   const completedMeals = stats?.meals?.length || 0;
   const totalTrainingMinutes = daySnapshot.derived.workoutMinutes;
@@ -575,6 +610,8 @@ export default function DashboardPage() {
   const mealTimelineItems: MealTimelineItem[] = (stats?.meals ?? []).map((meal) => ({
     id: meal.id,
     name: meal.name,
+    description: meal.description ?? undefined,
+    imageUrl: meal.imageUrl ?? undefined,
     mealType: meal.mealType,
     createdAt: meal.createdAt ?? null,
     nutrition: {
@@ -582,8 +619,64 @@ export default function DashboardPage() {
       protein: Number(meal.nutrition?.protein ?? 0),
       carbs: Number(meal.nutrition?.carbs ?? 0),
       fat: Number(meal.nutrition?.fat ?? 0),
+      confidence:
+        typeof meal.nutrition?.confidence === 'number'
+          ? meal.nutrition.confidence
+          : undefined,
     },
   }));
+
+  const mealForEditDialog =
+    mealToEditId && stats?.meals
+      ? stats.meals.find((m: { id: string }) => m.id === mealToEditId) ?? null
+      : null;
+
+  const editMealPayloadForDialog = mealForEditDialog
+    ? {
+        id: mealForEditDialog.id,
+        name: mealForEditDialog.name,
+        description: mealForEditDialog.description,
+        imageUrl: mealForEditDialog.imageUrl,
+        mealType: mealForEditDialog.mealType,
+        nutrition: {
+          calories: Number(mealForEditDialog.nutrition?.calories ?? 0),
+          protein: Number(mealForEditDialog.nutrition?.protein ?? 0),
+          carbs: Number(mealForEditDialog.nutrition?.carbs ?? 0),
+          fat: Number(mealForEditDialog.nutrition?.fat ?? 0),
+          confidence:
+            typeof mealForEditDialog.nutrition?.confidence === 'number'
+              ? mealForEditDialog.nutrition.confidence
+              : null,
+        },
+      }
+    : null;
+
+  const handleDashboardMealSave = async (input: {
+    id: string;
+    name: string;
+    description: string | null;
+    mealType: string;
+    nutrition: { calories: number; protein: number; carbs: number; fat: number; confidence: number };
+  }) => {
+    await updateFoodItem({
+      variables: {
+        input: {
+          id: input.id,
+          name: input.name,
+          description: input.description,
+          mealType: input.mealType,
+          nutrition: {
+            calories: input.nutrition.calories,
+            protein: input.nutrition.protein,
+            carbs: input.nutrition.carbs,
+            fat: input.nutrition.fat,
+            confidence: input.nutrition.confidence,
+          },
+        },
+      },
+    });
+    appToast.success(mMeals.toastMealUpdatedTitle, mMeals.toastMealUpdatedBody);
+  };
 
   const typedWorkouts = workouts as DayWorkoutRow[];
 
@@ -661,6 +754,23 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
+      <EditMealDialog
+        open={Boolean(mealToEditId && editMealPayloadForDialog)}
+        meal={editMealPayloadForDialog}
+        onClose={() => setMealToEditId(null)}
+        saving={updatingDashboardMeal}
+        mealOptions={mealEditOptions}
+        copy={{
+          editMealTitle: mMeals.editMealTitle,
+          saveMealChanges: mMeals.saveMealChanges,
+          cancelEdit: mMeals.cancelEdit,
+          mealType: mMeals.mealType,
+          mealNameLabel: mMeals.mealNameLabel,
+          mealDescription: mMeals.mealDescription,
+          editConfidenceLabel: mMeals.editConfidenceLabel,
+        }}
+        onSave={handleDashboardMealSave}
+      />
       <ConfirmDialog
         open={deleteMealId !== null}
         title={d.deleteMeal}
@@ -711,6 +821,7 @@ export default function DashboardPage() {
             progressLabel={progressTone}
             progressTone={progressBadgeTone}
             loading={daySnapshot.loading}
+            insightFreshnessText={insightFreshnessText}
             headline={headlinePrimary}
             supportLine={supportForHero}
             fullSummary={insight?.summary?.trim() || undefined}
@@ -733,6 +844,7 @@ export default function DashboardPage() {
                   description={nextDescForCard}
                   actionLabel={primaryActionLabel}
                   metricTags={nextActionMetricTags}
+                  metricTagsCaption={nextActionMetricTags ? d.nextActionHeuristicTagsCaption : undefined}
                   onAction={() => router.push(nextAction.targetPath)}
                   secondaryLabel={d.seeOtherOptions}
                   onSecondary={() => router.push('/chat?channel=COACH')}
@@ -811,8 +923,8 @@ export default function DashboardPage() {
           </div>
           <div
             className={clsx(
-              'grid grid-cols-1 gap-2.5 sm:grid-cols-2',
-              sidebarCollapsed ? 'lg:grid-cols-4' : 'lg:grid-cols-2 xl:grid-cols-4'
+              'grid items-start grid-cols-1 gap-2.5 sm:grid-cols-2',
+              sidebarCollapsed ? 'lg:grid-cols-4' : 'lg:grid-cols-2 xl:grid-cols-4',
             )}
           >
             {daySnapshot.loading ? (
@@ -951,6 +1063,8 @@ export default function DashboardPage() {
                   meals={mealTimelineItems}
                   locale={locale}
                   onDelete={(id) => setDeleteMealId(id)}
+                  onEditMeal={(id) => setMealToEditId(id)}
+                  editBusy={updatingDashboardMeal}
                   deleteBusy={deletingMeal}
                   suggestedHint={suggestedMealHint}
                   suggestedDetail={suggestedMealDetail}

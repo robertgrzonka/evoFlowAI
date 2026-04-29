@@ -46,6 +46,9 @@ export const statsPageCopy: Record<
     statPercentOfGoal: (n: string) => string;
     confirmDeleteMeal: string;
     confirmDeleteWorkout: string;
+    trainingCoachEyebrow: string;
+    trainingCoachPreamble: string;
+    trainingCoachEmpty: string;
   }
 > = {
   en: {
@@ -93,6 +96,10 @@ export const statsPageCopy: Record<
     statPercentOfGoal: (n) => `${n}% of goal`,
     confirmDeleteMeal: 'Delete this meal entry?',
     confirmDeleteWorkout: 'Delete this workout entry?',
+    trainingCoachEyebrow: 'From your logged training',
+    trainingCoachPreamble: 'Evo looks at the sessions you already saved (rule-based, not a deep “chain of thought”).',
+    trainingCoachEmpty:
+      'Add at least one workout for this day to get a short take based on your pace and energy balance so far.',
   },
   pl: {
     goalModePrefix: 'Tryb celu:',
@@ -139,5 +146,10 @@ export const statsPageCopy: Record<
     statPercentOfGoal: (n) => `${n}% celu`,
     confirmDeleteMeal: 'Usunąć ten wpis posiłku?',
     confirmDeleteWorkout: 'Usunąć ten wpis treningu?',
+    trainingCoachEyebrow: 'Komentarz na podstawie treningów',
+    trainingCoachPreamble:
+      'Evo patrzy na zapisane jednostki (reguły z logów, to nie jest „głębokie” rozumowanie krok po kroku).',
+    trainingCoachEmpty:
+      'Dodaj choć jeden trening w tym dniu, żeby dostać krótki komentarz do tempa i bilansu energii.',
   },
 };

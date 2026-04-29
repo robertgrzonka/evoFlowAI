@@ -217,8 +217,9 @@ export default function Tooltip({
   const positionClass = rail
     ? ''
     : side === 'bottom'
-      ? 'top-full mt-2.5 left-1/2 max-w-[min(22rem,calc(100vw-1.25rem))] -translate-x-1/2 whitespace-normal break-words text-left leading-snug'
-      : 'bottom-full mb-3 left-1/2 max-w-[min(22rem,calc(100vw-1.25rem))] -translate-x-1/2 whitespace-normal break-words text-left leading-snug';
+      // w-max: avoid shrink-to-fit using only the ~trigger-wide containing block (narrows to a few px / one glyph per line).
+      ? 'top-full mt-2.5 left-1/2 w-max min-w-0 max-w-[min(22rem,calc(100vw-1.25rem))] -translate-x-1/2 whitespace-normal break-words text-left leading-snug'
+      : 'bottom-full mb-3 left-1/2 w-max min-w-0 max-w-[min(22rem,calc(100vw-1.25rem))] -translate-x-1/2 whitespace-normal break-words text-left leading-snug';
 
   if (anchored) {
     const bubbleClass = clsx(

@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApolloClient, useMutation, useQuery, useSubscription } from '@apollo/client';
 import { clsx } from 'clsx';
-import { ChevronDown, Dumbbell, FileUp, Flame, Timer, Trash2 } from 'lucide-react';
+import { ChevronDown, Dumbbell, FileUp, Flame, Pencil, Timer, Trash2 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import { accentEdgeClasses } from '@/components/ui/accent-cards';
 import { NumericInput, NumericInputNumber } from '@/components/ui/atoms/NumericInput';
@@ -16,6 +16,7 @@ import {
   DELETE_WORKOUT_MUTATION,
   IMPORT_WORKOUT_FILE_MUTATION,
   LOG_WORKOUT_MUTATION,
+  UPDATE_WORKOUT_MUTATION,
   UPSERT_DAILY_ACTIVITY_MUTATION,
 } from '@/lib/graphql/mutations';
 import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION } from '@/lib/graphql/queries';
@@ -37,6 +38,7 @@ import {
   SmartSuggestionChips,
 } from '@/components/evo';
 import WeeklyWorkoutsTrainingSection from '@/components/workouts/WeeklyWorkoutsTrainingSection';
+import EditWorkoutDialog, { type EditableWorkoutPayload } from '@/components/workouts/EditWorkoutDialog';
 import { addDaysToDateKey } from '@/lib/calendar-date-key';
 import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
 import { workoutsPageCopy } from '@/lib/i18n/copy/workouts-page';
@@ -52,6 +54,7 @@ export default function WorkoutsPage() {
   const weeklyStatsEndDate = useMemo(() => addDaysToDateKey(today, -1), [today]);
   const [selectedDate, setSelectedDate] = useState(today);
   const [deleteWorkoutId, setDeleteWorkoutId] = useState<string | null>(null);
+  const [editWorkoutId, setEditWorkoutId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(45);
@@ -107,6 +110,14 @@ export default function WorkoutsPage() {
     },
     onError: (error) => {
       appToast.error('Delete failed', error.message || 'Could not delete workout.');
+    },
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
+    awaitRefetchQueries: true,
+  });
+  const [updateWorkoutMutation, { loading: savingWorkoutEdits }] = useMutation(UPDATE_WORKOUT_MUTATION, {
+    onCompleted: () => kickDeferredAfterWorkoutLog(client),
+    onError: (error) => {
+      appToast.error('Save failed', error.message || 'Could not update workout.');
     },
     refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
     awaitRefetchQueries: true,
@@ -232,6 +243,37 @@ export default function WorkoutsPage() {
     });
     event.target.value = '';
   };
+
+  const workoutForEditPayload: EditableWorkoutPayload | null = editWorkoutId
+    ? (workouts.find((x: { id: string }) => x.id === editWorkoutId) as EditableWorkoutPayload | undefined) ??
+      null
+    : null;
+
+  const handleSaveWorkoutEdit = async (input: {
+    id: string;
+    title: string;
+    notes: string | null;
+    durationMinutes: number;
+    caloriesBurned: number;
+    intensity: string;
+    performedAt: string;
+  }) => {
+    await updateWorkoutMutation({
+      variables: {
+        input: {
+          id: input.id,
+          title: input.title,
+          notes: input.notes,
+          durationMinutes: input.durationMinutes,
+          caloriesBurned: input.caloriesBurned,
+          intensity: input.intensity,
+          performedAt: input.performedAt,
+        },
+      },
+    });
+    appToast.success(w.toastWorkoutUpdatedTitle, w.toastWorkoutUpdatedBody);
+  };
+
   const lastWorkout = workouts[0];
   const workoutTemplates = [
     { id: 'tpl-upper', label: w.tplUpper },
@@ -242,6 +284,29 @@ export default function WorkoutsPage() {
 
   return (
     <AppShell>
+      <EditWorkoutDialog
+        open={Boolean(editWorkoutId && workoutForEditPayload)}
+        workout={workoutForEditPayload}
+        onClose={() => setEditWorkoutId(null)}
+        saving={savingWorkoutEdits}
+        copy={{
+          editWorkoutTitle: w.editWorkoutTitle,
+          saveWorkoutChanges: w.saveWorkoutChanges,
+          cancelEditWorkout: w.cancelEditWorkout,
+          workoutTitle: w.workoutTitle,
+          titlePlaceholder: w.titlePlaceholder,
+          duration: w.duration,
+          kcalBurned: w.kcalBurned,
+          intensity: w.intensity,
+          sessionNotes: w.sessionNotes,
+          notesPlaceholder: w.notesPlaceholder,
+          intensityLow: w.intensityLow,
+          intensityMedium: w.intensityMedium,
+          intensityHigh: w.intensityHigh,
+          performedAtLabel: w.performedAtLabel,
+        }}
+        onSave={handleSaveWorkoutEdit}
+      />
       <ConfirmDialog
         open={deleteWorkoutId !== null}
         title={w.deleteWorkoutTitle}
@@ -397,8 +462,17 @@ export default function WorkoutsPage() {
                                 </span>
                                 <button
                                   type="button"
+                                  onClick={() => setEditWorkoutId(workout.id)}
+                                  disabled={deletingWorkout || savingWorkoutEdits}
+                                  className="inline-flex items-center justify-center rounded-md border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:border-info-400/40 hover:text-info-400"
+                                  title={w.editWorkoutTitle}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => setDeleteWorkoutId(workout.id)}
-                                  disabled={deletingWorkout}
+                                  disabled={deletingWorkout || savingWorkoutEdits}
                                   className="inline-flex items-center justify-center rounded-md border border-border px-2 py-1 text-xs text-text-secondary transition-colors hover:border-red-400/40 hover:text-red-400"
                                   title={w.deleteWorkoutTitle}
                                 >

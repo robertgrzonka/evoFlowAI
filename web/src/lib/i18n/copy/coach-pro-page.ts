@@ -178,6 +178,15 @@ export const coachProPageCopy: Record<
     overviewExpectedPace: string;
     overviewFlexibility: string;
     overviewConfidence: string;
+    planConfidenceExplainer: string;
+    shoppingListSourceBadge: string;
+    shoppingSourceAi: string;
+    shoppingSourceFallback: string;
+    shoppingSourceDerivedFromFallbackBases: string;
+    shoppingSourceDerivedFromPlan: string;
+    shoppingSourceUnknown: string;
+    shoppingListWarningsTitle: string;
+    shoppingListAllergiesHint: string;
     adaptTodayTitle: string;
     whyWeekTitle: string;
     weeklySuccessTitle: string;
@@ -445,6 +454,16 @@ export const coachProPageCopy: Record<
     overviewExpectedPace: 'Expected pace',
     overviewFlexibility: 'Flexibility',
     overviewConfidence: 'Confidence',
+    planConfidenceExplainer:
+      'Based on how complete your recent logs are—not a rating of recipe quality or guaranteed results. Steadier logging helps Evo tailor the week.',
+    shoppingListSourceBadge: 'List source',
+    shoppingSourceAi: 'AI-generated',
+    shoppingSourceFallback: 'Fallback list',
+    shoppingSourceDerivedFromFallbackBases: 'From fallback base ideas',
+    shoppingSourceDerivedFromPlan: 'Derived from plan meals',
+    shoppingSourceUnknown: 'Unknown',
+    shoppingListWarningsTitle: 'Heads-up',
+    shoppingListAllergiesHint: 'Review items against your allergies and hard exclusions before shopping.',
     adaptTodayTitle: 'Need to adapt today?',
     whyWeekTitle: 'Why this week looks like this',
     weeklySuccessTitle: 'Weekly success markers',
@@ -729,6 +748,16 @@ export const coachProPageCopy: Record<
     overviewExpectedPace: 'Oczekiwane tempo',
     overviewFlexibility: 'Elastyczność',
     overviewConfidence: 'Pewność',
+    planConfidenceExplainer:
+      'Wynika z kompletności ostatnich logów — to nie ocena jakości przepisów ani gwarancja efektu. Im pełniejsze logi, tym trafniej Evo dobiera tydzień.',
+    shoppingListSourceBadge: 'Źródło listy',
+    shoppingSourceAi: 'Wygenerowane przez AI',
+    shoppingSourceFallback: 'Lista zapasowa',
+    shoppingSourceDerivedFromFallbackBases: 'Z pomysłów planu zapasowego',
+    shoppingSourceDerivedFromPlan: 'Z posiłków w planie',
+    shoppingSourceUnknown: 'Nieznane',
+    shoppingListWarningsTitle: 'Uwaga',
+    shoppingListAllergiesHint: 'Sprawdź produkty pod kątem alergii i twardych wykluczeń przed zakupem.',
     adaptTodayTitle: 'Dostosować dziś?',
     whyWeekTitle: 'Dlaczego taki tydzień',
     weeklySuccessTitle: 'Markery sukcesu tygodnia',

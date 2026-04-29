@@ -32,6 +32,7 @@ import Tooltip from '@/components/ui/atoms/Tooltip';
 import { NumericInputNumber } from '@/components/ui/atoms/NumericInput';
 import { ButtonSpinner, PageLoader, Skeleton } from '@/components/ui/loading';
 import { AISectionHeader, EvoHintCard, EvoStatusBadge, InsightEmptyState } from '@/components/evo';
+import { CoachProShoppingListIntro } from '@/components/coach-pro/CoachProShoppingListIntro';
 import {
   APPLY_COACH_PRO_MEAL_SMART_ACTION_MUTATION,
   REFRESH_COACH_PRO_PLAN_BY_TODAY_SIGNALS_MUTATION,
@@ -916,6 +917,7 @@ export default function EvoCoachProPage() {
                 <OverviewPill label={t.overviewFlexibility} value={plan.overview.flexibilityLevel} icon={<WandSparkles className="h-4 w-4 text-primary-300" />} />
                 <OverviewPill label={t.overviewConfidence} value={confidenceDisplay} icon={<ShieldCheck className="h-4 w-4 text-success-300" />} />
               </div>
+              <p className="mt-2 max-w-2xl text-[10px] text-text-muted leading-snug">{t.planConfidenceExplainer}</p>
             </section>
 
             <section
@@ -1184,6 +1186,14 @@ export default function EvoCoachProPage() {
                   <h4 className="text-sm font-semibold text-text-primary mb-2 inline-flex items-center gap-2">
                     <ShoppingCart className="h-4 w-4" /> {t.shoppingListTitle}
                   </h4>
+                  <CoachProShoppingListIntro
+                    copy={t}
+                    source={plan.shoppingListSource}
+                    warnings={plan.shoppingListWarnings}
+                    showAllergiesHint={
+                      setup.nutrition.allergies.length > 0 || setup.nutrition.hardExclusions.length > 0
+                    }
+                  />
                   <div className="space-y-2 text-xs">
                     <ShoppingGroup label={t.shopProteins} emptyLabel={t.shoppingListEmpty} items={plan.shoppingList.proteins} />
                     <ShoppingGroup label={t.shopCarbs} emptyLabel={t.shoppingListEmpty} items={plan.shoppingList.carbs} />

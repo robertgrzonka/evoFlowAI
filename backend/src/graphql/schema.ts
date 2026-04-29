@@ -224,6 +224,8 @@ export const typeDefs = gql`
     tips: [String!]!
     """AI-personalized next step; when null, open chat from the client."""
     nextAction: DashboardInsightNextAction
+    """When this brief text was last written to the server cache (ISO 8601), if known."""
+    insightUpdatedAt: String
     caloriesBurned: Float!
     steps: Int!
     stepsCalories: Float!
@@ -623,6 +625,15 @@ export const typeDefs = gql`
     mealType: MealType!
   }
 
+  input UpdateFoodItemInput {
+    id: ID!
+    name: String
+    description: String
+    mealType: MealType
+    imageUrl: String
+    nutrition: NutritionInfoInput
+  }
+
   input NutritionInfoInput {
     calories: Float!
     protein: Float!
@@ -673,6 +684,16 @@ export const typeDefs = gql`
     durationMinutes: Int!
     caloriesBurned: Int
     intensity: WorkoutIntensity!
+    performedAt: String
+  }
+
+  input UpdateWorkoutInput {
+    id: ID!
+    title: String
+    notes: String
+    durationMinutes: Int
+    caloriesBurned: Int
+    intensity: WorkoutIntensity
     performedAt: String
   }
 
@@ -907,6 +928,7 @@ export const typeDefs = gql`
     # Food
     analyzeImage(input: AnalyzeImageInput!): AnalyzeImageResponse!
     addFoodItem(input: AddFoodItemInput!): FoodItem!
+    updateFoodItem(input: UpdateFoodItemInput!): FoodItem!
     deleteFoodItem(id: ID!): Boolean!
     
     # Chat
@@ -918,6 +940,7 @@ export const typeDefs = gql`
 
     # Workouts
     logWorkout(input: LogWorkoutInput!): Workout!
+    updateWorkout(input: UpdateWorkoutInput!): Workout!
     importWorkoutFile(input: ImportWorkoutFileInput!): Workout!
     upsertDailyActivity(input: UpsertDailyActivityInput!): DailyActivity!
     deleteWorkout(id: ID!): Boolean!

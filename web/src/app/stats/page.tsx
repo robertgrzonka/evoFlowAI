@@ -4,7 +4,7 @@ import { clsx } from 'clsx';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
-import { Camera, Dumbbell, Flame, Trash2 } from 'lucide-react';
+import { Camera, Dumbbell, Flame, Pencil, Trash2 } from 'lucide-react';
 import {
   ME_QUERY,
   WEEKLY_EVO_REVIEW_QUERY,
@@ -17,8 +17,13 @@ import ContextAICoach from '@/components/ContextAICoach';
 import { ListRowSkeleton, PageLoader, Skeleton, StatCardSkeleton } from '@/components/ui/loading';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { getDestructiveConfirmLabels } from '@/lib/i18n/destructive-confirm';
-import { DELETE_FOOD_ITEM_MUTATION, DELETE_WORKOUT_MUTATION } from '@/lib/graphql/mutations';
-import { UPSERT_DAILY_ACTIVITY_MUTATION } from '@/lib/graphql/mutations';
+import {
+  DELETE_FOOD_ITEM_MUTATION,
+  DELETE_WORKOUT_MUTATION,
+  UPDATE_FOOD_ITEM_MUTATION,
+  UPDATE_WORKOUT_MUTATION,
+  UPSERT_DAILY_ACTIVITY_MUTATION,
+} from '@/lib/graphql/mutations';
 import { appToast } from '@/lib/app-toast';
 import {
   buildDayRefetchQueriesAfterLog,
@@ -31,16 +36,27 @@ import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
 import { formatPrimaryGoal } from '@/lib/formatters';
 import {
+  AiTransparencyNotice,
   AISectionHeader,
   EvoHintCard,
   InsightEmptyState,
 } from '@/components/evo';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { statsPageCopy } from '@/lib/i18n/copy/stats-page';
+import { getAiTransparencyStrings } from '@/lib/i18n/copy/ai-transparency';
 import { accentEdgeClasses } from '@/components/ui/accent-cards';
 import { NumericInput } from '@/components/ui/atoms/NumericInput';
+import { MealMacroConfidenceBlock } from '@/components/meals/MealMacroConfidenceBlock';
+import EditMealDialog from '@/components/meals/EditMealDialog';
+import EditWorkoutDialog, {
+  type EditableWorkoutPayload,
+} from '@/components/workouts/EditWorkoutDialog';
+import { workoutsPageCopy } from '@/lib/i18n/copy/workouts-page';
+import { mealsPageCopy, mealTypeLabels } from '@/lib/i18n/copy/meals-page';
+import type { StatsDayMeal } from '@/lib/types/stats-day-meal';
+import { GoalRingCard } from '@/components/dashboard';
+import { buildDashboardGoalHoverHint, getDashboardStrings } from '@/lib/i18n/copy/dashboard';
 
-type StatTone = 'brand' | 'info' | 'success' | 'brandSoft';
 type AnalysisMode = 'combined' | 'nutrition' | 'training';
 
 export default function StatsPage() {
@@ -51,6 +67,8 @@ export default function StatsPage() {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('combined');
   const [stepsInput, setStepsInput] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ kind: 'meal' | 'workout'; id: string } | null>(null);
+  const [mealToEditId, setMealToEditId] = useState<string | null>(null);
+  const [workoutToEditId, setWorkoutToEditId] = useState<string | null>(null);
 
   const { data: userData, loading: userLoading, error: userError } = useQuery(ME_QUERY);
   const daySnapshot = useDaySnapshot({
@@ -85,6 +103,25 @@ export default function StatsPage() {
     refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
     awaitRefetchQueries: true,
   });
+
+  const [updateFoodItemMutation, { loading: savingMealEdits }] = useMutation(UPDATE_FOOD_ITEM_MUTATION, {
+    onCompleted: () => kickDeferredAfterMealLog(client),
+    onError: (error) => {
+      appToast.error('Update failed', error.message || 'Could not save meal.');
+    },
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
+    awaitRefetchQueries: true,
+  });
+
+  const [updateWorkoutMutation, { loading: savingWorkoutEdits }] = useMutation(UPDATE_WORKOUT_MUTATION, {
+    onCompleted: () => kickDeferredAfterWorkoutLog(client),
+    onError: (error) => {
+      appToast.error('Update failed', error.message || 'Could not save workout.');
+    },
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(selectedDate, timeZone)],
+    awaitRefetchQueries: true,
+  });
+
   const [upsertDailyActivity, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
     onCompleted: () => {
       kickDeferredDashboardAndWeeklyEvo(client);
@@ -121,12 +158,24 @@ export default function StatsPage() {
   const user = userData?.me;
   const locale = graphqlAppLocaleToUi(user?.preferences?.appLocale);
   const sc = statsPageCopy[locale];
+  const dDash = getDashboardStrings(locale);
+  const mealsUi = mealsPageCopy[locale];
+  const aiTransparency = getAiTransparencyStrings(locale);
   const stats = daySnapshot.stats;
   const workouts = daySnapshot.workouts || [];
   const workoutSummary = daySnapshot.summary;
+  const dayMeals: StatsDayMeal[] = (stats?.meals ?? []) as StatsDayMeal[];
   const weeklyReview = weeklyReviewData?.weeklyEvoReview;
   const activity = daySnapshot.activity;
-  const goalProgress = stats?.goalProgress || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+  const calGoalNum = Number(stats?.dynamicGoals?.calories || user?.preferences?.dailyCalorieGoal || 2000);
+  const proteinGoalNum = Number(stats?.dynamicGoals?.protein || user?.preferences?.proteinGoal || 0);
+  const carbsGoalNum = Number(stats?.dynamicGoals?.carbs || user?.preferences?.carbsGoal || 0);
+  const fatGoalNum = Number(stats?.dynamicGoals?.fat || user?.preferences?.fatGoal || 0);
+  const calConsumed = Number(stats?.totalCalories || 0);
+  const proteinConsumed = Number(stats?.totalProtein || 0);
+  const carbsConsumed = Number(stats?.totalCarbs || 0);
+  const fatConsumed = Number(stats?.totalFat || 0);
   const analysisModeLabel =
     analysisMode === 'combined' ? sc.modeCombined : analysisMode === 'nutrition' ? sc.modeNutrition : sc.modeTraining;
   const delLabels = getDestructiveConfirmLabels(locale);
@@ -134,6 +183,86 @@ export default function StatsPage() {
     deleteConfirm?.kind === 'workout' ? sc.deleteWorkoutTitle : sc.deleteMealTitle;
   const deleteDialogDescription =
     deleteConfirm?.kind === 'workout' ? sc.confirmDeleteWorkout : sc.confirmDeleteMeal;
+
+  const wEdit = workoutsPageCopy[locale];
+  const mealEditOptions = (['breakfast', 'lunch', 'dinner', 'snack'] as const).map((o) => ({
+    value: o,
+    label: mealTypeLabels[locale][o] || o,
+  }));
+
+  const statsMealForEdit = mealToEditId ? dayMeals.find((m) => m.id === mealToEditId) ?? null : null;
+  const statsMealEditPayload = statsMealForEdit
+    ? {
+        id: statsMealForEdit.id,
+        name: statsMealForEdit.name,
+        description: statsMealForEdit.description,
+        imageUrl: statsMealForEdit.imageUrl,
+        mealType: statsMealForEdit.mealType,
+        nutrition: {
+          calories: Number(statsMealForEdit.nutrition?.calories ?? 0),
+          protein: Number(statsMealForEdit.nutrition?.protein ?? 0),
+          carbs: Number(statsMealForEdit.nutrition?.carbs ?? 0),
+          fat: Number(statsMealForEdit.nutrition?.fat ?? 0),
+          confidence: statsMealForEdit.nutrition?.confidence ?? null,
+        },
+      }
+    : null;
+
+  const statsWorkoutForEdit: EditableWorkoutPayload | null = workoutToEditId
+    ? (workouts.find((w: { id: string }) => w.id === workoutToEditId) as EditableWorkoutPayload | undefined) ?? null
+    : null;
+
+  const handleStatsMealSave = async (input: {
+    id: string;
+    name: string;
+    description: string | null;
+    mealType: string;
+    nutrition: { calories: number; protein: number; carbs: number; fat: number; confidence: number };
+  }) => {
+    await updateFoodItemMutation({
+      variables: {
+        input: {
+          id: input.id,
+          name: input.name,
+          description: input.description,
+          mealType: input.mealType,
+          nutrition: {
+            calories: input.nutrition.calories,
+            protein: input.nutrition.protein,
+            carbs: input.nutrition.carbs,
+            fat: input.nutrition.fat,
+            confidence: input.nutrition.confidence,
+          },
+        },
+      },
+    });
+    appToast.success(mealsUi.toastMealUpdatedTitle, mealsUi.toastMealUpdatedBody);
+  };
+
+  const handleStatsWorkoutSave = async (input: {
+    id: string;
+    title: string;
+    notes: string | null;
+    durationMinutes: number;
+    caloriesBurned: number;
+    intensity: string;
+    performedAt: string;
+  }) => {
+    await updateWorkoutMutation({
+      variables: {
+        input: {
+          id: input.id,
+          title: input.title,
+          notes: input.notes,
+          durationMinutes: input.durationMinutes,
+          caloriesBurned: input.caloriesBurned,
+          intensity: input.intensity,
+          performedAt: input.performedAt,
+        },
+      },
+    });
+    appToast.success(wEdit.toastWorkoutUpdatedTitle, wEdit.toastWorkoutUpdatedBody);
+  };
 
   const handleConfirmDelete = async () => {
     if (!deleteConfirm) return;
@@ -181,6 +310,46 @@ export default function StatsPage() {
 
   return (
       <AppShell>
+        <EditMealDialog
+          open={Boolean(mealToEditId && statsMealEditPayload)}
+          meal={statsMealEditPayload}
+          onClose={() => setMealToEditId(null)}
+          saving={savingMealEdits}
+          mealOptions={mealEditOptions}
+          copy={{
+            editMealTitle: mealsUi.editMealTitle,
+            saveMealChanges: mealsUi.saveMealChanges,
+            cancelEdit: mealsUi.cancelEdit,
+            mealType: mealsUi.mealType,
+            mealNameLabel: mealsUi.mealNameLabel,
+            mealDescription: mealsUi.mealDescription,
+            editConfidenceLabel: mealsUi.editConfidenceLabel,
+          }}
+          onSave={handleStatsMealSave}
+        />
+        <EditWorkoutDialog
+          open={Boolean(workoutToEditId && statsWorkoutForEdit)}
+          workout={statsWorkoutForEdit}
+          onClose={() => setWorkoutToEditId(null)}
+          saving={savingWorkoutEdits}
+          copy={{
+            editWorkoutTitle: wEdit.editWorkoutTitle,
+            saveWorkoutChanges: wEdit.saveWorkoutChanges,
+            cancelEditWorkout: wEdit.cancelEditWorkout,
+            workoutTitle: wEdit.workoutTitle,
+            titlePlaceholder: wEdit.titlePlaceholder,
+            duration: wEdit.duration,
+            kcalBurned: wEdit.kcalBurned,
+            intensity: wEdit.intensity,
+            sessionNotes: wEdit.sessionNotes,
+            notesPlaceholder: wEdit.notesPlaceholder,
+            intensityLow: wEdit.intensityLow,
+            intensityMedium: wEdit.intensityMedium,
+            intensityHigh: wEdit.intensityHigh,
+            performedAtLabel: wEdit.performedAtLabel,
+          }}
+          onSave={handleStatsWorkoutSave}
+        />
         <ConfirmDialog
           open={deleteConfirm !== null}
           title={deleteDialogTitle}
@@ -259,55 +428,94 @@ export default function StatsPage() {
             ) : null}
 
             {(analysisMode === 'combined' || analysisMode === 'nutrition') ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {daySnapshot.loading ? (
-                <>
-                  <StatCardSkeleton />
-                  <StatCardSkeleton />
-                  <StatCardSkeleton />
-                  <StatCardSkeleton />
-                </>
-              ) : (
-                <>
-                  <StatCard
-                    ui={sc}
-                    title={locale === 'pl' ? 'Kalorie' : 'Calories'}
-                    value={stats?.totalCalories?.toFixed(0) || '0'}
-                    goal={stats?.dynamicGoals?.calories || user?.preferences?.dailyCalorieGoal || 2000}
-                    progress={goalProgress.calories}
-                    unit="kcal"
-                    tone="brand"
-                  />
-                  <StatCard
-                    ui={sc}
-                    title={locale === 'pl' ? 'Białko' : 'Protein'}
-                    value={stats?.totalProtein?.toFixed(1) || '0'}
-                    goal={stats?.dynamicGoals?.protein || user?.preferences?.proteinGoal || undefined}
-                    progress={goalProgress.protein}
-                    unit="g"
-                    tone="info"
-                  />
-                  <StatCard
-                    ui={sc}
-                    title={locale === 'pl' ? 'Węglowodany' : 'Carbs'}
-                    value={stats?.totalCarbs?.toFixed(1) || '0'}
-                    goal={stats?.dynamicGoals?.carbs || user?.preferences?.carbsGoal || undefined}
-                    progress={goalProgress.carbs}
-                    unit="g"
-                    tone="success"
-                  />
-                  <StatCard
-                    ui={sc}
-                    title={locale === 'pl' ? 'Tłuszcze' : 'Fat'}
-                    value={stats?.totalFat?.toFixed(1) || '0'}
-                    goal={stats?.dynamicGoals?.fat || user?.preferences?.fatGoal || undefined}
-                    progress={goalProgress.fat}
-                    unit="g"
-                    tone="brandSoft"
-                  />
-                </>
-              )}
-            </div>
+            <section className="mb-6 rounded-2xl bg-surface/70 p-3 md:p-4 ring-1 ring-white/[0.06]">
+              <div className="mb-2.5 flex flex-wrap items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-semibold tracking-tight text-text-primary">{dDash.todayGoals}</h3>
+                  <p className="text-xs text-text-muted line-clamp-1">{dDash.todayGoalsSub(selectedDate)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push('/goals')}
+                  className="btn-info text-xs h-8 px-3 shrink-0"
+                >
+                  {dDash.setGoals}
+                </button>
+              </div>
+              <div className="grid items-start grid-cols-1 gap-2.5 sm:grid-cols-2">
+                {daySnapshot.loading ? (
+                  <>
+                    <StatCardSkeleton />
+                    <StatCardSkeleton />
+                    <StatCardSkeleton />
+                    <StatCardSkeleton />
+                  </>
+                ) : (
+                  <>
+                    <GoalRingCard
+                      ui={dDash}
+                      title={dDash.statCalories}
+                      kind="calories"
+                      consumed={calConsumed}
+                      target={calGoalNum}
+                      unit="kcal"
+                      tone="brand"
+                      hoverHint={buildDashboardGoalHoverHint(locale, {
+                        title: 'Calories',
+                        value: calConsumed,
+                        goal: calGoalNum,
+                        unit: 'kcal',
+                      })}
+                    />
+                    <GoalRingCard
+                      ui={dDash}
+                      title={dDash.statProtein}
+                      kind="protein"
+                      consumed={proteinConsumed}
+                      target={proteinGoalNum}
+                      unit="g"
+                      tone="info"
+                      hoverHint={buildDashboardGoalHoverHint(locale, {
+                        title: 'Protein',
+                        value: proteinConsumed,
+                        goal: proteinGoalNum,
+                        unit: 'g',
+                      })}
+                    />
+                    <GoalRingCard
+                      ui={dDash}
+                      title={dDash.statCarbs}
+                      kind="carbs"
+                      consumed={carbsConsumed}
+                      target={carbsGoalNum}
+                      unit="g"
+                      tone="success"
+                      hoverHint={buildDashboardGoalHoverHint(locale, {
+                        title: 'Carbs',
+                        value: carbsConsumed,
+                        goal: carbsGoalNum,
+                        unit: 'g',
+                      })}
+                    />
+                    <GoalRingCard
+                      ui={dDash}
+                      title={dDash.statFat}
+                      kind="fat"
+                      consumed={fatConsumed}
+                      target={fatGoalNum}
+                      unit="g"
+                      tone="brandSoft"
+                      hoverHint={buildDashboardGoalHoverHint(locale, {
+                        title: 'Fat',
+                        value: fatConsumed,
+                        goal: fatGoalNum,
+                        unit: 'g',
+                      })}
+                    />
+                  </>
+                )}
+              </div>
+            </section>
             ) : null}
 
             {(analysisMode === 'combined' || analysisMode === 'nutrition') ? (
@@ -326,27 +534,50 @@ export default function StatsPage() {
                   <ListRowSkeleton />
                   <ListRowSkeleton />
                 </div>
-              ) : stats?.meals?.length > 0 ? (
+              ) : dayMeals.length > 0 ? (
                 <div className="space-y-3">
-                  {stats.meals.map((meal: any) => (
+                  {dayMeals.map((meal) => (
                     <div
                       key={meal.id}
-                      className="relative flex items-center justify-between p-3.5 pr-12 bg-surface-elevated rounded-lg border border-border"
+                      className="relative flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between p-3.5 pr-[4.25rem] pt-10 sm:pt-3.5 bg-surface-elevated rounded-lg border border-border"
                     >
-                      <button
-                        type="button"
-                        onClick={() => setDeleteConfirm({ kind: 'meal', id: meal.id })}
-                        disabled={deletingMeal}
-                        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
-                        title={sc.deleteMealTitle}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                      <div>
+                      <div className="absolute right-3 top-3 flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setMealToEditId(meal.id)}
+                          disabled={deletingMeal || savingMealEdits}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:border-info-400/40 hover:text-info-400 transition-colors"
+                          title={mealsUi.editMealTitle}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirm({ kind: 'meal', id: meal.id })}
+                          disabled={deletingMeal || savingMealEdits}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
+                          title={sc.deleteMealTitle}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="min-w-0">
                         <h4 className="font-semibold text-text-primary">{meal.name}</h4>
                         <p className="text-sm text-text-secondary capitalize">{meal.mealType.toLowerCase()}</p>
+                        <MealMacroConfidenceBlock
+                          imageUrl={meal.imageUrl}
+                          confidence={meal.nutrition.confidence}
+                          locale={locale}
+                          copy={{
+                            detailsMore: mealsUi.detailsMore,
+                            estimateChipUnknown: mealsUi.estimateChipUnknown,
+                            confidenceTooltipExplain: mealsUi.confidenceTooltipExplain,
+                            confidenceTooltipUnavailable: mealsUi.confidenceTooltipUnavailable,
+                          }}
+                          className="mt-1.5"
+                        />
                       </div>
-                      <div className="text-right">
+                      <div className="text-left sm:text-right shrink-0">
                         <p className="font-semibold text-text-primary">
                           {meal.nutrition.calories.toFixed(0)} kcal
                         </p>
@@ -418,6 +649,20 @@ export default function StatsPage() {
                 </div>
               )}
 
+              {analysisMode === 'training' && !daySnapshot.loading ? (
+                <div className="mb-5">
+                  <EvoHintCard
+                    title={sc.trainingCoachEyebrow}
+                    tone="notice"
+                    content={
+                      workoutSummary?.message?.trim()
+                        ? `${sc.trainingCoachPreamble}\n\n${String(workoutSummary.message).trim()}`
+                        : sc.trainingCoachEmpty
+                    }
+                  />
+                </div>
+              ) : null}
+
               {daySnapshot.loading ? (
                 <div className="space-y-3">
                   <ListRowSkeleton />
@@ -425,20 +670,31 @@ export default function StatsPage() {
                 </div>
               ) : workouts.length > 0 ? (
                 <div className="space-y-3">
-                  {workouts.map((workout: any) => (
+                  {workouts.map((workout) => (
                     <div
                       key={workout.id}
-                      className="relative flex items-center justify-between p-3.5 pr-12 bg-surface-elevated rounded-lg border border-border"
+                      className="relative flex items-center justify-between p-3.5 pr-[4.25rem] bg-surface-elevated rounded-lg border border-border"
                     >
-                      <button
-                        type="button"
-                        onClick={() => setDeleteConfirm({ kind: 'workout', id: workout.id })}
-                        disabled={deletingWorkout}
-                        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
-                        title={sc.deleteWorkoutTitle}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="absolute right-3 top-3 flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setWorkoutToEditId(workout.id)}
+                          disabled={deletingWorkout || savingWorkoutEdits}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:border-info-400/40 hover:text-info-400 transition-colors"
+                          title={wEdit.editWorkoutTitle}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirm({ kind: 'workout', id: workout.id })}
+                          disabled={deletingWorkout || savingWorkoutEdits}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
+                          title={sc.deleteWorkoutTitle}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                       <div>
                         <h4 className="font-semibold text-text-primary">{workout.title}</h4>
                         <p className="text-sm text-text-secondary">
@@ -468,6 +724,7 @@ export default function StatsPage() {
 
           <div className="xl:col-span-4">
             <div className="space-y-4">
+              <AiTransparencyNotice strings={aiTransparency} variant="compact" showLearnMore={false} />
               {weeklyReview ? (
                 <section
                   className={clsx(
@@ -567,59 +824,6 @@ function WorkoutSummaryCard({
         {label}
       </div>
       <p className="text-sm font-semibold text-text-primary mt-1">{value}</p>
-    </div>
-  );
-}
-
-function StatCard({
-  ui,
-  title,
-  value,
-  goal,
-  progress,
-  unit,
-  tone,
-}: {
-  ui: (typeof statsPageCopy)['en'];
-  title: string;
-  value: string;
-  goal?: number;
-  progress: number;
-  unit: string;
-  tone: StatTone;
-}) {
-  const percentage = goal ? (parseFloat(value) / goal) * 100 : progress;
-  const toneStyles = {
-    brand: { value: 'text-primary-500', bar: 'bg-primary-500', edge: accentEdgeClasses('primary', 'left') },
-    info: { value: 'text-info-500', bar: 'bg-info-500', edge: accentEdgeClasses('info', 'left') },
-    success: { value: 'text-success-500', bar: 'bg-success-500', edge: accentEdgeClasses('success', 'left') },
-    brandSoft: { value: 'text-primary-300', bar: 'bg-primary-300', edge: 'border-l-4 border-l-primary-300' },
-  } satisfies Record<StatTone, { value: string; bar: string; edge: string }>;
-
-  return (
-    <div
-      className={clsx(
-        'bg-surface rounded-xl border border-border p-5 shadow-sm shadow-black/5',
-        toneStyles[tone].edge,
-      )}
-    >
-      <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-text-muted">{title}</h3>
-      <div className="mb-3 flex items-baseline space-x-2">
-        <span className={`text-2xl font-semibold tracking-tight ${toneStyles[tone].value}`}>{value}</span>
-        <span className="text-xs text-text-secondary">{unit}</span>
-      </div>
-      {goal ? (
-        <p className="text-xs text-text-muted mb-2">
-          {ui.statGoal} {goal} {unit}
-        </p>
-      ) : null}
-      <div className="w-full bg-background/60 rounded-full h-2">
-        <div
-          className={`h-2 rounded-full ${toneStyles[tone].bar}`}
-          style={{ width: `${Math.min(percentage, 100)}%` }}
-        />
-      </div>
-      <p className="text-xs text-text-muted mt-1">{ui.statPercentOfGoal(percentage.toFixed(0))}</p>
     </div>
   );
 }

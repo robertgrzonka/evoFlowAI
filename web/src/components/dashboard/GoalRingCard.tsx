@@ -7,7 +7,9 @@ import {
   type GoalRingKind,
   type GoalRingStatus,
   computeGoalRingStatus,
-  goalRingPercent,
+  goalRingActualPercent,
+  goalRingOverflowArcRatio,
+  goalRingPrimaryArcRatio,
 } from './goal-ring-utils';
 
 const STATUS_LABEL: Record<GoalRingStatus, (ui: DashboardStrings) => string> = {
@@ -45,7 +47,9 @@ export default function GoalRingCard({
   tone,
   hoverHint,
 }: GoalRingCardProps) {
-  const pct = goalRingPercent(consumed, target);
+  const pctActual = goalRingActualPercent(consumed, target);
+  const primaryRatio = goalRingPrimaryArcRatio(consumed, target);
+  const overflowRatio = goalRingOverflowArcRatio(consumed, target);
   const status = computeGoalRingStatus(consumed, target, kind);
   const statusLabel = STATUS_LABEL[status](ui);
   const remaining = target - consumed;
@@ -55,8 +59,11 @@ export default function GoalRingCard({
     : `${Math.round(Math.max(0, remaining))} ${unit}`;
 
   const r = 36;
+  const ro = 30;
   const c = 2 * Math.PI * r;
-  const dashLen = (pct / 100) * c;
+  const co = 2 * Math.PI * ro;
+  const dashLen = primaryRatio * c;
+  const overflowDashLen = overflowRatio * co;
 
   const curFmt = kind === 'calories' ? Math.round(consumed) : consumed.toFixed(1);
   const tgtFmt = kind === 'calories' ? Math.round(target) : target.toFixed(1);
@@ -65,7 +72,7 @@ export default function GoalRingCard({
     <div
       className={clsx(
         'rounded-xl bg-surface-elevated/45 ring-1 ring-white/[0.06] p-3',
-        'flex items-center gap-3'
+        'flex items-start gap-3'
       )}
     >
       <div className="relative h-[88px] w-[88px] shrink-0">
@@ -81,13 +88,37 @@ export default function GoalRingCard({
             strokeLinecap="round"
             strokeDasharray={`${dashLen} ${c}`}
           />
+          {overflowRatio > 0 ? (
+            <>
+              <circle cx="50" cy="50" r={ro} fill="none" className="stroke-border/40" strokeWidth="5" />
+              <circle
+                cx="50"
+                cy="50"
+                r={ro}
+                fill="none"
+                className={clsx(toneStroke[tone], 'opacity-[0.85] transition-all duration-500 ease-out')}
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeDasharray={`${overflowDashLen} ${co}`}
+              />
+            </>
+          ) : null}
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-base font-bold tabular-nums text-text-primary leading-none">{Math.round(pct)}%</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-1">
+          <span
+            className={clsx(
+              'font-bold tabular-nums text-text-primary leading-none',
+              pctActual >= 100 ? 'text-xs' : 'text-base'
+            )}
+          >
+            {Math.round(pctActual)}%
+          </span>
         </div>
       </div>
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted">{title}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted break-words">
+          {title}
+        </p>
         <p className="text-sm font-semibold tabular-nums text-text-primary">
           {curFmt}
           <span className="text-text-muted font-normal"> / </span>
@@ -114,7 +145,7 @@ export default function GoalRingCard({
       inline={false}
       className="border-primary-500/45 text-primary-200"
     >
-      <div tabIndex={0} aria-label={hoverHint}>
+      <div tabIndex={0} aria-label={hoverHint} className="cursor-help rounded-xl">
         {inner}
       </div>
     </Tooltip>

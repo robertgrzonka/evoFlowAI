@@ -18,6 +18,11 @@ type NextBestActionCardProps = {
   macroHint?: string;
   /** Compact metric pills (e.g. kcal / protein tags) — preferred over long macro copy when set. */
   metricTags?: ReactNode;
+  /**
+   * Shown in tiny type under metric tags when those values are heuristics in the app
+   * (not the same as the LLM “next action” line).
+   */
+  metricTagsCaption?: string;
   /** Dense layout: smaller type, no left accent bar. */
   compact?: boolean;
   secondaryLabel?: string;
@@ -35,6 +40,7 @@ export default function NextBestActionCard({
   fillHeight = false,
   macroHint,
   metricTags,
+  metricTagsCaption,
   compact = false,
   secondaryLabel,
   onSecondary,
@@ -81,7 +87,12 @@ export default function NextBestActionCard({
           </p>
         ) : null}
         {metricTags ? (
-          <div className={compact ? 'mt-2 flex flex-wrap gap-1.5' : 'mt-2 flex flex-wrap gap-1.5'}>{metricTags}</div>
+          <div className="mt-2 space-y-1">
+            <div className={compact ? 'flex flex-wrap gap-1.5' : 'flex flex-wrap gap-1.5'}>{metricTags}</div>
+            {metricTagsCaption ? (
+              <p className="text-[9px] leading-snug text-text-muted/95">{metricTagsCaption}</p>
+            ) : null}
+          </div>
         ) : null}
         {!metricTags && macroHint ? (
           <p className={compact ? 'text-[10px] text-text-muted mt-1.5 leading-snug' : 'text-xs text-text-muted mt-2 leading-snug'}>

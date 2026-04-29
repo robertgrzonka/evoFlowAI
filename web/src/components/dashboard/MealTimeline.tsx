@@ -1,6 +1,7 @@
 'use client';
 
-import { Trash2 } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { DashboardStrings } from '@/lib/i18n/copy/dashboard';
 
@@ -9,11 +10,14 @@ export type MealTimelineItem = {
   name: string;
   mealType: string;
   createdAt?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
   nutrition: {
     calories: number;
     protein: number;
     carbs: number;
     fat: number;
+    confidence?: number | null;
   };
 };
 
@@ -22,11 +26,16 @@ type MealTimelineProps = {
   meals: MealTimelineItem[];
   locale: string;
   onDelete: (id: string) => void;
+  /** Optional — when set, show edit pencil and call before inline edit UX. */
+  onEditMeal?: (id: string) => void;
+  editBusy?: boolean;
   deleteBusy?: boolean;
   suggestedHint?: string;
   suggestedDetail?: string;
   onSuggestedLog?: () => void;
   suggestedCtaLabel?: string;
+  /** Extra content below macro chips — e.g. Meals page confidence UX; omit on Dashboard. */
+  renderAfterMacros?: (meal: MealTimelineItem) => ReactNode;
 };
 
 function formatMealTime(iso: string | null | undefined, locale: string): string | null {
@@ -44,11 +53,14 @@ export default function MealTimeline({
   meals,
   locale,
   onDelete,
+  onEditMeal,
+  editBusy,
   deleteBusy,
   suggestedHint,
   suggestedDetail,
   onSuggestedLog,
   suggestedCtaLabel,
+  renderAfterMacros,
 }: MealTimelineProps) {
   const sorted = [...meals].sort((a, b) => {
     const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -69,19 +81,32 @@ export default function MealTimeline({
               <div className="relative z-[1] mt-2 h-2 w-2 shrink-0 rounded-full bg-primary-400/90 ring-2 ring-surface" />
               <div
                 className={clsx(
-                  'relative min-w-0 flex-1 rounded-lg py-2 px-2.5 pr-10',
+                  'relative min-w-0 flex-1 rounded-lg py-2 px-2.5 pr-14',
                   'bg-surface-elevated/35 ring-1 ring-white/[0.05]'
                 )}
               >
-                <button
-                  type="button"
-                  onClick={() => onDelete(meal.id)}
-                  disabled={deleteBusy}
-                  className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                  title={ui.deleteMeal}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
+                <div className="absolute right-2 top-2 flex items-center gap-0.5">
+                  {onEditMeal ? (
+                    <button
+                      type="button"
+                      onClick={() => onEditMeal(meal.id)}
+                      disabled={Boolean(editBusy) || Boolean(deleteBusy)}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:text-info-400 hover:bg-info-400/10 transition-colors"
+                      title={locale === 'pl' ? 'Edytuj' : 'Edit'}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onDelete(meal.id)}
+                    disabled={deleteBusy}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title={ui.deleteMeal}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   {time ? (
                     <span className="text-[11px] font-semibold font-mono text-primary-200/90 tabular-nums">{time}</span>
@@ -105,6 +130,7 @@ export default function MealTimeline({
                     F{meal.nutrition.fat.toFixed(0)}
                   </span>
                 </div>
+                {renderAfterMacros ? renderAfterMacros(meal) : null}
               </div>
             </li>
           );

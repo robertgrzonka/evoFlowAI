@@ -8,8 +8,8 @@ export type EvoThinkingOverlayStrings = {
   longWaitHint: string;
 };
 
-/** `default` = dashboard insight / chat; `meal` / `workout` = quick log flows. */
-export type EvoThinkingIntent = 'default' | 'meal' | 'workout';
+/** `default` = dashboard insight / chat; `meal` / `mealImage` / `workout` = quick log flows. */
+export type EvoThinkingIntent = 'default' | 'meal' | 'mealImage' | 'workout';
 
 const enDefault: EvoThinkingOverlayStrings = {
   title: 'Evo is thinking',
@@ -65,6 +65,32 @@ const plMeal: EvoThinkingOverlayStrings = {
     'Analiza zdjęcia i makr bywa chwilę dłuższa — nic się nie zepsuło, dokończę za moment.',
 };
 
+const enMealImage: EvoThinkingOverlayStrings = {
+  title: 'Evo is thinking',
+  subtitle: 'Image logging estimates ingredients and portions — worth a second look at sauces, fats, and size.',
+  rotating: [
+    'Reading the meal photo…',
+    'Spotting main ingredients…',
+    'Estimating portion and macros…',
+    'Flagging what may need a human check…',
+  ],
+  longWaitHint: 'Photo + vision can take a bit longer on busy days — your meal is still in progress.',
+};
+
+const plMealImage: EvoThinkingOverlayStrings = {
+  title: 'Evo myśli',
+  subtitle:
+    'Z logowania ze zdjęcia wychodzi szacunek składników i porcji — warto dopracować sosy, tłuszcze i wielkość porcji.',
+  rotating: [
+    'Odczytuję zdjęcie posiłku…',
+    'Rozpoznaję główne składniki…',
+    'Szacuję porcję i makro…',
+    'Zaznaczam elementy wymagające sprawdzenia…',
+  ],
+  longWaitHint:
+    'Wizja + makra potrafią chwilę dłużej — wszystko w porządku, Twój wpis wciąż jest przetwarzany.',
+};
+
 const enWorkout: EvoThinkingOverlayStrings = {
   title: 'Evo is thinking',
   subtitle: 'Saving your session and refreshing today’s training picture.',
@@ -94,6 +120,7 @@ export function getEvoThinkingOverlayStrings(
   locale: UiLocale,
   intent: EvoThinkingIntent = 'default'
 ): EvoThinkingOverlayStrings {
+  if (intent === 'mealImage') return locale === 'pl' ? plMealImage : enMealImage;
   if (intent === 'meal') return locale === 'pl' ? plMeal : enMeal;
   if (intent === 'workout') return locale === 'pl' ? plWorkout : enWorkout;
   return locale === 'pl' ? plDefault : enDefault;

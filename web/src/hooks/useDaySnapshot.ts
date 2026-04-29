@@ -11,6 +11,11 @@ import {
 } from '@/lib/graphql/queries';
 import { WORKOUTS_DAY_LIMIT } from '@/lib/day-data';
 
+type WorkoutListRow = {
+  durationMinutes?: number | null;
+  caloriesBurned?: number | null;
+};
+
 type UseDaySnapshotOptions = {
   date: string;
   enabled?: boolean;
@@ -69,14 +74,20 @@ export const useDaySnapshot = ({
     const fatConsumed = Number(stats?.totalFat || 0);
     const caloriesBurned =
       Number(stats?.workoutCalories ?? 0) ||
-      workouts.reduce((acc: number, workout: any) => acc + Number(workout?.caloriesBurned || 0), 0);
+      workouts.reduce(
+        (acc: number, workout: WorkoutListRow) => acc + Number(workout?.caloriesBurned || 0),
+        0
+      );
     const calorieBudget = Number(stats?.calorieBudget || stats?.dynamicGoals?.calories || 0);
     const proteinGoal = Number(stats?.dynamicGoals?.protein || 0);
     const carbsGoal = Number(stats?.dynamicGoals?.carbs || 0);
     const fatGoal = Number(stats?.dynamicGoals?.fat || 0);
     const steps = Number(activity?.steps ?? stats?.steps ?? 0);
     const workoutCount = workouts.length;
-    const workoutMinutes = workouts.reduce((acc: number, workout: any) => acc + Number(workout?.durationMinutes || 0), 0);
+    const workoutMinutes = workouts.reduce(
+      (acc: number, workout: WorkoutListRow) => acc + Number(workout?.durationMinutes || 0),
+      0
+    );
     const remainingCalories = calorieBudget - consumedCalories;
     const remainingProtein = Math.max(0, proteinGoal - consumedProtein);
     const netCalories = consumedCalories - caloriesBurned;

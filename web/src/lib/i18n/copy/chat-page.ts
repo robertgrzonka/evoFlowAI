@@ -48,6 +48,19 @@ export const chatPageCopy: Record<
     missingMessageBody: string;
     messageFailedTitle: string;
     messageFailedGeneric: string;
+    contextLineSparse: string;
+    contextLineRich: (p: {
+      meals: number;
+      workouts: number;
+      kcalLeft: number;
+      proteinLeft: number;
+      kcalGoal: number;
+      proteinGoal: number;
+    }) => string;
+    messageFeedbackGroup: string;
+    messageFeedbackHelpful: string;
+    messageFeedbackNotHelpful: string;
+    messageFeedbackLocalOnly: string;
   }
 > = {
   en: {
@@ -97,6 +110,22 @@ export const chatPageCopy: Record<
     missingMessageBody: 'Write a message for Evo.',
     messageFailedTitle: 'Message failed',
     messageFailedGeneric: 'Could not send message.',
+    contextLineSparse: 'No meals or training logged for today — answers may stay more general.',
+    contextLineRich: (p) => {
+      const mealTxt =
+        p.meals === 0 ? 'no meals' : p.meals === 1 ? '1 meal' : `${p.meals} meals`;
+      const wTxt =
+        p.workouts === 0
+          ? 'no workouts'
+          : p.workouts === 1
+            ? '1 workout'
+            : `${p.workouts} workouts`;
+      return `Evo can use: ${mealTxt}, ${wTxt}, about ${p.kcalLeft} kcal left (goal ~${p.kcalGoal} kcal), ~${p.proteinLeft}g protein left (target ~${p.proteinGoal}g).`;
+    },
+    messageFeedbackGroup: 'Was this useful?',
+    messageFeedbackHelpful: 'Mark as helpful',
+    messageFeedbackNotHelpful: 'Mark as not helpful',
+    messageFeedbackLocalOnly: 'For now this stays on your device (not stored yet).',
   },
   pl: {
     pageTitle: 'Czat Evo',
@@ -145,6 +174,13 @@ export const chatPageCopy: Record<
     missingMessageBody: 'Napisz wiadomość do Evo.',
     messageFailedTitle: 'Nie udało się wysłać',
     messageFailedGeneric: 'Nie można wysłać wiadomości.',
+    contextLineSparse: 'Brakuje dziś logów posiłków i treningów — odpowiedzi mogą być bardziej ogólne.',
+    contextLineRich: (p) =>
+      `Evo może uwzględnić: posiłki (${p.meals}), treningi (${p.workouts}) — ok. ${p.kcalLeft} kcal zostało (cel ~${p.kcalGoal} kcal), ok. ${p.proteinLeft} g białka zostaje (cel ~${p.proteinGoal} g).`,
+    messageFeedbackGroup: 'Czy to pomocne?',
+    messageFeedbackHelpful: 'Oznacz jako pomocne',
+    messageFeedbackNotHelpful: 'Oznacz jako mało pomocne',
+    messageFeedbackLocalOnly: 'Na razie tylko w tej przeglądarce — jeszcze nie zapisujemy w serwerze.',
   },
 };
 

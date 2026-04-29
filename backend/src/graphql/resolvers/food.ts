@@ -494,6 +494,71 @@ export const foodResolvers = {
       return foodItem;
     },
 
+    updateFoodItem: async (_: any, { input }: any, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+
+      const doc = await FoodItem.findOne({ _id: input.id, userId: context.user.id });
+      if (!doc) {
+        throw new UserInputError('Meal not found');
+      }
+
+      if (typeof input.name === 'string') {
+        const t = input.name.trim();
+        if (!t) {
+          throw new UserInputError('Meal name cannot be empty');
+        }
+        doc.name = t;
+      }
+      if (input.description !== undefined) {
+        doc.description = String(input.description || '').trim() || undefined;
+      }
+      if (input.mealType) {
+        doc.mealType = input.mealType;
+      }
+      if (typeof input.imageUrl === 'string' && input.imageUrl.trim()) {
+        doc.imageUrl = input.imageUrl.trim();
+      }
+
+      if (input.nutrition) {
+        const n = input.nutrition;
+        const prev =
+          typeof (doc.nutrition as any)?.toObject === 'function'
+            ? (doc.nutrition as any).toObject()
+            : { ...(doc.nutrition as object) };
+        const calories = Math.max(0, Number(n.calories ?? (prev as any).calories ?? 0));
+        const protein = Math.max(0, Number(n.protein ?? (prev as any).protein ?? 0));
+        const carbs = Math.max(0, Number(n.carbs ?? (prev as any).carbs ?? 0));
+        const fat = Math.max(0, Number(n.fat ?? (prev as any).fat ?? 0));
+        doc.set('nutrition', {
+          calories,
+          protein,
+          carbs,
+          fat,
+          fiber:
+            n.fiber != null && Number.isFinite(Number(n.fiber))
+              ? Math.max(0, Number(n.fiber))
+              : (prev as any).fiber,
+          sugar:
+            n.sugar != null && Number.isFinite(Number(n.sugar))
+              ? Math.max(0, Number(n.sugar))
+              : (prev as any).sugar,
+          sodium:
+            n.sodium != null && Number.isFinite(Number(n.sodium))
+              ? Math.max(0, Number(n.sodium))
+              : (prev as any).sodium,
+          confidence: Math.min(
+            1,
+            Math.max(0, Number(n.confidence ?? (prev as any).confidence ?? 0)),
+          ),
+        });
+      }
+
+      await doc.save();
+      return doc;
+    },
+
     deleteFoodItem: async (_: any, { id }: { id: string }, context: Context) => {
       if (!context.user) {
         throw new AuthenticationError('You must be logged in');

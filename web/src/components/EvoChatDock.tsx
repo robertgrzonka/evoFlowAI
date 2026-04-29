@@ -35,6 +35,10 @@ import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import Tooltip from '@/components/ui/atoms/Tooltip';
 import { NumericInputNumber } from '@/components/ui/atoms/NumericInput';
 import { accentEdgeClasses } from '@/components/ui/accent-cards';
+import { evoChatDockCopy, getEvoChatDockLauncherHint } from '@/lib/i18n/copy/evo-chat-dock';
+import type { EvoThinkingIntent } from '@/lib/i18n/copy/evo-thinking-overlay';
+import { buildEvoChatContextLine } from '@/lib/chat-context-line';
+import { chatPageCopy } from '@/lib/i18n/copy/chat-page';
 
 type DockTab = 'chat' | 'meal' | 'workout';
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -72,6 +76,9 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   });
 
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
+  const dockLocale = graphqlAppLocaleToUi(meData?.me?.preferences?.appLocale);
+  const dc = evoChatDockCopy[dockLocale];
+  const chatLocaleCopy = chatPageCopy[dockLocale];
   const { data: historyData, loading: historyLoading, refetch } = useQuery(MY_CHAT_HISTORY_QUERY, {
     variables: { channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 },
     fetchPolicy: 'cache-and-network',
@@ -91,7 +98,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
   const [sendMessage, { loading: sendingMessage }] = useMutation(SEND_MESSAGE_MUTATION, {
     onError: (error) => {
-      appToast.error('Message failed', error.message || 'Could not send message.');
+      appToast.error(dc.toastMessageFailTitle, error.message || dc.toastMessageFailBody);
     },
     onCompleted: async () => {
       setMessageInput('');
@@ -107,7 +114,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
   const [logMealWithAI, { loading: loggingMeal }] = useMutation(LOG_MEAL_WITH_AI_MUTATION, {
     onError: (error) => {
-      appToast.error('Meal save failed', error.message || 'Could not add meal.');
+      appToast.error(dc.toastMealFailTitle, error.message || dc.toastMealFailBody);
     },
     onCompleted: async () => {
       setMealDescription('');
@@ -115,7 +122,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
       setMealImageMimeType('image/jpeg');
       setActiveTab('chat');
       kickDeferredAfterMealLog(client);
-      appToast.success('Meal added', 'Evo logged your meal to today.');
+      appToast.success(dc.toastMealOkTitle, dc.toastMealOkBody);
       await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
     refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
@@ -124,13 +131,13 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
   const [logWorkout, { loading: loggingWorkout }] = useMutation(LOG_WORKOUT_MUTATION, {
     onError: (error) => {
-      appToast.error('Workout save failed', error.message || 'Could not add workout.');
+      appToast.error(dc.toastWorkoutFailTitle, error.message || dc.toastWorkoutFailBody);
     },
     onCompleted: async () => {
       setWorkoutTitle('');
       setActiveTab('chat');
       kickDeferredAfterWorkoutLog(client);
-      appToast.success('Workout added', 'Evo logged your training session.');
+      appToast.success(dc.toastWorkoutOkTitle, dc.toastWorkoutOkBody);
       await refetch({ channel: chatChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 });
     },
     refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
@@ -153,18 +160,37 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
   if (hidden) return null;
 
-  const dockLocale = graphqlAppLocaleToUi(meData?.me?.preferences?.appLocale);
   const dockThinkingOpen = sendingMessage || loggingMeal || loggingWorkout;
-  const dockThinkingIntent = loggingMeal ? 'meal' : loggingWorkout ? 'workout' : 'default';
+  const mealIntent: EvoThinkingIntent = mealImageBase64 ? 'mealImage' : 'meal';
+  const dockThinkingIntent: EvoThinkingIntent = loggingMeal
+    ? mealIntent
+    : loggingWorkout
+      ? 'workout'
+      : 'default';
 
   const insightSignalsCount =
     (daySnapshot.derived.remainingProtein > 30 ? 1 : 0) +
     (daySnapshot.derived.remainingCalories < -100 ? 1 : 0) +
     (daySnapshot.insight ? 1 : 0);
-  const launcherHint =
-    insightSignalsCount > 0
-      ? `I have ${insightSignalsCount} insight${insightSignalsCount > 1 ? 's' : ''} for today.`
-      : 'All calm. I can still help optimize your day.';
+  const launcherHint = getEvoChatDockLauncherHint(dockLocale, insightSignalsCount);
+  const chatContextLine =
+    chatChannel === 'COACH' && !daySnapshot.loading
+      ? buildEvoChatContextLine(
+          dockLocale,
+          {
+            mealCount: daySnapshot.stats?.meals?.length ?? 0,
+            workoutCount: daySnapshot.workouts.length,
+            remainingCalories: daySnapshot.derived.remainingCalories,
+            remainingProtein: daySnapshot.derived.remainingProtein,
+            calorieGoal: daySnapshot.derived.calorieBudget,
+            proteinGoal: daySnapshot.derived.proteinGoal,
+          },
+          {
+            contextSparse: chatLocaleCopy.contextLineSparse,
+            contextRich: chatLocaleCopy.contextLineRich,
+          }
+        )
+      : null;
 
   const handleSendMessage = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -187,7 +213,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      appToast.info('Invalid file', 'Please upload an image.');
+      appToast.info(dc.toastImageInvalidTitle, dc.toastImageInvalidBody);
       return;
     }
 
@@ -200,7 +226,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
 
     const [meta, payload] = base64.split(',');
     if (!payload) {
-      appToast.error('Image read failed', 'Could not read image.');
+      appToast.error(dc.toastImageReadTitle, dc.toastImageReadBody);
       return;
     }
     const mime = meta.match(/data:(.*);base64/)?.[1] || 'image/jpeg';
@@ -211,7 +237,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   const handleMealSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!mealDescription.trim() && !mealImageBase64) {
-      appToast.info('Missing meal input', 'Add meal description or image.');
+      appToast.info(dc.toastMealNeedInputTitle, dc.toastMealNeedInputBody);
       return;
     }
 
@@ -233,7 +259,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
   const handleWorkoutSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!workoutTitle.trim()) {
-      appToast.info('Missing workout title', 'Add workout title before saving.');
+      appToast.info(dc.toastWorkoutNeedTitle, dc.toastWorkoutNeedBody);
       return;
     }
 
@@ -266,8 +292,8 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
             <div className="flex items-center gap-2">
               <AICoachAvatar size="sm" />
               <div>
-                <p className="text-sm font-semibold text-text-primary leading-none">Evo Chat</p>
-                <p className="text-[11px] text-text-muted mt-1">Live coach for goals, meals and workouts</p>
+                <p className="text-sm font-semibold text-text-primary leading-none">{dc.title}</p>
+                <p className="text-[11px] text-text-muted mt-1">{dc.subtitle}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -275,7 +301,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-text-primary"
-                title="Minimize"
+                title={dc.minimize}
               >
                 <Minus className="h-4 w-4" />
               </button>
@@ -287,7 +313,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                   setChatChannel('GENERAL');
                 }}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-secondary hover:text-text-primary"
-                title="Close"
+                title={dc.close}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -295,9 +321,9 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
           </div>
 
           <div className="px-3 py-2 border-b border-border flex gap-1">
-            <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} label="Chat" />
-            <TabButton active={activeTab === 'meal'} onClick={() => setActiveTab('meal')} label="Add meal" />
-            <TabButton active={activeTab === 'workout'} onClick={() => setActiveTab('workout')} label="Add workout" />
+            <TabButton active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} label={dc.tabChat} />
+            <TabButton active={activeTab === 'meal'} onClick={() => setActiveTab('meal')} label={dc.tabMeal} />
+            <TabButton active={activeTab === 'workout'} onClick={() => setActiveTab('workout')} label={dc.tabWorkout} />
           </div>
 
           {activeTab === 'chat' ? (
@@ -307,25 +333,27 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                   label={
                     chatChannel === 'COACH'
                       ? daySnapshot.loading
-                        ? 'analyzing'
-                        : 'coach mode'
-                      : 'general mode'
+                        ? dc.statusAnalyzing
+                        : dc.statusCoach
+                      : dc.statusGeneral
                   }
                   tone={chatChannel === 'COACH' ? 'focus' : 'neutral'}
                 />
                 {chatChannel === 'COACH' ? (
-                  <span className="text-[11px] text-text-muted">
-                    {Math.round(daySnapshot.derived.remainingProtein)}g protein left
-                  </span>
+                  <span className="text-[11px] text-text-muted">{dc.proteinLeft(daySnapshot.derived.remainingProtein)}</span>
                 ) : null}
               </div>
               <div className="inline-flex rounded-lg border border-border bg-surface-elevated p-1 gap-1">
-                <TabButton active={chatChannel === 'GENERAL'} onClick={() => setChatChannel('GENERAL')} label="General" />
-                <TabButton active={chatChannel === 'COACH'} onClick={() => setChatChannel('COACH')} label="Coach" />
+                <TabButton
+                  active={chatChannel === 'GENERAL'}
+                  onClick={() => setChatChannel('GENERAL')}
+                  label={dc.tabGeneral}
+                />
+                <TabButton active={chatChannel === 'COACH'} onClick={() => setChatChannel('COACH')} label={dc.tabCoach} />
               </div>
               <div ref={chatScrollRef} className="h-72 overflow-y-auto space-y-2 pr-1">
                 {historyLoading ? (
-                  <p className="text-sm text-text-secondary">Loading conversation...</p>
+                  <p className="text-sm text-text-secondary">{dc.loadingHistory}</p>
                 ) : messages.length > 0 ? (
                   messages.map((message) => {
                     const isUser = message.role === 'USER';
@@ -336,23 +364,34 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                             isUser ? 'bg-info-500/15 border-info-500/30 rounded-br-md' : 'bg-success-500/10 border-success-500/30 rounded-bl-md'
                           }`}
                         >
-                          <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-1">{isUser ? 'You' : 'Evo'}</p>
+                          <p className="text-[11px] uppercase tracking-[0.1em] text-text-muted mb-1">
+                            {isUser ? dc.you : dc.evo}
+                          </p>
                           <ChatMarkdown content={message.content} />
                         </div>
                       </div>
                     );
                   })
                 ) : (
-                  <p className="text-sm text-text-secondary">Start chatting with Evo.</p>
+                  <p className="text-sm text-text-secondary">{dc.emptyThread}</p>
                 )}
               </div>
+
+              {chatContextLine ? (
+                <p
+                  className="text-[11px] text-text-muted leading-relaxed border border-border/60 rounded-md px-2 py-1.5 bg-surface-elevated/60"
+                  role="status"
+                >
+                  {chatContextLine}
+                </p>
+              ) : null}
 
               <form onSubmit={handleSendMessage} className="flex items-center gap-2">
                 <input
                   value={messageInput}
                   onChange={(event) => setMessageInput(event.target.value)}
                   className="input-field w-full"
-                  placeholder={chatChannel === 'COACH' ? 'Ask Evo about today goals...' : 'Ask Evo anything...'}
+                  placeholder={chatChannel === 'COACH' ? dc.inputPlaceholderCoach : dc.inputPlaceholderGeneral}
                 />
                 <button type="submit" disabled={sendingMessage} className="btn-primary inline-flex h-10 w-10 items-center justify-center px-0">
                   {sendingMessage ? <ButtonSpinner /> : <Send className="h-4 w-4" />}
@@ -365,14 +404,14 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                   onClick={() => setIsOpen(false)}
                   className="inline-flex items-center justify-center rounded-md border border-primary-500/30 bg-primary-500/10 px-2.5 py-2 text-xs font-medium text-text-primary hover:bg-primary-500/15 transition-colors"
                 >
-                  Open full chat
+                  {dc.fullChat}
                 </Link>
                 <Link
                   href="/meals"
                   onClick={() => setIsOpen(false)}
                   className="inline-flex items-center justify-center rounded-md border border-border bg-surface-elevated px-2.5 py-2 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
                 >
-                  Open meal log view
+                  {dc.openMealLog}
                 </Link>
               </div>
             </div>
@@ -383,7 +422,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
               <select value={mealType} onChange={(event) => setMealType(event.target.value as MealType)} className="input-field w-full">
                 {mealOptions.map((option) => (
                   <option key={option} value={option}>
-                    {option.charAt(0).toUpperCase() + option.slice(1)}
+                    {dc.mealTypes[option]}
                   </option>
                 ))}
               </select>
@@ -391,21 +430,21 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                 value={mealDescription}
                 onChange={(event) => setMealDescription(event.target.value)}
                 className="input-field w-full min-h-24 resize-y"
-                placeholder="Describe your meal..."
+                placeholder={dc.describeMeal}
               />
               <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary cursor-pointer">
                 <ImagePlus className="h-4 w-4" />
-                Upload image
+                {dc.chooseImage}
                 <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
               </label>
               <button type="submit" disabled={loggingMeal} className="btn-primary w-full inline-flex items-center justify-center gap-2">
                 {loggingMeal ? (
                   <>
                     <ButtonSpinner />
-                    Adding meal...
+                    {dc.addMealBusy}
                   </>
                 ) : (
-                  'Add meal with Evo'
+                  dc.addMeal
                 )}
               </button>
             </form>
@@ -417,7 +456,7 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                 value={workoutTitle}
                 onChange={(event) => setWorkoutTitle(event.target.value)}
                 className="input-field w-full"
-                placeholder="Workout title"
+                placeholder={dc.workoutTitle}
               />
               <div className="grid grid-cols-2 gap-2">
                 <NumericInputNumber
@@ -425,14 +464,14 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                   value={workoutDuration}
                   onValueChange={setWorkoutDuration}
                   className="w-full"
-                  placeholder="minutes"
+                  placeholder={dc.minutesPh}
                 />
                 <NumericInputNumber
                   min={0}
                   value={workoutCalories}
                   onValueChange={setWorkoutCalories}
                   className="w-full"
-                  placeholder="kcal burned"
+                  placeholder={dc.kcalPh}
                 />
               </div>
               <select
@@ -440,18 +479,18 @@ export default function EvoChatDock({ hidden = false }: { hidden?: boolean }) {
                 onChange={(event) => setWorkoutIntensity(event.target.value as WorkoutIntensity)}
                 className="input-field w-full"
               >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
+                <option value="LOW">{dc.low}</option>
+                <option value="MEDIUM">{dc.medium}</option>
+                <option value="HIGH">{dc.high}</option>
               </select>
               <button type="submit" disabled={loggingWorkout} className="btn-primary w-full inline-flex items-center justify-center gap-2">
                 {loggingWorkout ? (
                   <>
                     <ButtonSpinner />
-                    Adding workout...
+                    {dc.addWorkoutBusy}
                   </>
                 ) : (
-                  'Add workout with Evo'
+                  dc.addWorkout
                 )}
               </button>
             </form>

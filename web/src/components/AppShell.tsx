@@ -271,7 +271,7 @@ function AppShellInner({ children }: AppShellProps) {
 
         <div className="min-w-0 relative z-10 bg-background">
           <header className="lg:hidden border-b border-border bg-surface">
-            <div className="px-4 py-3 flex items-center justify-between">
+            <div className="px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
               <Link href="/dashboard" className="inline-flex items-end gap-1.5">
                 <EvoMark className="h-5 w-5 text-primary-500 translate-y-[1px]" />
                 <span className="font-semibold tracking-tight leading-none text-gradient">evoFlowAI</span>
@@ -280,7 +280,7 @@ function AppShellInner({ children }: AppShellProps) {
                 <LogOut className="h-4 w-4" />
               </button>
             </div>
-            <nav className="px-2 pb-2 flex gap-1 overflow-x-auto">
+            <nav className="px-1.5 sm:px-2 pb-1.5 sm:pb-2 flex gap-1 overflow-x-auto">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = pathname === item.href;
@@ -324,11 +324,14 @@ function AppShellInner({ children }: AppShellProps) {
 
           <main
             className={clsx(
-              'mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full transition-[max-width] duration-200 ease-out',
-              /* Wider canvas: weekly grids need horizontal room; collapsed rail frees ~176px vs expanded. */
+              'mx-auto w-full transition-[max-width] duration-200 ease-out',
+              /* Tight gutters on small screens; avoid max-width < 100% below lg (mx-auto + min(100vw-*) wasted side bands). */
+              'px-2.5 sm:px-4 md:px-5 lg:px-8',
+              'py-4 sm:py-5 lg:py-6',
+              /* Wider canvas on desktop: weekly grids; collapsed rail frees ~176px vs expanded. */
               sidebarCollapsed
-                ? 'max-w-[min(140rem,calc(100vw-5rem))]'
-                : 'max-w-[min(104rem,calc(100vw-1rem))]'
+                ? 'lg:max-w-[min(140rem,calc(100vw-5rem))]'
+                : 'lg:max-w-[min(104rem,calc(100vw-1rem))]'
             )}
           >
             {children}

@@ -180,9 +180,44 @@ export const DELETE_WORKOUT_MUTATION = gql`
   }
 `;
 
+export const UPDATE_WORKOUT_MUTATION = gql`
+  mutation UpdateWorkout($input: UpdateWorkoutInput!) {
+    updateWorkout(input: $input) {
+      id
+      title
+      notes
+      durationMinutes
+      caloriesBurned
+      intensity
+      performedAt
+      createdAt
+    }
+  }
+`;
+
 export const DELETE_FOOD_ITEM_MUTATION = gql`
   mutation DeleteFoodItem($id: ID!) {
     deleteFoodItem(id: $id)
+  }
+`;
+
+export const UPDATE_FOOD_ITEM_MUTATION = gql`
+  mutation UpdateFoodItem($input: UpdateFoodItemInput!) {
+    updateFoodItem(input: $input) {
+      id
+      name
+      description
+      mealType
+      imageUrl
+      nutrition {
+        calories
+        protein
+        carbs
+        fat
+        confidence
+      }
+      createdAt
+    }
   }
 `;
 

@@ -1,7 +1,8 @@
 'use client';
 
 import { clsx } from 'clsx';
-import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useState } from 'react';
 import { useMutation } from '@apollo/client';
 import { SEND_MESSAGE_MUTATION } from '@/lib/graphql/mutations';
 import { buildChatStatsContext } from '@/lib/chat-stats-context';
@@ -11,6 +12,8 @@ import { appToast } from '@/lib/app-toast';
 import ChatMarkdown from '@/components/ChatMarkdown';
 import { SmartSuggestionChips } from '@/components/evo';
 import { accentEdgeClasses } from '@/components/ui/accent-cards';
+import { useAppUiLocale } from '@/lib/i18n/use-app-ui-locale';
+import { contextAICoachCopy } from '@/lib/i18n/copy/context-ai-coach';
 
 type ContextAICoachProps = {
   title: string;
@@ -34,14 +37,14 @@ export default function ContextAICoach({
 }: ContextAICoachProps) {
   const [prompt, setPrompt] = useState('');
   const [lastAnswer, setLastAnswer] = useState('');
+  const locale = useAppUiLocale();
+  const t = contextAICoachCopy[locale];
 
   const [sendMessage, { loading }] = useMutation<SendMessageResponse>(SEND_MESSAGE_MUTATION, {
     onError: (error) => {
-      appToast.error('Coach unavailable', error.message || 'AI coach is temporarily unavailable.');
+      appToast.error(t.toastErrorTitle, error.message || t.toastErrorBody);
     },
   });
-
-  const canSubmit = useMemo(() => prompt.trim().length > 0, [prompt]);
 
   const handleAskCoach = async () => {
     const content = prompt.trim();
@@ -81,7 +84,7 @@ export default function ContextAICoach({
 
       <div className="space-y-2">
         <SmartSuggestionChips
-          title="Smart prompts"
+          title={t.smartPrompts}
           suggestions={quickPrompts.map((quickPrompt, index) => ({ id: `ctx-${index}`, label: quickPrompt }))}
           onSelect={(value) => setPrompt(value)}
         />
@@ -91,26 +94,38 @@ export default function ContextAICoach({
         value={prompt}
         onChange={(event) => setPrompt(event.target.value)}
         className="input-field w-full min-h-24 resize-y"
-        placeholder="Ask AI coach about your current nutrition progress..."
+        placeholder={t.placeholder}
       />
 
       <button
         onClick={handleAskCoach}
-        disabled={!canSubmit || loading}
+        disabled={!prompt.trim() || loading}
         className="btn-primary w-full inline-flex items-center justify-center gap-2"
       >
         {loading ? (
           <>
             <ButtonSpinner />
-            Coach is thinking...
+            {t.submitBusy}
           </>
-        ) : 'Ask AI coach'}
+        ) : (
+          t.submitIdle
+        )}
       </button>
 
       {lastAnswer ? (
-        <div className="bg-surface-elevated border border-border rounded-lg p-3">
-          <p className="text-xs uppercase tracking-[0.14em] text-text-muted mb-2">Evo answer</p>
-          <ChatMarkdown content={lastAnswer} />
+        <div className="space-y-2">
+          <div className="bg-surface-elevated border border-border rounded-lg p-3">
+            <p className="text-xs uppercase tracking-[0.14em] text-text-muted mb-2">{t.answerLabel}</p>
+            <ChatMarkdown content={lastAnswer} />
+          </div>
+          <p className="text-xs text-text-secondary leading-relaxed">{t.savedInChatNote}</p>
+          <Link
+            href="/chat?channel=COACH"
+            className="inline-flex text-sm font-medium text-info-400 hover:text-info-300"
+            title={t.openInChatTitle}
+          >
+            {t.openInChat}
+          </Link>
         </div>
       ) : null}
     </aside>

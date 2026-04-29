@@ -186,6 +186,8 @@ export const DAILY_STATS_QUERY = gql`
       meals {
         id
         name
+        description
+        imageUrl
         mealType
         createdAt
         nutrition {
@@ -193,6 +195,7 @@ export const DAILY_STATS_QUERY = gql`
           protein
           carbs
           fat
+          confidence
         }
       }
       goalProgress {
@@ -300,6 +303,7 @@ export const DASHBOARD_INSIGHT_QUERY = gql`
         actionLabel
         target
       }
+      insightUpdatedAt
       caloriesBurned
       steps
       stepsCalories

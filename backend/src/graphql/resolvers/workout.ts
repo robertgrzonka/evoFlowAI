@@ -18,6 +18,7 @@ import {
   getDashboardInsightFromCache,
   saveDashboardInsightToCache,
 } from '../../services/dashboardInsightCache';
+import { DashboardInsightCache } from '../../models/DashboardInsightCache';
 import {
   fingerprintWeeklyEvoReview,
   getWeeklyEvoReviewFromCache,
@@ -552,6 +553,7 @@ export const workoutResolvers = {
             supportLine: '',
             tips: [],
             nextAction: null,
+            insightUpdatedAt: null,
             caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
             steps: dayMetrics.steps,
             stepsCalories: dayMetrics.stepsCalories,
@@ -563,12 +565,24 @@ export const workoutResolvers = {
         }
       }
 
+      const cacheRow = await DashboardInsightCache.findOne({
+        userId: context.user.id,
+        date: dayMetrics.dateKey,
+      }).lean();
+      const insightUpdatedAt =
+        cacheRow &&
+        cacheRow.fingerprint === dashboardFingerprint &&
+        cacheRow.updatedAt
+          ? new Date(cacheRow.updatedAt).toISOString()
+          : null;
+
       return {
         date: dayMetrics.dateKey,
         summary: aiInsight.summary,
         supportLine: aiInsight.supportLine || '',
         tips: Array.isArray(aiInsight.tips) ? aiInsight.tips.slice(0, 3) : [],
         nextAction: aiInsight.nextAction || null,
+        insightUpdatedAt,
         caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
         steps: dayMetrics.steps,
         stepsCalories: dayMetrics.stepsCalories,
@@ -1070,6 +1084,51 @@ export const workoutResolvers = {
         estimatedCalories: 0,
         activityBonusKcal: Math.max(0, Math.round(Number(record?.activityBonusKcal ?? 0))),
       };
+    },
+
+    updateWorkout: async (_: any, { input }: any, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+
+      const doc = await Workout.findOne({ _id: input.id, userId: context.user.id });
+      if (!doc) {
+        throw new UserInputError('Workout not found');
+      }
+
+      if (input.title != null) {
+        const t = String(input.title).trim();
+        if (!t) {
+          throw new UserInputError('Workout title cannot be empty');
+        }
+        doc.title = t;
+      }
+      if (input.notes !== undefined) {
+        doc.notes = String(input.notes || '').trim() || undefined;
+      }
+      if (input.durationMinutes != null) {
+        const d = Number(input.durationMinutes);
+        if (!Number.isFinite(d) || d < 1) {
+          throw new UserInputError('Workout duration must be at least 1 minute');
+        }
+        doc.durationMinutes = Math.round(d);
+      }
+      if (input.caloriesBurned != null) {
+        const c = Number(input.caloriesBurned);
+        if (!Number.isFinite(c) || c < 0) {
+          throw new UserInputError('Calories burned cannot be negative');
+        }
+        doc.caloriesBurned = Math.round(c);
+      }
+      if (input.intensity != null) {
+        doc.intensity = parseIntensity(String(input.intensity)) as typeof doc.intensity;
+      }
+      if (input.performedAt != null) {
+        doc.performedAt = new Date(input.performedAt);
+      }
+
+      await doc.save();
+      return doc;
     },
 
     deleteWorkout: async (_: any, { id }: { id: string }, context: Context) => {

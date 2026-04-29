@@ -19,8 +19,22 @@ export function computeGoalRingStatus(consumed: number, target: number, kind: Go
   return 'on_track';
 }
 
-/** Ring fill 0–100 for display (caps over-target visually at 100). */
-export function goalRingPercent(consumed: number, target: number): number {
-  if (!Number.isFinite(target) || target <= 0) return 0;
-  return Math.max(0, Math.min(100, (consumed / target) * 100));
+/** True progress vs goal as percent (can exceed 100, e.g. 120). */
+export function goalRingActualPercent(consumed: number, target: number): number {
+  if (!Number.isFinite(consumed) || !Number.isFinite(target) || target <= 0) return 0;
+  return Math.max(0, (consumed / target) * 100);
+}
+
+/** 0–1 of the first lap for the primary ring arc (hits full circle at goal). */
+export function goalRingPrimaryArcRatio(consumed: number, target: number): number {
+  if (!Number.isFinite(consumed) || !Number.isFinite(target) || target <= 0) return 0;
+  return Math.min(Math.max(consumed / target, 0), 1);
+}
+
+/** 0–1 of a second lap for overflow past 100% (for optional double-ring draw). */
+export function goalRingOverflowArcRatio(consumed: number, target: number): number {
+  if (!Number.isFinite(consumed) || !Number.isFinite(target) || target <= 0) return 0;
+  const r = consumed / target;
+  if (r <= 1) return 0;
+  return Math.min(r - 1, 1);
 }

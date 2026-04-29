@@ -25,7 +25,10 @@ import { formatLocalDateKey } from '@/lib/calendar-date-key';
 import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
 import { buildChatStatsContext } from '@/lib/chat-stats-context';
+import { buildEvoChatContextLine } from '@/lib/chat-context-line';
+import { EvoMessageFeedback } from '@/components/evo/EvoMessageFeedback';
 import {
+  AiTransparencyNotice,
   AISectionHeader,
   EvoHintCard,
   EvoStatusBadge,
@@ -35,6 +38,7 @@ import {
 } from '@/components/evo';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { chatPageCopy, getCoachPromptsForLocale, getGeneralPromptsForLocale } from '@/lib/i18n/copy/chat-page';
+import { getAiTransparencyStrings } from '@/lib/i18n/copy/ai-transparency';
 import { coachPromptModeFromPrimaryGoal } from '@evoflowai/shared';
 import { accentEdgeClasses } from '@/components/ui/accent-cards';
 
@@ -55,6 +59,7 @@ export default function ChatPage() {
   const { data: meData } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
   const locale = graphqlAppLocaleToUi(meData?.me?.preferences?.appLocale);
   const cc = chatPageCopy[locale];
+  const aiTransparency = getAiTransparencyStrings(locale);
   const goalMode = coachPromptModeFromPrimaryGoal(meData?.me?.preferences?.primaryGoal);
   const daySnapshot = useDaySnapshot({
     date: today,
@@ -62,6 +67,24 @@ export default function ChatPage() {
     enabled: Boolean(meData?.me?.id) && conversationChannel === 'COACH',
     includeInsight: false,
   });
+  const chatContextLine =
+    conversationChannel === 'COACH' && !daySnapshot.loading
+      ? buildEvoChatContextLine(
+          locale,
+          {
+            mealCount: daySnapshot.stats?.meals?.length ?? 0,
+            workoutCount: daySnapshot.workouts.length,
+            remainingCalories: daySnapshot.derived.remainingCalories,
+            remainingProtein: daySnapshot.derived.remainingProtein,
+            calorieGoal: daySnapshot.derived.calorieBudget,
+            proteinGoal: daySnapshot.derived.proteinGoal,
+          },
+          {
+            contextSparse: cc.contextLineSparse,
+            contextRich: cc.contextLineRich,
+          }
+        )
+      : null;
 
   const { data, loading: historyLoading, error: historyError, refetch } = useQuery(MY_CHAT_HISTORY_QUERY, {
     variables: { channel: conversationChannel, limit: CHAT_HISTORY_LIMIT, offset: 0 },
@@ -182,6 +205,7 @@ export default function ChatPage() {
               accentEdgeClasses('info', 'left'),
             )}
           >
+            <AiTransparencyNotice strings={aiTransparency} variant="compact" className="mb-4" showLearnMore={false} />
             <AISectionHeader
               eyebrow={cc.eyebrow}
               title={cc.conversationTitle}
@@ -225,6 +249,17 @@ export default function ChatPage() {
                       >
                         <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted mb-1">{isUser ? cc.you : cc.evo}</p>
                         <ChatMarkdown content={message.content} />
+                        {!isUser && conversationChannel === 'COACH' ? (
+                          <EvoMessageFeedback
+                            id={message.id}
+                            copy={{
+                              groupLabel: cc.messageFeedbackGroup,
+                              helpful: cc.messageFeedbackHelpful,
+                              notHelpful: cc.messageFeedbackNotHelpful,
+                              localOnly: cc.messageFeedbackLocalOnly,
+                            }}
+                          />
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -274,6 +309,15 @@ export default function ChatPage() {
                 suggestions={suggestionChips}
                 onSelect={(value) => setPrompt(value)}
               />
+
+              {chatContextLine ? (
+                <p
+                  className="text-xs text-text-muted leading-relaxed border border-border/60 rounded-lg px-2.5 py-2 bg-surface-elevated/50"
+                  role="status"
+                >
+                  {chatContextLine}
+                </p>
+              ) : null}
 
               <div>
                 <label htmlFor="chatPrompt" className="block text-sm font-medium text-text-primary mb-2">

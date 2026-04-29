@@ -68,6 +68,12 @@ export const workoutsPageCopy: Record<
     activityBonusSave: string;
     activityBonusSaved: string;
     activityBudgetHint: string;
+    editWorkoutTitle: string;
+    saveWorkoutChanges: string;
+    cancelEditWorkout: string;
+    performedAtLabel: string;
+    toastWorkoutUpdatedTitle: string;
+    toastWorkoutUpdatedBody: string;
   }
 > = {
   en: {
@@ -140,6 +146,12 @@ export const workoutsPageCopy: Record<
     activityBonusSave: 'Save allowance',
     activityBonusSaved: 'Allowance updated',
     activityBudgetHint: 'Today’s calorie budget = goals + logged workouts + this bonus.',
+    editWorkoutTitle: 'Edit workout',
+    saveWorkoutChanges: 'Save changes',
+    cancelEditWorkout: 'Cancel',
+    performedAtLabel: 'Started at (local)',
+    toastWorkoutUpdatedTitle: 'Workout updated',
+    toastWorkoutUpdatedBody: 'Changes were saved.',
   },
   pl: {
     pageTitle: 'Trening',
@@ -211,5 +223,11 @@ export const workoutsPageCopy: Record<
     activityBonusSave: 'Zapisz pulę',
     activityBonusSaved: 'Zapisano',
     activityBudgetHint: 'Budżet kcal = cele + zapisane treningi + ten bonus.',
+    editWorkoutTitle: 'Edytuj trening',
+    saveWorkoutChanges: 'Zapisz zmiany',
+    cancelEditWorkout: 'Anuluj',
+    performedAtLabel: 'Rozpoczęcie (czas lokalny)',
+    toastWorkoutUpdatedTitle: 'Zaktualizowano trening',
+    toastWorkoutUpdatedBody: 'Zmiany zostały zapisane.',
   },
 };

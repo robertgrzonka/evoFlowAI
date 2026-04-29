@@ -11,9 +11,11 @@ export type InsightCardProps = {
   /** Full coach copy (shown in full; no expand/collapse) */
   detail?: string;
   accentClassName?: string;
+  /** Optional local-only controls (e.g. thumbs) — keep small for density. */
+  footer?: ReactNode;
 };
 
-export default function InsightCard({ icon, label, summary, detail, accentClassName }: InsightCardProps) {
+export default function InsightCard({ icon, label, summary, detail, accentClassName, footer }: InsightCardProps) {
   const body = (detail && detail.trim()) || summary;
 
   return (
@@ -31,6 +33,7 @@ export default function InsightCard({ icon, label, summary, detail, accentClassN
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-text-muted">{label}</p>
           <p className="mt-1 text-xs font-normal leading-relaxed text-text-primary">{body}</p>
+          {footer ? <div className="mt-2 min-w-0">{footer}</div> : null}
         </div>
       </div>
     </div>

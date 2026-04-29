@@ -24,7 +24,7 @@ export default function EvoHintCard({
   return (
     <div className={`rounded-lg border p-3.5 ${toneStyles[tone]}`}>
       <p className="text-xs uppercase tracking-[0.12em] text-text-muted mb-1">{title}</p>
-      <p className="text-sm text-text-primary">{content}</p>
+      <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{content}</p>
       {action ? <div className="mt-2">{action}</div> : null}
     </div>
   );
