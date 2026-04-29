@@ -60,17 +60,17 @@ export default function CollapsibleWidget({
         aria-controls={`${id}-panel`}
         onClick={() => setOpen((v) => !v)}
         className={clsx(
-          'inline-flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors',
+          'inline-flex w-full items-center justify-between rounded-lg font-medium transition-colors',
           dense
-            ? 'text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
-            : 'border border-border/80 bg-surface-elevated/50 text-text-secondary hover:text-text-primary'
+            ? 'px-2 py-1 text-[10px] text-text-muted hover:text-text-primary hover:bg-surface-elevated/40'
+            : 'px-2 py-1.5 text-[11px] border border-border/80 bg-surface-elevated/50 text-text-secondary hover:text-text-primary'
         )}
       >
         <span>{open ? collapseLabel : expandLabel}</span>
-        <ChevronDown className={clsx('h-3.5 w-3.5 shrink-0 transition-transform opacity-70', open && 'rotate-180')} />
+        <ChevronDown className={clsx('shrink-0 opacity-70 transition-transform', dense ? 'h-3 w-3' : 'h-3.5 w-3.5', open && 'rotate-180')} />
       </button>
       {open ? (
-        <div id={`${id}-panel`} className="pt-2">
+        <div id={`${id}-panel`} className={dense ? 'pt-1.5' : 'pt-2'}>
           {children}
         </div>
       ) : null}

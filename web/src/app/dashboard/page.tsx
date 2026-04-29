@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/loading';
 import {
   DELETE_FOOD_ITEM_MUTATION,
+  LOG_MEAL_WITH_AI_MUTATION,
   LOG_WORKOUT_MUTATION,
   UPDATE_FOOD_ITEM_MUTATION,
   UPSERT_DAILY_ACTIVITY_MUTATION,
@@ -79,7 +80,11 @@ import { mealsPageCopy, mealTypeLabels } from '@/lib/i18n/copy/meals-page';
 import { buildWeeklyScoreNarratives } from '@/lib/dashboard/weeklyScoreNarratives';
 import { formatInsightFreshness } from '@/lib/format-insight-freshness';
 
+/** Compact controls for dashboard right column — matches small labels in Collapsible widgets. */
+const SIDEBAR_FIELD = 'input-field input-field-dense w-full';
+
 type WorkoutIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
+type QuickMealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 type ActionTone = 'brand' | 'info' | 'success';
 
 type DayWorkoutRow = {
@@ -195,6 +200,8 @@ export default function DashboardPage() {
   const [quickWorkoutDurationInput, setQuickWorkoutDurationInput] = useState('35');
   const [quickWorkoutBurnedInput, setQuickWorkoutBurnedInput] = useState('250');
   const [quickWorkoutIntensity, setQuickWorkoutIntensity] = useState<WorkoutIntensity>('MEDIUM');
+  const [quickMealContent, setQuickMealContent] = useState('');
+  const [quickMealType, setQuickMealType] = useState<QuickMealType>('lunch');
   /** String while editing so the field can be cleared without forcing 0 */
   const [quickStepsInput, setQuickStepsInput] = useState('');
   const [deleteMealId, setDeleteMealId] = useState<string | null>(null);
@@ -253,6 +260,22 @@ export default function DashboardPage() {
     },
     onError: (error) => {
       appToast.error('Save failed', error.message || 'Could not add workout.');
+    },
+    refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
+    awaitRefetchQueries: true,
+  });
+  const [logMealWithAI, { loading: quickMealSaving }] = useMutation(LOG_MEAL_WITH_AI_MUTATION, {
+    onCompleted: () => {
+      setQuickMealContent('');
+      kickDeferredAfterMealLog(client);
+      const ui = graphqlAppLocaleToUi(userData?.me?.preferences?.appLocale);
+      const m = mealsPageCopy[ui];
+      appToast.success(m.toastMealSavedTitle, m.toastMealSavedBody);
+    },
+    onError: (error) => {
+      const ui = graphqlAppLocaleToUi(userData?.me?.preferences?.appLocale);
+      const m = mealsPageCopy[ui];
+      appToast.error(m.toastSaveFailTitle, error.message || m.toastSaveFailBody);
     },
     refetchQueries: [...buildDayRefetchQueriesAfterLog(today, timeZone)],
     awaitRefetchQueries: true,
@@ -752,6 +775,28 @@ export default function DashboardPage() {
     });
   };
 
+  const handleQuickMealLog = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!quickMealContent.trim()) {
+      const ui = graphqlAppLocaleToUi(user?.preferences?.appLocale);
+      const m = mealsPageCopy[ui];
+      appToast.info(m.toastMissingInputTitle, m.toastMissingInputBody);
+      return;
+    }
+    await logMealWithAI({
+      variables: {
+        input: {
+          content: quickMealContent.trim(),
+          imageBase64: null,
+          imageMimeType: null,
+          mealType: quickMealType,
+          loggedDate: today,
+          clientTimeZone: timeZone,
+        },
+      },
+    });
+  };
+
   return (
     <AppShell>
       <EditMealDialog
@@ -783,9 +828,11 @@ export default function DashboardPage() {
         variant="danger"
       />
       <EvoThinkingOverlay
-        open={daySnapshot.insightBootstrapping || quickWorkoutSaving}
+        open={daySnapshot.insightBootstrapping || quickMealSaving || quickWorkoutSaving}
         locale={locale}
-        intent={daySnapshot.insightBootstrapping ? 'default' : 'workout'}
+        intent={
+          quickMealSaving ? 'meal' : quickWorkoutSaving ? 'workout' : 'default'
+        }
       />
       <AiReasoningDrawer
         open={reasoningOpen}
@@ -1091,87 +1138,7 @@ export default function DashboardPage() {
           <aside className={clsx('space-y-4', sidebarCollapsed ? 'lg:col-span-4 2xl:col-span-3' : 'lg:col-span-4')}>
             <CollapsibleWidget
               dense
-              title={d.quickWorkout}
-              headerRight={
-                <button
-                  type="button"
-                  onClick={() => router.push('/workouts')}
-                  className="text-[10px] text-amber-300/90 hover:text-amber-200 transition-colors shrink-0"
-                >
-                  {d.fullPage}
-                </button>
-              }
-              accent="primary"
-              expandLabel={d.quickLogExpand}
-              collapseLabel={d.quickLogCollapse}
-              summary={
-                <p className="text-[11px] text-text-muted tabular-nums">
-                  <span className="text-text-secondary">
-                    {quickWorkoutDurationInput.trim() === '' ? '—' : quickWorkoutDurationInput}′
-                  </span>
-                  <span className="mx-1 text-border">·</span>
-                  <span className="text-text-secondary">
-                    {quickWorkoutBurnedInput.trim() === '' ? '—' : quickWorkoutBurnedInput} kcal
-                  </span>
-                  <span className="mx-1 text-border">·</span>
-                  {String(quickWorkoutIntensity).toLowerCase()}
-                </p>
-              }
-            >
-              <form onSubmit={handleQuickWorkout} className="space-y-3">
-                <input
-                  value={quickWorkoutTitle}
-                  onChange={(event) => setQuickWorkoutTitle(event.target.value)}
-                  placeholder={d.workoutPlaceholder}
-                  className="input-field w-full"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <NumericInput
-                    min={1}
-                    value={quickWorkoutDurationInput}
-                    onChange={(event) => setQuickWorkoutDurationInput(event.target.value)}
-                    className="w-full"
-                    placeholder={d.minutesPh}
-                  />
-                  <NumericInput
-                    min={0}
-                    value={quickWorkoutBurnedInput}
-                    onChange={(event) => setQuickWorkoutBurnedInput(event.target.value)}
-                    className="w-full"
-                    placeholder={d.kcalPh}
-                  />
-                </div>
-                <select
-                  value={quickWorkoutIntensity}
-                  onChange={(event) => setQuickWorkoutIntensity(event.target.value as WorkoutIntensity)}
-                  className="input-field w-full"
-                >
-                  <option value="LOW">{d.intensityLow}</option>
-                  <option value="MEDIUM">{d.intensityMedium}</option>
-                  <option value="HIGH">{d.intensityHigh}</option>
-                </select>
-                <button
-                  type="submit"
-                  disabled={quickWorkoutSaving}
-                  className="btn-primary w-full inline-flex items-center justify-center gap-2"
-                >
-                  {quickWorkoutSaving ? (
-                    <>
-                      <ButtonSpinner />
-                      {d.adding}
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4" />
-                      {d.addWorkout}
-                    </>
-                  )}
-                </button>
-              </form>
-            </CollapsibleWidget>
-
-            <CollapsibleWidget
-              dense
+              defaultOpen
               title={d.dailySteps}
               headerRight={<span className="text-[10px] text-text-muted shrink-0">{d.trackedOnly}</span>}
               accent="success"
@@ -1202,19 +1169,19 @@ export default function DashboardPage() {
                 </div>
               }
             >
-              <form onSubmit={handleQuickSteps} className="space-y-3">
+              <form onSubmit={handleQuickSteps} className="space-y-2">
                 <NumericInput
                   min={0}
                   max={120000}
                   value={quickStepsInput}
                   onChange={(event) => setQuickStepsInput(event.target.value)}
-                  className="w-full"
+                  className="input-field-dense w-full"
                   placeholder={d.stepsPlaceholder}
                 />
                 <button
                   type="submit"
                   disabled={savingSteps}
-                  className="btn-secondary w-full inline-flex items-center justify-center gap-2"
+                  className="btn-secondary btn-compact w-full inline-flex items-center justify-center gap-2"
                 >
                   {savingSteps ? (
                     <>
@@ -1244,8 +1211,8 @@ export default function DashboardPage() {
               </div>
               {daySnapshot.loading ? (
                 <div className="space-y-1.5">
-                  <Skeleton className="h-9 w-full rounded-md" />
-                  <Skeleton className="h-9 w-full rounded-md" />
+                  <Skeleton className="h-8 w-full rounded-md" />
+                  <Skeleton className="h-8 w-full rounded-md" />
                 </div>
               ) : typedWorkouts.length > 0 ? (
                 <div className="space-y-1.5">
@@ -1263,6 +1230,147 @@ export default function DashboardPage() {
                 <div className="rounded-lg bg-background/25 px-2 py-2 text-[10px] text-text-muted">{d.noWorkoutsToday}</div>
               )}
             </section>
+
+            <div className="space-y-3">
+              <CollapsibleWidget
+                dense
+                defaultOpen
+                title={d.quickWorkout}
+                headerRight={
+                  <button
+                    type="button"
+                    onClick={() => router.push('/workouts')}
+                    className="text-[10px] text-amber-300/90 hover:text-amber-200 transition-colors shrink-0"
+                  >
+                    {d.fullPage}
+                  </button>
+                }
+                accent="primary"
+                expandLabel={d.quickLogExpand}
+                collapseLabel={d.quickLogCollapse}
+                summary={
+                  <p className="text-[11px] text-text-muted tabular-nums">
+                    <span className="text-text-secondary">
+                      {quickWorkoutDurationInput.trim() === '' ? '—' : quickWorkoutDurationInput}′
+                    </span>
+                    <span className="mx-1 text-border">·</span>
+                    <span className="text-text-secondary">
+                      {quickWorkoutBurnedInput.trim() === '' ? '—' : quickWorkoutBurnedInput} kcal
+                    </span>
+                    <span className="mx-1 text-border">·</span>
+                    {String(quickWorkoutIntensity).toLowerCase()}
+                  </p>
+                }
+              >
+                <form onSubmit={handleQuickWorkout} className="space-y-2">
+                  <input
+                    value={quickWorkoutTitle}
+                    onChange={(event) => setQuickWorkoutTitle(event.target.value)}
+                    placeholder={d.workoutPlaceholder}
+                    className={SIDEBAR_FIELD}
+                  />
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <NumericInput
+                      min={1}
+                      value={quickWorkoutDurationInput}
+                      onChange={(event) => setQuickWorkoutDurationInput(event.target.value)}
+                      className="input-field-dense w-full"
+                      placeholder={d.minutesPh}
+                    />
+                    <NumericInput
+                      min={0}
+                      value={quickWorkoutBurnedInput}
+                      onChange={(event) => setQuickWorkoutBurnedInput(event.target.value)}
+                      className="input-field-dense w-full"
+                      placeholder={d.kcalPh}
+                    />
+                  </div>
+                  <select
+                    value={quickWorkoutIntensity}
+                    onChange={(event) => setQuickWorkoutIntensity(event.target.value as WorkoutIntensity)}
+                    className={SIDEBAR_FIELD}
+                  >
+                    <option value="LOW">{d.intensityLow}</option>
+                    <option value="MEDIUM">{d.intensityMedium}</option>
+                    <option value="HIGH">{d.intensityHigh}</option>
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={quickWorkoutSaving}
+                    className="btn-primary btn-compact w-full inline-flex items-center justify-center gap-2"
+                  >
+                    {quickWorkoutSaving ? (
+                      <>
+                        <ButtonSpinner />
+                        {d.adding}
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5" />
+                        {d.addWorkout}
+                      </>
+                    )}
+                  </button>
+                </form>
+              </CollapsibleWidget>
+
+              <CollapsibleWidget
+                dense
+                defaultOpen
+                title={d.quickMeal}
+                headerRight={
+                  <button
+                    type="button"
+                    onClick={() => router.push('/meals')}
+                    className="text-[10px] text-primary-300/90 hover:text-primary-200 transition-colors shrink-0"
+                  >
+                    {d.fullPage}
+                  </button>
+                }
+                accent="info"
+                expandLabel={d.quickLogExpand}
+                collapseLabel={d.quickLogCollapse}
+                summary={<p className="text-[11px] text-text-muted leading-snug">{d.quickMealSummary}</p>}
+              >
+                <form onSubmit={(e) => void handleQuickMealLog(e)} className="space-y-2">
+                  <textarea
+                    value={quickMealContent}
+                    onChange={(event) => setQuickMealContent(event.target.value)}
+                    placeholder={d.quickMealPlaceholder}
+                    rows={2}
+                    className={`${SIDEBAR_FIELD} resize-y min-h-[3rem] py-2 leading-snug`}
+                  />
+                  <select
+                    value={quickMealType}
+                    onChange={(event) => setQuickMealType(event.target.value as QuickMealType)}
+                    className={SIDEBAR_FIELD}
+                  >
+                    {mealEditOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={quickMealSaving}
+                    className="btn-primary btn-compact w-full inline-flex items-center justify-center gap-2"
+                  >
+                    {quickMealSaving ? (
+                      <>
+                        <ButtonSpinner />
+                        {d.loggingMeal}
+                      </>
+                    ) : (
+                      <>
+                        <UtensilsCrossed className="h-3.5 w-3.5" />
+                        {d.addMealQuick}
+                      </>
+                    )}
+                  </button>
+                </form>
+              </CollapsibleWidget>
+            </div>
           </aside>
         </div>
 

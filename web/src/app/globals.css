@@ -66,9 +66,18 @@ h3 {
   .btn-primary {
     @apply inline-flex items-center justify-center h-9 px-3.5 bg-primary-500 hover:bg-primary-600 text-text-primary text-sm font-medium rounded-md shadow-sm shadow-primary-900/20 whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out disabled:opacity-50 disabled:cursor-not-allowed;
   }
+
+  /** Primary CTA in dense sidebars (dashboard quick log). Pair with `.btn-primary`. */
+  .btn-primary.btn-compact {
+    @apply h-8 min-h-[2rem] px-3 text-xs gap-1.5;
+  }
   
   .btn-secondary {
     @apply inline-flex items-center justify-center h-9 px-3.5 bg-surface hover:bg-surface-elevated text-text-primary text-sm border border-border hover:border-info-500/30 font-medium rounded-md whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out;
+  }
+
+  .btn-secondary.btn-compact {
+    @apply h-8 min-h-[2rem] px-3 text-xs gap-1.5;
   }
 
   .btn-info {
@@ -81,6 +90,11 @@ h3 {
   
   .input-field {
     @apply bg-surface border border-border text-text-primary text-sm placeholder-text-muted rounded-md px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary-500/70 focus:border-transparent transition-[background-color,border-color,color,box-shadow] duration-150 ease-out;
+  }
+
+  /** Tighter fields for dashboard sidebar / compact widgets — pair with `.input-field`. */
+  .input-field.input-field-dense {
+    @apply text-xs py-1.5 px-2 leading-snug min-h-0;
   }
 
   .auth-input-wrap {
