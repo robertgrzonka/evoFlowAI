@@ -17,7 +17,7 @@ import {
   Target,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { ME_QUERY } from '@/lib/graphql/queries';
+import { AI_ACCESS_STATUS_QUERY, ME_QUERY } from '@/lib/graphql/queries';
 import { appShellStrings } from '@/lib/i18n/app-shell-strings';
 import { graphqlAppLocaleToUi } from '@/lib/i18n/ui-locale';
 import { clearAuthToken } from '@/lib/auth-token';
@@ -45,7 +45,10 @@ function AppShellInner({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { data } = useQuery(ME_QUERY, { fetchPolicy: 'cache-first' });
+  const { data: aiAccessData } = useQuery(AI_ACCESS_STATUS_QUERY, { fetchPolicy: 'cache-first' });
   const user = data?.me;
+  const aiAccess = aiAccessData?.aiAccessStatus;
+  const isProUser = aiAccess?.tier === 'PLATFORM_PREMIUM' || aiAccess?.tier === 'BYOK';
   const uiLocale = graphqlAppLocaleToUi(user?.preferences?.appLocale);
   const t = appShellStrings[uiLocale];
   const [evoDockEnabled, setEvoDockEnabled] = useState(true);
@@ -236,16 +239,30 @@ function AppShellInner({ children }: AppShellProps) {
           >
             {!sidebarCollapsed ? (
               <>
-                <p className="text-xs text-text-muted">{t.loggedInAs}</p>
+                <div className="flex items-center justify-center gap-2">
+                  <p className="text-xs text-text-muted">{t.loggedInAs}</p>
+                  {isProUser ? <ProBadge compact label="PRO" /> : null}
+                </div>
                 <p className="text-sm text-text-primary mt-1 truncate w-full text-center">{user?.name || user?.email || 'User'}</p>
               </>
             ) : (
-              <Tooltip content={t.userMenuHint} side="bottom" rail>
-                <div
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface-elevated text-xs font-semibold text-text-primary"
-                  aria-hidden
-                >
-                  {userInitial}
+              <Tooltip content={isProUser ? t.proAccount : t.userMenuHint} side="bottom" rail>
+                <div className="relative" aria-hidden>
+                  <div
+                    className={clsx(
+                      'flex h-9 w-9 items-center justify-center rounded-full border bg-surface-elevated text-xs font-semibold',
+                      isProUser
+                        ? 'border-amber-300/60 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.16)]'
+                        : 'border-border text-text-primary'
+                    )}
+                  >
+                    {userInitial}
+                  </div>
+                  {isProUser ? (
+                    <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-amber-200/70 bg-amber-300 text-[8px] font-black leading-none text-amber-950">
+                      P
+                    </span>
+                  ) : null}
                 </div>
               </Tooltip>
             )}
@@ -275,6 +292,7 @@ function AppShellInner({ children }: AppShellProps) {
               <Link href="/dashboard" className="inline-flex items-end gap-1.5">
                 <EvoMark className="h-5 w-5 text-primary-500 translate-y-[1px]" />
                 <span className="font-semibold tracking-tight leading-none text-gradient">evoFlowAI</span>
+                {isProUser ? <ProBadge compact label="PRO" /> : null}
               </Link>
               <button type="button" onClick={handleLogout} className="btn-secondary inline-flex items-center justify-center w-9 px-0">
                 <LogOut className="h-4 w-4" />

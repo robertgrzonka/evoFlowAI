@@ -34,6 +34,7 @@ import { clearAuthToken } from '@/lib/auth-token';
 import { clearApolloClientCache } from '@/lib/apollo-client';
 import { ButtonSpinner, PageLoader } from '@/components/ui/loading';
 import { appToast } from '@/lib/app-toast';
+import ProBadge from '@/components/ui/atoms/ProBadge';
 import { buildDayRefetchQueriesAfterLog, kickDeferredDashboardAndWeeklyEvo } from '@/lib/day-data';
 import { formatPrimaryGoal } from '@/lib/formatters';
 import { AISectionHeader, EvoHintCard } from '@/components/evo';
@@ -160,6 +161,7 @@ export default function SettingsPage() {
 
   const user = data?.me;
   const aiAccess = aiAccessData?.aiAccessStatus;
+  const isProUser = aiAccess?.tier === 'PLATFORM_PREMIUM' || aiAccess?.tier === 'BYOK';
   const garminStatus = stepSyncData?.stepSyncStatus;
   const proteinSuggestionByWeight =
     typeof user?.preferences?.weightKg === 'number' ? Math.round(user.preferences.weightKg * 2) : null;
@@ -505,10 +507,19 @@ export default function SettingsPage() {
                 <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-text-primary">{s.aiAccessTitle}</p>
+                      <div className="inline-flex items-center gap-2">
+                        <p className="text-sm font-semibold text-text-primary">{s.aiAccessTitle}</p>
+                        {isProUser ? <ProBadge compact /> : null}
+                      </div>
                       <p className="text-xs text-text-secondary mt-1">{s.aiAccessSubtitle}</p>
                     </div>
-                    <span className="inline-flex items-center justify-center rounded-full border border-primary-500/35 bg-primary-500/10 px-2.5 py-1 text-[11px] leading-none text-primary-200">
+                    <span
+                      className={`inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-[11px] leading-none ${
+                        isProUser
+                          ? 'border-amber-200/60 bg-amber-300/10 text-amber-100'
+                          : 'border-primary-500/35 bg-primary-500/10 text-primary-200'
+                      }`}
+                    >
                       {aiAccess?.model || '—'}
                     </span>
                   </div>
@@ -658,7 +669,10 @@ export default function SettingsPage() {
                 accentEdgeClasses('info', 'left'),
               )}
             >
-              <h3 className="text-base font-semibold tracking-tight text-text-primary mb-3">{s.accountTitle}</h3>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-base font-semibold tracking-tight text-text-primary">{s.accountTitle}</h3>
+                {isProUser ? <ProBadge /> : null}
+              </div>
               <div className="space-y-3">
                 <InfoRow icon={<UserRound className="h-4 w-4 text-text-muted" />} label={s.nameLabel} value={user?.name || s.notSet} />
                 <InfoRow icon={<ShieldCheck className="h-4 w-4 text-text-muted" />} label={s.emailLabel} value={user?.email || '—'} />

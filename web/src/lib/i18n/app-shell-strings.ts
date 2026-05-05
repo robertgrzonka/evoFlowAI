@@ -13,6 +13,7 @@ export const appShellStrings: Record<
     navCoachPro: string;
     loggedInAs: string;
     logout: string;
+    proAccount: string;
     collapseSidebar: string;
     expandSidebar: string;
     userMenuHint: string;
@@ -29,6 +30,7 @@ export const appShellStrings: Record<
     navCoachPro: 'Evo Coach Pro',
     loggedInAs: 'Logged in as',
     logout: 'Logout',
+    proAccount: 'Pro account',
     collapseSidebar: 'Collapse sidebar',
     expandSidebar: 'Expand sidebar',
     userMenuHint: 'Account and logout',
@@ -44,6 +46,7 @@ export const appShellStrings: Record<
     navCoachPro: 'Evo Coach Pro',
     loggedInAs: 'Zalogowany jako',
     logout: 'Wyloguj',
+    proAccount: 'Konto Pro',
     collapseSidebar: 'Zwiń menu boczne',
     expandSidebar: 'Rozwiń menu boczne',
     userMenuHint: 'Konto i wylogowanie',
