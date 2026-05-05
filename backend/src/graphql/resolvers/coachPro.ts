@@ -7,6 +7,7 @@ import { DailyActivity } from '../../models/DailyActivity';
 import { CoachProPlan } from '../../models/CoachProPlan';
 import { getDailyMetrics, normalizeDateKey } from '../../utils/dailyMetrics';
 import { resolveCoachProDailyProteinFloor } from '../../utils/coachProNutrition';
+import { runWithAIAccess } from '../../services/aiAccessService';
 
 const openAIService = new OpenAIService();
 
@@ -1967,10 +1968,12 @@ export const coachProResolvers = {
       };
 
       try {
-        const aiPlan = await openAIService.generateCoachProPlan({
-          userContext,
-          setup: input,
-        });
+        const { value: aiPlan } = await runWithAIAccess(context.user, openAIService, (service) =>
+          service.generateCoachProPlan({
+            userContext,
+            setup: input,
+          })
+        );
         const expectedMealsPerDay = clamp(Number(input?.nutrition?.mealsPerDay || 3), 2, 6);
         const quality = validateCoachProPlanCompleteness(aiPlan, expectedMealsPerDay);
         if (AI_ONLY_COACH_PRO_MODE && !quality.complete) {
@@ -1980,11 +1983,13 @@ export const coachProResolvers = {
         let aiCandidate = aiCoreCandidate;
         const detailWarnings: string[] = [];
         try {
-          const aiDetails = await openAIService.generateCoachProPlanDetails({
-            corePlanJson: JSON.stringify(aiCoreCandidate),
-            userContext,
-            setup: input,
-          });
+          const { value: aiDetails } = await runWithAIAccess(context.user, openAIService, (service) =>
+            service.generateCoachProPlanDetails({
+              corePlanJson: JSON.stringify(aiCoreCandidate),
+              userContext,
+              setup: input,
+            })
+          );
           aiCandidate = mergeCoachProPlanWithAiDetails(aiCoreCandidate, aiDetails);
         } catch (detailsError) {
           const detailsFailure = safeErrorMessage(detailsError);
@@ -2179,21 +2184,23 @@ export const coachProResolvers = {
 
       try {
         const normalizedFoodPreferences = buildNormalizedFoodPreferences(record?.setup || {});
-        const details = await openAIService.generateCoachProMealDrawerDetails({
-          meal: mealInput,
-          dayTarget,
-          userContext: {
-            preferences: context.user.preferences,
-            normalizedFoodPreferences,
-            foodPreferenceSummary: {
-              cuisines: normalizedFoodPreferences.favoriteCuisines,
-              anchorDishes: normalizedFoodPreferences.favoriteDishes,
-              anchorIngredients: normalizedFoodPreferences.favoriteIngredients,
-              staples: normalizedFoodPreferences.mealPrepStaples,
-              mealStyles: normalizedFoodPreferences.preferredMealStyles,
+        const { value: details } = await runWithAIAccess(context.user, openAIService, (service) =>
+          service.generateCoachProMealDrawerDetails({
+            meal: mealInput,
+            dayTarget,
+            userContext: {
+              preferences: context.user.preferences,
+              normalizedFoodPreferences,
+              foodPreferenceSummary: {
+                cuisines: normalizedFoodPreferences.favoriteCuisines,
+                anchorDishes: normalizedFoodPreferences.favoriteDishes,
+                anchorIngredients: normalizedFoodPreferences.favoriteIngredients,
+                staples: normalizedFoodPreferences.mealPrepStaples,
+                mealStyles: normalizedFoodPreferences.preferredMealStyles,
+              },
             },
-          },
-        });
+          })
+        );
         const normalizedMeal = ensureCoachProPlanShape({
           weeklyNutrition: [
             {
@@ -2259,10 +2266,12 @@ export const coachProResolvers = {
       }
 
       try {
-        const details = await openAIService.generateCoachProTrainingDrawerDetails({
-          session: sessionInput,
-          userContext: { preferences: context.user.preferences },
-        });
+        const { value: details } = await runWithAIAccess(context.user, openAIService, (service) =>
+          service.generateCoachProTrainingDrawerDetails({
+            session: sessionInput,
+            userContext: { preferences: context.user.preferences },
+          })
+        );
         const normalizedSession = ensureCoachProPlanShape({ weeklyTraining: [details.session] }).weeklyTraining[0];
         const drawerPayload = {
           session: normalizedSession,
@@ -2308,13 +2317,17 @@ export const coachProResolvers = {
 
       try {
         const proteinFloor = resolveCoachProDailyProteinFloor(context.user.preferences);
-        let adapted = await openAIService.adaptCoachProPlan({
-          currentPlanJson: planJson,
-          action: input.action,
-          note: input.note,
-          appLocale: context.user.preferences?.appLocale,
-          preferences: context.user.preferences as unknown as Record<string, unknown>,
-        });
+        let adapted = (
+          await runWithAIAccess(context.user, openAIService, (service) =>
+            service.adaptCoachProPlan({
+              currentPlanJson: planJson,
+              action: input.action,
+              note: input.note,
+              appLocale: context.user.preferences?.appLocale,
+              preferences: context.user.preferences as unknown as Record<string, unknown>,
+            })
+          )
+        ).value;
         try {
           const prevPlan = JSON.parse(planJson) as { overview?: { evoDashboardInsight?: string } };
           const keep = typeof prevPlan?.overview?.evoDashboardInsight === 'string' ? prevPlan.overview.evoDashboardInsight.trim() : '';
@@ -2588,29 +2601,31 @@ export const coachProResolvers = {
 
       try {
         const normalizedFoodPreferences = buildNormalizedFoodPreferences(record?.setup || {});
-        const details = await openAIService.applyCoachProMealSmartAction({
-          action: action as
-            | 'REPLACE_MEAL'
-            | 'SHOW_SUBSTITUTIONS'
-            | 'REGENERATE_RECIPE'
-            | 'MAKE_IT_FASTER'
-            | 'MAKE_IT_CHEAPER'
-            | 'MAKE_IT_VEGETARIAN'
-            | 'INCREASE_PROTEIN',
-          meal: mealForAi,
-          dayTarget,
-          userContext: {
-            preferences: context.user.preferences,
-            normalizedFoodPreferences,
-            foodPreferenceSummary: {
-              cuisines: normalizedFoodPreferences.favoriteCuisines,
-              anchorDishes: normalizedFoodPreferences.favoriteDishes,
-              anchorIngredients: normalizedFoodPreferences.favoriteIngredients,
-              staples: normalizedFoodPreferences.mealPrepStaples,
-              mealStyles: normalizedFoodPreferences.preferredMealStyles,
+        const { value: details } = await runWithAIAccess(context.user, openAIService, (service) =>
+          service.applyCoachProMealSmartAction({
+            action: action as
+              | 'REPLACE_MEAL'
+              | 'SHOW_SUBSTITUTIONS'
+              | 'REGENERATE_RECIPE'
+              | 'MAKE_IT_FASTER'
+              | 'MAKE_IT_CHEAPER'
+              | 'MAKE_IT_VEGETARIAN'
+              | 'INCREASE_PROTEIN',
+            meal: mealForAi,
+            dayTarget,
+            userContext: {
+              preferences: context.user.preferences,
+              normalizedFoodPreferences,
+              foodPreferenceSummary: {
+                cuisines: normalizedFoodPreferences.favoriteCuisines,
+                anchorDishes: normalizedFoodPreferences.favoriteDishes,
+                anchorIngredients: normalizedFoodPreferences.favoriteIngredients,
+                staples: normalizedFoodPreferences.mealPrepStaples,
+                mealStyles: normalizedFoodPreferences.preferredMealStyles,
+              },
             },
-          },
-        });
+          })
+        );
         const normalizedMeal = ensureCoachProPlanShape({
           weeklyNutrition: [
             {

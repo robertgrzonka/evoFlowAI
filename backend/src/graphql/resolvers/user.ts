@@ -5,10 +5,33 @@ import { OpenAIService } from '../../services/openaiService';
 import { calculateMacroGoals, normalizeActivityLevel } from '../../utils/nutritionGoals';
 import { normalizeAppLocale } from '../../utils/appLocale';
 import { normalizeCoachingToneKey } from '../../utils/coachingTone';
+import {
+  encryptUserOpenAIKey,
+  getAIAccessStatus,
+  runWithAIAccess,
+} from '../../services/aiAccessService';
 
 const openAIService = new OpenAIService();
 
 export const userResolvers = {
+  User: {
+    aiAccess: (user: any) =>
+      user.aiAccess || {
+        tier: 'free',
+        preferredModel: null,
+        openaiKeyLast4: null,
+        openaiKeyUpdatedAt: null,
+        monthlyRequestLimit: null,
+        monthlyRequestCount: 0,
+        usagePeriodStart: null,
+      },
+  },
+  UserAIAccess: {
+    tier: (aiAccess: any) => String(aiAccess?.tier || 'free').toUpperCase(),
+  },
+  AIAccessStatus: {
+    tier: (status: any) => String(status?.tier || 'free').toUpperCase(),
+  },
   UserPreferences: {
     activityLevel: (preferences: any) => {
       const value = String(preferences?.activityLevel || 'moderate');
@@ -28,7 +51,14 @@ export const userResolvers = {
     },
   },
 
-  Query: {},
+  Query: {
+    aiAccessStatus: async (_: any, __: any, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+      return getAIAccessStatus(context.user);
+    },
+  },
 
   Mutation: {
     updatePreferences: async (_: any, { input }: { input: any }, context: Context) => {
@@ -164,14 +194,16 @@ export const userResolvers = {
         throw new UserInputError('Please provide a longer goal request');
       }
 
-      const suggested = await openAIService.suggestGoalsFromPrompt(prompt, {
-        dailyCalorieGoal: context.user.preferences?.dailyCalorieGoal,
-        activityLevel: context.user.preferences?.activityLevel,
-        appLocale: context.user.preferences?.appLocale,
-        weeklyWorkoutsGoal: context.user.preferences?.weeklyWorkoutsGoal,
-        weeklyActiveMinutesGoal: context.user.preferences?.weeklyActiveMinutesGoal,
-        primaryGoal: context.user.preferences?.primaryGoal,
-      });
+      const { value: suggested } = await runWithAIAccess(context.user, openAIService, (service) =>
+        service.suggestGoalsFromPrompt(prompt, {
+          dailyCalorieGoal: context.user.preferences?.dailyCalorieGoal,
+          activityLevel: context.user.preferences?.activityLevel,
+          appLocale: context.user.preferences?.appLocale,
+          weeklyWorkoutsGoal: context.user.preferences?.weeklyWorkoutsGoal,
+          weeklyActiveMinutesGoal: context.user.preferences?.weeklyActiveMinutesGoal,
+          primaryGoal: context.user.preferences?.primaryGoal,
+        })
+      );
 
       const activityLevel = normalizeActivityLevel(suggested.activityLevel);
       const macroGoals = calculateMacroGoals(suggested.dailyCalorieGoal, activityLevel);
@@ -217,6 +249,64 @@ export const userResolvers = {
         user: updatedUser,
         message: `${suggested.message}${macroSuffix}`,
       };
+    },
+
+    setUserOpenAIKey: async (_: any, { input }: { input: { apiKey: string } }, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+
+      const apiKey = input.apiKey?.trim();
+      if (!apiKey) {
+        throw new UserInputError('OpenAI API key is required');
+      }
+
+      const encrypted = encryptUserOpenAIKey(apiKey);
+      const last4 = apiKey.slice(-4);
+      const updatedUser = await User.findByIdAndUpdate(
+        context.user.id,
+        {
+          $set: {
+            'aiAccess.tier': 'byok',
+            'aiAccess.preferredModel': context.user.aiAccess?.preferredModel || 'gpt-5',
+            'aiAccess.openaiKeyEncrypted': encrypted,
+            'aiAccess.openaiKeyLast4': last4,
+            'aiAccess.openaiKeyUpdatedAt': new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        throw new Error('Failed to save OpenAI key');
+      }
+
+      return getAIAccessStatus(updatedUser);
+    },
+
+    removeUserOpenAIKey: async (_: any, __: any, context: Context) => {
+      if (!context.user) {
+        throw new AuthenticationError('You must be logged in');
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(
+        context.user.id,
+        {
+          $set: {
+            'aiAccess.tier': context.user.aiAccess?.tier === 'byok' ? 'free' : context.user.aiAccess?.tier || 'free',
+            'aiAccess.openaiKeyEncrypted': null,
+            'aiAccess.openaiKeyLast4': null,
+            'aiAccess.openaiKeyUpdatedAt': null,
+          },
+        },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        throw new Error('Failed to remove OpenAI key');
+      }
+
+      return getAIAccessStatus(updatedUser);
     },
   },
 };

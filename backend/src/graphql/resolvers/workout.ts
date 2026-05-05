@@ -30,6 +30,7 @@ import { parseWorkoutFile } from '../../services/workoutImportService';
 import { getDailyMetrics, normalizeDateKey, resolveDayRangeForMetrics } from '../../utils/dailyMetrics';
 import { buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
 import { buildDynamicTargets } from '../../utils/activityBudget';
+import { resolveAIAccessRuntime, runWithAIAccess } from '../../services/aiAccessService';
 const parseIntensity = (value: string) => value.toLowerCase();
 const openAIService = new OpenAIService();
 
@@ -477,7 +478,7 @@ export const workoutResolvers = {
           return `"${String(workout.title || 'Workout')}" at ${timeLabel} (${Math.round(Number(workout.durationMinutes || 0))} min, ${Math.round(Number(workout.caloriesBurned || 0))} kcal)`;
         });
 
-      const openaiModel = (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+      const openaiModel = resolveAIAccessRuntime(context.user).model;
       const dashboardFingerprint = fingerprintDashboardInsight({
         dateKey: dayMetrics.dateKey,
         currentHour,
@@ -514,31 +515,34 @@ export const workoutResolvers = {
 
       if (!aiInsight) {
         try {
-          aiInsight = await openAIService.generateDashboardInsights({
-            date: dayMetrics.dateKey,
-            calorieGoal: dayMetrics.dynamicTargets.calorieBudget,
-            proteinGoal: dayMetrics.dynamicTargets.proteinGoal,
-            primaryGoal,
-            userName: context.user.name,
-            coachingTone: context.user.preferences?.coachingTone,
-            proactivityLevel: context.user.preferences?.proactivityLevel,
-            consumedCalories: dayMetrics.totals.calories,
-            consumedProtein: dayMetrics.totals.protein,
-            consumedCarbs: dayMetrics.totals.carbs,
-            consumedFat: dayMetrics.totals.fat,
-            caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
-            remainingCalories: dayMetrics.remainingCalories,
-            remainingProtein: dayMetrics.remainingProtein,
-            mealsCount: dayMetrics.meals.length,
-            workoutSessions: dayMetrics.workouts.length,
-            steps: dayMetrics.steps,
-            currentHour,
-            remainingDayPercent,
-            estimatedMealsLeft,
-            mealDetails,
-            workoutDetails,
-            appLocale: context.user.preferences?.appLocale,
-          });
+          const { value } = await runWithAIAccess(context.user, openAIService, (service) =>
+            service.generateDashboardInsights({
+              date: dayMetrics.dateKey,
+              calorieGoal: dayMetrics.dynamicTargets.calorieBudget,
+              proteinGoal: dayMetrics.dynamicTargets.proteinGoal,
+              primaryGoal,
+              userName: context.user.name,
+              coachingTone: context.user.preferences?.coachingTone,
+              proactivityLevel: context.user.preferences?.proactivityLevel,
+              consumedCalories: dayMetrics.totals.calories,
+              consumedProtein: dayMetrics.totals.protein,
+              consumedCarbs: dayMetrics.totals.carbs,
+              consumedFat: dayMetrics.totals.fat,
+              caloriesBurned: dayMetrics.workoutTotals.caloriesBurned,
+              remainingCalories: dayMetrics.remainingCalories,
+              remainingProtein: dayMetrics.remainingProtein,
+              mealsCount: dayMetrics.meals.length,
+              workoutSessions: dayMetrics.workouts.length,
+              steps: dayMetrics.steps,
+              currentHour,
+              remainingDayPercent,
+              estimatedMealsLeft,
+              mealDetails,
+              workoutDetails,
+              appLocale: context.user.preferences?.appLocale,
+            })
+          );
+          aiInsight = value;
           await saveDashboardInsightToCache(
             context.user.id,
             dayMetrics.dateKey,
@@ -768,7 +772,7 @@ export const workoutResolvers = {
       const narrativeLens =
         parseInt(crypto.createHash('sha256').update(`${context.user.id}:${endKey}`).digest('hex').slice(0, 8), 16) % 4;
 
-      const openaiModel = (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+      const openaiModel = resolveAIAccessRuntime(context.user).model;
       const voiceRefreshBucket = Math.floor(Date.now() / (3 * 60 * 60 * 1000));
       const weeklyFingerprint = fingerprintWeeklyEvoReview({
         weekEnd: endKey,
@@ -808,43 +812,45 @@ export const workoutResolvers = {
         highlightsOut = cachedWeekly.highlights;
       } else {
         try {
-          const aiNarrative = await openAIService.generateWeeklyEvoReviewNarrative({
-            userName: context.user.name,
-            coachingTone: prefs?.coachingTone,
-            proactivityLevel: prefs?.proactivityLevel,
-            primaryGoal: prefs?.primaryGoal,
-            activityLevel: prefs?.activityLevel,
-            dietaryRestrictions: prefs?.dietaryRestrictions,
-            weightKg: typeof prefs?.weightKg === 'number' ? prefs.weightKg : undefined,
-            weeklyWorkoutsGoal: weeklyWorkoutGoal,
-            weeklyActiveMinutesGoal: weeklyMinutesGoal,
-            isCompleteWeek,
-            availableDays,
-            trackedDays,
-            periodDays,
-            nutritionScore,
-            trainingScore,
-            consistencyScore,
-            weekStart: startKey,
-            weekEnd: endKey,
-            appLocale: prefs?.appLocale,
-            narrativeLens,
-            loggedMealNames: sampleMealNames,
-            loggedWorkoutTitles: sampleWorkoutTitles,
-            totalCalories,
-            targetPeriodCalories,
-            staticWeekKcal,
-            calorieGoalBase: Number(calorieGoal),
-            avgDailyProtein,
-            proteinGoal,
-            workoutsCount: workouts.length,
-            totalActiveMinutes: totalMinutes,
-            totalStepsTracked,
-            mealDays,
-            workoutDays,
-            scaledWeeklySessionsTarget: scaledWorkoutGoal,
-            scaledWeeklyMinutesTarget: scaledMinutesGoal,
-          });
+          const { value: aiNarrative } = await runWithAIAccess(context.user, openAIService, (service) =>
+            service.generateWeeklyEvoReviewNarrative({
+              userName: context.user.name,
+              coachingTone: prefs?.coachingTone,
+              proactivityLevel: prefs?.proactivityLevel,
+              primaryGoal: prefs?.primaryGoal,
+              activityLevel: prefs?.activityLevel,
+              dietaryRestrictions: prefs?.dietaryRestrictions,
+              weightKg: typeof prefs?.weightKg === 'number' ? prefs.weightKg : undefined,
+              weeklyWorkoutsGoal: weeklyWorkoutGoal,
+              weeklyActiveMinutesGoal: weeklyMinutesGoal,
+              isCompleteWeek,
+              availableDays,
+              trackedDays,
+              periodDays,
+              nutritionScore,
+              trainingScore,
+              consistencyScore,
+              weekStart: startKey,
+              weekEnd: endKey,
+              appLocale: prefs?.appLocale,
+              narrativeLens,
+              loggedMealNames: sampleMealNames,
+              loggedWorkoutTitles: sampleWorkoutTitles,
+              totalCalories,
+              targetPeriodCalories,
+              staticWeekKcal,
+              calorieGoalBase: Number(calorieGoal),
+              avgDailyProtein,
+              proteinGoal,
+              workoutsCount: workouts.length,
+              totalActiveMinutes: totalMinutes,
+              totalStepsTracked,
+              mealDays,
+              workoutDays,
+              scaledWeeklySessionsTarget: scaledWorkoutGoal,
+              scaledWeeklyMinutesTarget: scaledMinutesGoal,
+            })
+          );
           summary = aiNarrative.summary;
           proTip = aiNarrative.proTip;
           highlightsOut = aiNarrative.highlights;
@@ -898,23 +904,25 @@ export const workoutResolvers = {
       }
 
       try {
-        const insight = await openAIService.generateWeeklyWorkoutsCoachInsight({
-          weekStart: payload.weekStart,
-          weekEnd: payload.weekEnd,
-          userName: context.user.name,
-          primaryGoal: prefs?.primaryGoal,
-          coachingTone: prefs?.coachingTone,
-          proactivityLevel: prefs?.proactivityLevel,
-          activityLevel: prefs?.activityLevel,
-          weeklyWorkoutsGoal: payload.goals.weeklySessionsTarget,
-          weeklyActiveMinutesGoal: payload.goals.weeklyActiveMinutesTarget,
-          daysWithWorkouts: payload.daysWithWorkouts,
-          totalSessions: payload.totalSessions,
-          days: payload.days,
-          averages: payload.averages,
-          totals: payload.totals,
-          appLocale: prefs?.appLocale,
-        });
+        const { value: insight } = await runWithAIAccess(context.user, openAIService, (service) =>
+          service.generateWeeklyWorkoutsCoachInsight({
+            weekStart: payload.weekStart,
+            weekEnd: payload.weekEnd,
+            userName: context.user.name,
+            primaryGoal: prefs?.primaryGoal,
+            coachingTone: prefs?.coachingTone,
+            proactivityLevel: prefs?.proactivityLevel,
+            activityLevel: prefs?.activityLevel,
+            weeklyWorkoutsGoal: payload.goals.weeklySessionsTarget,
+            weeklyActiveMinutesGoal: payload.goals.weeklyActiveMinutesTarget,
+            daysWithWorkouts: payload.daysWithWorkouts,
+            totalSessions: payload.totalSessions,
+            days: payload.days,
+            averages: payload.averages,
+            totals: payload.totals,
+            appLocale: prefs?.appLocale,
+          })
+        );
         await saveWeeklyCoachInsightToCache(context.user.id, 'workouts', payload.weekEnd, fingerprint, insight);
         return insight;
       } catch (error) {

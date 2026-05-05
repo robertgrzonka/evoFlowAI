@@ -11,6 +11,7 @@ import {
   Dumbbell,
   Link2Off,
   LogOut,
+  KeyRound,
   RefreshCw,
   MessageSquareMore,
   Save,
@@ -20,10 +21,12 @@ import {
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 import PageTopBar from '@/components/ui/molecules/PageTopBar';
-import { ME_QUERY, STEP_SYNC_STATUS_QUERY } from '@/lib/graphql/queries';
+import { AI_ACCESS_STATUS_QUERY, ME_QUERY, STEP_SYNC_STATUS_QUERY } from '@/lib/graphql/queries';
 import {
   CONNECT_GARMIN_STEP_SYNC_MUTATION,
   DISCONNECT_STEP_SYNC_MUTATION,
+  REMOVE_USER_OPENAI_KEY_MUTATION,
+  SET_USER_OPENAI_KEY_MUTATION,
   SYNC_GARMIN_STEPS_MUTATION,
   UPDATE_PREFERENCES_MUTATION,
 } from '@/lib/graphql/mutations';
@@ -56,8 +59,10 @@ export default function SettingsPage() {
   const [proactivityLevel, setProactivityLevel] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
   const [appLocale, setAppLocale] = useState<'EN' | 'PL'>('EN');
   const [garminToken, setGarminToken] = useState('');
+  const [openAIKey, setOpenAIKey] = useState('');
 
   const { data, loading, error } = useQuery(ME_QUERY);
+  const { data: aiAccessData, refetch: refetchAIAccess } = useQuery(AI_ACCESS_STATUS_QUERY);
   const { data: stepSyncData, loading: stepSyncLoading, refetch: refetchStepSync } = useQuery(STEP_SYNC_STATUS_QUERY, {
     variables: { provider: 'GARMIN' },
   });
@@ -71,6 +76,8 @@ export default function SettingsPage() {
   const [connectGarminStepSync, { loading: connectingGarmin }] = useMutation(CONNECT_GARMIN_STEP_SYNC_MUTATION);
   const [disconnectStepSync, { loading: disconnectingGarmin }] = useMutation(DISCONNECT_STEP_SYNC_MUTATION);
   const [syncGarminSteps, { loading: syncingGarmin }] = useMutation(SYNC_GARMIN_STEPS_MUTATION);
+  const [setUserOpenAIKey, { loading: savingOpenAIKey }] = useMutation(SET_USER_OPENAI_KEY_MUTATION);
+  const [removeUserOpenAIKey, { loading: removingOpenAIKey }] = useMutation(REMOVE_USER_OPENAI_KEY_MUTATION);
 
   useEffect(() => {
     if (!data?.me?.preferences) return;
@@ -152,6 +159,7 @@ export default function SettingsPage() {
   }
 
   const user = data?.me;
+  const aiAccess = aiAccessData?.aiAccessStatus;
   const garminStatus = stepSyncData?.stepSyncStatus;
   const proteinSuggestionByWeight =
     typeof user?.preferences?.weightKg === 'number' ? Math.round(user.preferences.weightKg * 2) : null;
@@ -195,6 +203,34 @@ export default function SettingsPage() {
       );
     } catch (mutationError: any) {
       appToast.error(s.toastGarminSyncFailTitle, mutationError.message || s.toastGarminSyncFailBody);
+    }
+  };
+
+  const handleSaveOpenAIKey = async () => {
+    const apiKey = openAIKey.trim();
+    if (!apiKey) {
+      appToast.warning(s.aiAccessSaveFailTitle, s.aiAccessSaveFailBody);
+      return;
+    }
+
+    try {
+      await setUserOpenAIKey({ variables: { input: { apiKey } } });
+      setOpenAIKey('');
+      await refetchAIAccess();
+      appToast.success(s.aiAccessSavedTitle, s.aiAccessSavedBody);
+    } catch (mutationError: any) {
+      appToast.error(s.aiAccessSaveFailTitle, mutationError.message || s.aiAccessSaveFailBody);
+    }
+  };
+
+  const handleRemoveOpenAIKey = async () => {
+    try {
+      await removeUserOpenAIKey();
+      setOpenAIKey('');
+      await refetchAIAccess();
+      appToast.success(s.aiAccessRemovedTitle, s.aiAccessRemovedBody);
+    } catch (mutationError: any) {
+      appToast.error(s.aiAccessRemoveFailTitle, mutationError.message || s.aiAccessRemoveFailBody);
     }
   };
 
@@ -464,6 +500,75 @@ export default function SettingsPage() {
                         {s.lastErrorPrefix} {garminStatus.lastError}
                       </p>
                     ) : null}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary">{s.aiAccessTitle}</p>
+                      <p className="text-xs text-text-secondary mt-1">{s.aiAccessSubtitle}</p>
+                    </div>
+                    <span className="inline-flex items-center justify-center rounded-full border border-primary-500/35 bg-primary-500/10 px-2.5 py-1 text-[11px] leading-none text-primary-200">
+                      {aiAccess?.model || '—'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <InfoRow
+                      icon={<KeyRound className="h-4 w-4 text-text-muted" />}
+                      label={s.aiAccessModelLabel}
+                      value={aiAccess?.model || '—'}
+                    />
+                    <InfoRow
+                      icon={<ShieldCheck className="h-4 w-4 text-text-muted" />}
+                      label={s.aiAccessTierLabel}
+                      value={String(aiAccess?.tier || 'FREE').replace(/_/g, ' ').toLowerCase()}
+                    />
+                  </div>
+
+                  <div className="mt-3">
+                    <label htmlFor="openai-key" className="block text-xs text-text-secondary mb-1">
+                      {s.aiAccessKeyLabel}
+                    </label>
+                    <input
+                      id="openai-key"
+                      type="password"
+                      value={openAIKey}
+                      onChange={(event) => setOpenAIKey(event.target.value)}
+                      className="input-field w-full"
+                      placeholder={s.aiAccessKeyPlaceholder}
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <p className="text-xs text-text-secondary mt-2">
+                    {aiAccess?.hasUserOpenAIKey && aiAccess.openAIKeyLast4
+                      ? s.aiAccessKeyConnected(aiAccess.openAIKeyLast4)
+                      : s.aiAccessKeyNotConnected}
+                  </p>
+                  <p className="text-xs text-amber-300 mt-1">
+                    {s.aiAccessFallbackHint(aiAccess?.fallbackModel || 'gpt-4o-mini')}
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveOpenAIKey}
+                      disabled={savingOpenAIKey || !openAIKey.trim()}
+                      className="btn-primary inline-flex items-center gap-2"
+                    >
+                      <KeyRound className="h-4 w-4" />
+                      {savingOpenAIKey ? s.aiAccessSavingKey : s.aiAccessSaveKey}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRemoveOpenAIKey}
+                      disabled={removingOpenAIKey || !aiAccess?.hasUserOpenAIKey}
+                      className="btn-ghost inline-flex items-center gap-2"
+                    >
+                      <Link2Off className="h-4 w-4" />
+                      {removingOpenAIKey ? s.aiAccessRemovingKey : s.aiAccessRemoveKey}
+                    </button>
                   </div>
                 </div>
               </div>

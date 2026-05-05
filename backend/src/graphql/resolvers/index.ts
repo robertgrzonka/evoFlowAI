@@ -29,6 +29,9 @@ const dateScalar = new GraphQLScalarType({
 
 export const resolvers = {
   Date: dateScalar,
+  User: userResolvers.User,
+  UserAIAccess: userResolvers.UserAIAccess,
+  AIAccessStatus: userResolvers.AIAccessStatus,
   UserPreferences: userResolvers.UserPreferences,
   Workout: workoutResolvers.Workout,
   ChatMessage: chatResolvers.ChatMessage,

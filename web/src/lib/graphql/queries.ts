@@ -7,6 +7,15 @@ export const ME_QUERY = gql`
       email
       name
       createdAt
+      aiAccess {
+        tier
+        preferredModel
+        openaiKeyLast4
+        openaiKeyUpdatedAt
+        monthlyRequestLimit
+        monthlyRequestCount
+        usagePeriodStart
+      }
       preferences {
         dailyCalorieGoal
         weightKg
@@ -24,6 +33,20 @@ export const ME_QUERY = gql`
         notifications
         appLocale
       }
+    }
+  }
+`;
+
+export const AI_ACCESS_STATUS_QUERY = gql`
+  query AIAccessStatus {
+    aiAccessStatus {
+      tier
+      model
+      fallbackModel
+      apiKeySource
+      hasUserOpenAIKey
+      openAIKeyLast4
+      openAIKeyUpdatedAt
     }
   }
 `;

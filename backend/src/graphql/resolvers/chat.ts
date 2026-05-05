@@ -13,6 +13,7 @@ import {
   safeClientTimeZone,
 } from '../../utils/dailyMetrics';
 import { normalizeAppLocale } from '../../utils/appLocale';
+import { runWithAIAccess } from '../../services/aiAccessService';
 
 const openAIService = new OpenAIService();
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
@@ -29,6 +30,11 @@ const normalizeChannel = (channel?: string): ChatChannel =>
     : 'GENERAL';
 
 const isLikelyPolish = (text: string): boolean => /[ąćęłńóśźż]/i.test(text) || /\b(dodaj|posiłek|śniadanie|obiad|kolacja|przekąska)\b/i.test(text);
+
+const appendAiNotice = (content: string, notice?: string): string => {
+  if (!notice) return content;
+  return `${content.trim()}\n\n${notice}`;
+};
 
 const inferMealType = (text: string): MealType => {
   const normalized = text.toLowerCase();
@@ -215,11 +221,13 @@ export const chatResolvers = {
         const mealLogRequest = extractMealLogRequest(input.content);
         if (mealLogRequest) {
           const appLocale = normalizeAppLocale(context.user.preferences?.appLocale);
-          const analysis = await openAIService.analyzeFoodFromDescription(
-            mealLogRequest.description,
-            mealLogRequest.mealType,
-            undefined,
-            appLocale
+          const { value: analysis, notice } = await runWithAIAccess(context.user, openAIService, (service) =>
+            service.analyzeFoodFromDescription(
+              mealLogRequest.description,
+              mealLogRequest.mealType,
+              undefined,
+              appLocale
+            )
           );
 
           const foodItem = new FoodItem({
@@ -244,7 +252,7 @@ export const chatResolvers = {
 
           const assistantMessage = new ChatMessage({
             userId: context.user.id,
-            content: assistantContent,
+            content: appendAiNotice(assistantContent, notice),
             role: 'ASSISTANT',
             channel,
             context: {
@@ -365,16 +373,18 @@ export const chatResolvers = {
         }));
 
         // Generate AI response
-        const aiResponse = await openAIService.chat(
-          conversationHistory,
-          userContext,
-          channel === 'COACH' ? 'coach' : channel === 'GENERAL' ? 'general' : 'log'
+        const { value: aiResponse, notice } = await runWithAIAccess(context.user, openAIService, (service) =>
+          service.chat(
+            conversationHistory,
+            userContext,
+            channel === 'COACH' ? 'coach' : channel === 'GENERAL' ? 'general' : 'log'
+          )
         );
 
         // Save AI message
         const assistantMessage = new ChatMessage({
           userId: context.user.id,
-          content: aiResponse,
+          content: appendAiNotice(aiResponse, notice),
           role: 'ASSISTANT',
           channel,
           timestamp: new Date(),
@@ -463,15 +473,17 @@ export const chatResolvers = {
           channel: 'LOG',
         });
 
-        const analysis = imageBase64
-          ? await openAIService.analyzeFood(
-              imageBase64,
-              mealType,
-              input.additionalContext,
-              imageMimeType,
-              appLocale
-            )
-          : await openAIService.analyzeFoodFromDescription(content, mealType, input.additionalContext, appLocale);
+        const { value: analysis, notice } = await runWithAIAccess(context.user, openAIService, (service) =>
+          imageBase64
+            ? service.analyzeFood(
+                imageBase64,
+                mealType,
+                input.additionalContext,
+                imageMimeType,
+                appLocale
+              )
+            : service.analyzeFoodFromDescription(content, mealType, input.additionalContext, appLocale)
+        );
 
         const foodItem = new FoodItem({
           userId: context.user.id,
@@ -490,7 +502,7 @@ export const chatResolvers = {
           userId: context.user.id,
         });
 
-        const assistantContent = buildLogMealWithAiAssistantContent(appLocale, analysis);
+        const assistantContent = appendAiNotice(buildLogMealWithAiAssistantContent(appLocale, analysis), notice);
 
         const assistantMessage = new ChatMessage({
           userId: context.user.id,

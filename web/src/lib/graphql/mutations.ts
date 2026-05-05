@@ -116,6 +116,34 @@ export const UPDATE_PREFERENCES_MUTATION = gql`
   }
 `;
 
+export const SET_USER_OPENAI_KEY_MUTATION = gql`
+  mutation SetUserOpenAIKey($input: SetUserOpenAIKeyInput!) {
+    setUserOpenAIKey(input: $input) {
+      tier
+      model
+      fallbackModel
+      apiKeySource
+      hasUserOpenAIKey
+      openAIKeyLast4
+      openAIKeyUpdatedAt
+    }
+  }
+`;
+
+export const REMOVE_USER_OPENAI_KEY_MUTATION = gql`
+  mutation RemoveUserOpenAIKey {
+    removeUserOpenAIKey {
+      tier
+      model
+      fallbackModel
+      apiKeySource
+      hasUserOpenAIKey
+      openAIKeyLast4
+      openAIKeyUpdatedAt
+    }
+  }
+`;
+
 export const SET_GOALS_WITH_AI_MUTATION = gql`
   mutation SetGoalsWithAI($input: SetGoalsWithAIInput!) {
     setGoalsWithAI(input: $input) {

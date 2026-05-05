@@ -9,7 +9,34 @@ export const typeDefs = gql`
     email: String!
     name: String!
     preferences: UserPreferences!
+    aiAccess: UserAIAccess!
     createdAt: Date!
+  }
+
+  enum AIAccessTier {
+    FREE
+    PLATFORM_PREMIUM
+    BYOK
+  }
+
+  type UserAIAccess {
+    tier: AIAccessTier!
+    preferredModel: String
+    openaiKeyLast4: String
+    openaiKeyUpdatedAt: Date
+    monthlyRequestLimit: Int
+    monthlyRequestCount: Int!
+    usagePeriodStart: Date
+  }
+
+  type AIAccessStatus {
+    tier: AIAccessTier!
+    model: String!
+    fallbackModel: String!
+    apiKeySource: String!
+    hasUserOpenAIKey: Boolean!
+    openAIKeyLast4: String
+    openAIKeyUpdatedAt: Date
   }
 
   type UserPreferences {
@@ -589,6 +616,10 @@ export const typeDefs = gql`
     newPassword: String!
   }
 
+  input SetUserOpenAIKeyInput {
+    apiKey: String!
+  }
+
   input UpdatePreferencesInput {
     dailyCalorieGoal: Int
     weightKg: Float
@@ -881,6 +912,7 @@ export const typeDefs = gql`
   type Query {
     # Auth
     me: User
+    aiAccessStatus: AIAccessStatus!
 
     # Food
     myFoodItems(limit: Int, offset: Int): [FoodItem!]!
@@ -924,6 +956,8 @@ export const typeDefs = gql`
     # User
     updatePreferences(input: UpdatePreferencesInput!): User!
     setGoalsWithAI(input: SetGoalsWithAIInput!): SetGoalsWithAIPayload!
+    setUserOpenAIKey(input: SetUserOpenAIKeyInput!): AIAccessStatus!
+    removeUserOpenAIKey: AIAccessStatus!
     
     # Food
     analyzeImage(input: AnalyzeImageInput!): AnalyzeImageResponse!

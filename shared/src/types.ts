@@ -6,6 +6,20 @@ export interface User {
   name: string;
   createdAt: Date;
   preferences: UserPreferences;
+  aiAccess?: UserAIAccess;
+}
+
+export type AIAccessTier = 'free' | 'platform_premium' | 'byok';
+
+export interface UserAIAccess {
+  tier: AIAccessTier;
+  preferredModel?: string | null;
+  openaiKeyEncrypted?: string | null;
+  openaiKeyLast4?: string | null;
+  openaiKeyUpdatedAt?: Date | null;
+  monthlyRequestLimit?: number | null;
+  monthlyRequestCount?: number;
+  usagePeriodStart?: Date | null;
 }
 
 export interface UserPreferences {

@@ -24,6 +24,21 @@ const GPT5_REASONING_EFFORTS = new Set([
 
 const GPT5_VERBOSITY_LEVELS = new Set(['low', 'medium', 'high', 'auto']);
 
+export type OpenAIServiceRuntime = {
+  apiKey?: string;
+  model: string;
+};
+
+export class OpenAIServiceError extends Error {
+  cause?: unknown;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'OpenAIServiceError';
+    this.cause = cause;
+  }
+}
+
 function normalizeOpenAiChoice(
   raw: string | undefined,
   allowed: Set<string>,
@@ -714,8 +729,8 @@ export class OpenAIService {
   private readonly gpt5ReasoningEffort: string | undefined;
   private readonly gpt5Verbosity: string | undefined;
 
-  constructor() {
-    this.model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  constructor(runtime?: OpenAIServiceRuntime) {
+    this.model = runtime?.model || process.env.OPENAI_MODEL || 'gpt-4o-mini';
     this.temperature = Number(process.env.OPENAI_TEMPERATURE || '0.3');
     // When unset, OpenAI uses model defaults (often higher reasoning) — bad for latency on JSON/recipe paths.
     this.gpt5ReasoningEffort =
@@ -724,13 +739,22 @@ export class OpenAIService {
     this.gpt5Verbosity =
       normalizeOpenAiChoice(process.env.OPENAI_VERBOSITY, GPT5_VERBOSITY_LEVELS, 'OPENAI_VERBOSITY') ?? 'low';
 
-    if (process.env.OPENAI_API_KEY) {
+    const apiKey = runtime?.apiKey || process.env.OPENAI_API_KEY;
+    if (apiKey) {
       this.openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
+        apiKey,
       });
     } else {
       console.warn('⚠️  OPENAI_API_KEY not set. AI features will be disabled.');
     }
+  }
+
+  withRuntime(runtime: OpenAIServiceRuntime): OpenAIService {
+    return new OpenAIService(runtime);
+  }
+
+  getModel(): string {
+    return this.model;
   }
 
   private ensureInitialized(): void {
@@ -917,7 +941,7 @@ export class OpenAIService {
 
     } catch (error) {
       console.error('OpenAI API Error:', error);
-      throw new Error('Failed to analyze image');
+      throw new OpenAIServiceError('Failed to analyze image', error);
     }
   }
 
@@ -979,7 +1003,7 @@ export class OpenAIService {
       };
     } catch (error) {
       console.error('OpenAI Text Analysis Error:', error);
-      throw new Error('Failed to analyze meal description');
+      throw new OpenAIServiceError('Failed to analyze meal description', error);
     }
   }
 
@@ -1024,7 +1048,7 @@ export class OpenAIService {
 
     } catch (error) {
       console.error('OpenAI Advice Error:', error);
-      throw new Error('Failed to generate advice');
+      throw new OpenAIServiceError('Failed to generate advice', error);
     }
   }
 
@@ -1148,7 +1172,7 @@ Rules:
       };
     } catch (error) {
       console.error('OpenAI Goal Suggestion Error:', error);
-      throw new Error('Failed to suggest goals');
+      throw new OpenAIServiceError('Failed to suggest goals', error);
     }
   }
 
@@ -1191,7 +1215,7 @@ Rules:
 
     } catch (error) {
       console.error('OpenAI Chat Error:', error);
-      throw new Error('Failed to generate chat response');
+      throw new OpenAIServiceError('Failed to generate chat response', error);
     }
   }
 

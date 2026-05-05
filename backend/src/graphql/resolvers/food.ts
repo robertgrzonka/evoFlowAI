@@ -15,6 +15,7 @@ import { getDailyMetrics } from '../../utils/dailyMetrics';
 import { addDaysToDateKey, buildWeekDateKeys, toWeekRange } from '../../utils/weekRange';
 import { buildDynamicTargets } from '../../utils/activityBudget';
 import { inferCalorieGoalTone } from '@evoflowai/shared';
+import { runWithAIAccess } from '../../services/aiAccessService';
 
 const openAIService = new OpenAIService();
 
@@ -418,25 +419,27 @@ export const foodResolvers = {
           manualCarbs: cG,
           manualFat: fG,
         });
-        const insight = await openAIService.generateWeeklyMealsCoachInsight({
-          weekStart: payload.weekStart,
-          weekEnd: payload.weekEnd,
-          userName: context.user.name,
-          primaryGoal: prefs?.primaryGoal,
-          coachingTone: prefs?.coachingTone,
-          proactivityLevel: prefs?.proactivityLevel,
-          averageDayCalorieBudget: payload.goals.calories,
-          restDayCalorieTarget: restTargets.calorieBudget,
-          proteinGoal: payload.goals.protein,
-          carbsGoal: payload.goals.carbs,
-          fatGoal: payload.goals.fat,
-          daysWithMeals: payload.daysWithMeals,
-          totalMealsLogged: payload.totalMealsLogged,
-          days: payload.days,
-          averages: payload.averages,
-          totals: payload.totals,
-          appLocale: prefs?.appLocale,
-        });
+        const { value: insight } = await runWithAIAccess(context.user, openAIService, (service) =>
+          service.generateWeeklyMealsCoachInsight({
+            weekStart: payload.weekStart,
+            weekEnd: payload.weekEnd,
+            userName: context.user.name,
+            primaryGoal: prefs?.primaryGoal,
+            coachingTone: prefs?.coachingTone,
+            proactivityLevel: prefs?.proactivityLevel,
+            averageDayCalorieBudget: payload.goals.calories,
+            restDayCalorieTarget: restTargets.calorieBudget,
+            proteinGoal: payload.goals.protein,
+            carbsGoal: payload.goals.carbs,
+            fatGoal: payload.goals.fat,
+            daysWithMeals: payload.daysWithMeals,
+            totalMealsLogged: payload.totalMealsLogged,
+            days: payload.days,
+            averages: payload.averages,
+            totals: payload.totals,
+            appLocale: prefs?.appLocale,
+          })
+        );
         await saveWeeklyCoachInsightToCache(context.user.id, 'meals', payload.weekEnd, fingerprint, insight);
         return insight;
       } catch (error) {
@@ -458,12 +461,14 @@ export const foodResolvers = {
 
       try {
         // OpenAI Vision API integration
-        const analysis = await openAIService.analyzeFood(
-          image,
-          mealType,
-          additionalContext,
-          'image/jpeg',
-          normalizeAppLocale(context.user.preferences?.appLocale)
+        const { value: analysis } = await runWithAIAccess(context.user, openAIService, (service) =>
+          service.analyzeFood(
+            image,
+            mealType,
+            additionalContext,
+            'image/jpeg',
+            normalizeAppLocale(context.user.preferences?.appLocale)
+          )
         );
         
         return analysis;

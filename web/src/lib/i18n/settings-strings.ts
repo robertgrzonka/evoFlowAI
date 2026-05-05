@@ -54,6 +54,27 @@ export const settingsPageStrings: Record<
     heightPlaceholder: string;
     garminTitle: string;
     garminSubtitle: string;
+    aiAccessTitle: string;
+    aiAccessSubtitle: string;
+    aiAccessModelLabel: string;
+    aiAccessTierLabel: string;
+    aiAccessKeyLabel: string;
+    aiAccessKeyPlaceholder: string;
+    aiAccessKeyConnected: (last4: string) => string;
+    aiAccessKeyNotConnected: string;
+    aiAccessFallbackHint: (fallbackModel: string) => string;
+    aiAccessSaveKey: string;
+    aiAccessSavingKey: string;
+    aiAccessRemoveKey: string;
+    aiAccessRemovingKey: string;
+    aiAccessSavedTitle: string;
+    aiAccessSavedBody: string;
+    aiAccessRemovedTitle: string;
+    aiAccessRemovedBody: string;
+    aiAccessSaveFailTitle: string;
+    aiAccessSaveFailBody: string;
+    aiAccessRemoveFailTitle: string;
+    aiAccessRemoveFailBody: string;
     garminConnected: string;
     garminNotConnected: string;
     garminEnvHint: string;
@@ -178,6 +199,28 @@ export const settingsPageStrings: Record<
     garminTitle: 'Garmin step sync (Beta connector)',
     garminSubtitle:
       'Prototype connector for Garmin-like endpoints. For production, use official Garmin approval or file import.',
+    aiAccessTitle: 'AI access',
+    aiAccessSubtitle: 'Choose how Evo reaches stronger OpenAI models for your account.',
+    aiAccessModelLabel: 'Current model',
+    aiAccessTierLabel: 'Access tier',
+    aiAccessKeyLabel: 'Your OpenAI API key',
+    aiAccessKeyPlaceholder: 'Paste sk-* key',
+    aiAccessKeyConnected: (last4) => `User key connected ending in ${last4}`,
+    aiAccessKeyNotConnected: 'No user key connected',
+    aiAccessFallbackHint: (fallbackModel) =>
+      `If your user key is invalid, rate-limited, or out of credits, Evo falls back to ${fallbackModel}.`,
+    aiAccessSaveKey: 'Save OpenAI key',
+    aiAccessSavingKey: 'Saving key...',
+    aiAccessRemoveKey: 'Remove key',
+    aiAccessRemovingKey: 'Removing...',
+    aiAccessSavedTitle: 'OpenAI key saved',
+    aiAccessSavedBody: 'Evo will try your key before the platform model.',
+    aiAccessRemovedTitle: 'OpenAI key removed',
+    aiAccessRemovedBody: 'Evo will use your platform access again.',
+    aiAccessSaveFailTitle: 'Could not save OpenAI key',
+    aiAccessSaveFailBody: 'Check the key format and try again.',
+    aiAccessRemoveFailTitle: 'Could not remove OpenAI key',
+    aiAccessRemoveFailBody: 'Try again in a moment.',
     garminConnected: 'Connected',
     garminNotConnected: 'Not connected',
     garminEnvHint:
@@ -303,6 +346,28 @@ export const settingsPageStrings: Record<
     garminTitle: 'Synchronizacja kroków Garmin (beta)',
     garminSubtitle:
       'Prototypowy konektor. W produkcji użyj oficjalnej integracji Garmin lub importu plików.',
+    aiAccessTitle: 'Dostęp AI',
+    aiAccessSubtitle: 'Ustaw, jak Evo ma korzystać z mocniejszych modeli OpenAI na Twoim koncie.',
+    aiAccessModelLabel: 'Aktualny model',
+    aiAccessTierLabel: 'Poziom dostępu',
+    aiAccessKeyLabel: 'Twój klucz API OpenAI',
+    aiAccessKeyPlaceholder: 'Wklej klucz sk-*',
+    aiAccessKeyConnected: (last4) => `Podłączony klucz użytkownika kończący się na ${last4}`,
+    aiAccessKeyNotConnected: 'Brak podłączonego klucza użytkownika',
+    aiAccessFallbackHint: (fallbackModel) =>
+      `Jeśli Twój klucz będzie nieprawidłowy, limitowany albo bez kredytów, Evo przełączy się na ${fallbackModel}.`,
+    aiAccessSaveKey: 'Zapisz klucz OpenAI',
+    aiAccessSavingKey: 'Zapisywanie klucza…',
+    aiAccessRemoveKey: 'Usuń klucz',
+    aiAccessRemovingKey: 'Usuwanie…',
+    aiAccessSavedTitle: 'Klucz OpenAI zapisany',
+    aiAccessSavedBody: 'Evo najpierw spróbuje użyć Twojego klucza.',
+    aiAccessRemovedTitle: 'Klucz OpenAI usunięty',
+    aiAccessRemovedBody: 'Evo wróci do dostępu platformowego.',
+    aiAccessSaveFailTitle: 'Nie udało się zapisać klucza OpenAI',
+    aiAccessSaveFailBody: 'Sprawdź format klucza i spróbuj ponownie.',
+    aiAccessRemoveFailTitle: 'Nie udało się usunąć klucza OpenAI',
+    aiAccessRemoveFailBody: 'Spróbuj ponownie za chwilę.',
     garminConnected: 'Połączono',
     garminNotConnected: 'Nie połączono',
     garminEnvHint:

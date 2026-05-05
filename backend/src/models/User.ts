@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import bcrypt from 'bcryptjs';
-import { User as IUser, UserPreferences } from '@evoflowai/shared';
+import { User as IUser, UserAIAccess, UserPreferences } from '@evoflowai/shared';
 
 export interface UserDocument extends Omit<IUser, 'id'>, Document {
   password: string;
@@ -48,6 +48,48 @@ const userPreferencesSchema = new Schema<UserPreferences>({
   },
 });
 
+const userAIAccessSchema = new Schema<UserAIAccess>(
+  {
+    tier: {
+      type: String,
+      enum: ['free', 'platform_premium', 'byok'],
+      default: 'free',
+    },
+    preferredModel: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    openaiKeyEncrypted: {
+      type: String,
+      default: null,
+      select: true,
+    },
+    openaiKeyLast4: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    openaiKeyUpdatedAt: {
+      type: Date,
+      default: null,
+    },
+    monthlyRequestLimit: {
+      type: Number,
+      default: null,
+    },
+    monthlyRequestCount: {
+      type: Number,
+      default: 0,
+    },
+    usagePeriodStart: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
 const userSchema = new Schema<UserDocument>({
   email: {
     type: String,
@@ -94,6 +136,19 @@ const userSchema = new Schema<UserDocument>({
       notifications: true,
       appLocale: 'en',
     })
+  },
+  aiAccess: {
+    type: userAIAccessSchema,
+    default: () => ({
+      tier: 'free',
+      preferredModel: null,
+      openaiKeyEncrypted: null,
+      openaiKeyLast4: null,
+      openaiKeyUpdatedAt: null,
+      monthlyRequestLimit: null,
+      monthlyRequestCount: 0,
+      usagePeriodStart: null,
+    })
   }
 }, {
   timestamps: true,
@@ -106,6 +161,9 @@ const userSchema = new Schema<UserDocument>({
       delete ret.password;
       delete ret.passwordResetTokenHash;
       delete ret.passwordResetExpiresAt;
+      if (ret.aiAccess) {
+        delete ret.aiAccess.openaiKeyEncrypted;
+      }
       return ret;
     }
   }
