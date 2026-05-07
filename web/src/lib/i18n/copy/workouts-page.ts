@@ -62,6 +62,14 @@ export const workoutsPageCopy: Record<
     burnedOnDateLabel: (date: string) => string;
     proteinLeftLabel: string;
     dayWorkoutsHeading: (date: string, isToday: boolean) => string;
+    dailyStepsTitle: string;
+    dailyStepsDescription: string;
+    dailyStepsLabel: string;
+    dailyStepsSave: string;
+    dailyStepsSaved: string;
+    dailyStepsHint: (steps: number) => string;
+    invalidStepsTitle: string;
+    invalidStepsBody: string;
     activityBonusTitle: string;
     activityBonusDescription: string;
     activityBonusLabel: string;
@@ -139,6 +147,15 @@ export const workoutsPageCopy: Record<
     burnedOnDateLabel: (date) => `Burned (${date})`,
     proteinLeftLabel: 'Protein left',
     dayWorkoutsHeading: (date, isToday) => (isToday ? "Today's workouts" : `Workouts on ${date}`),
+    dailyStepsTitle: 'Steps for this day',
+    dailyStepsDescription:
+      'Add or correct steps for the selected date. Steps are used as context for Evo and weekly averages, but they do not increase the calorie budget.',
+    dailyStepsLabel: 'Steps',
+    dailyStepsSave: 'Save steps',
+    dailyStepsSaved: 'Steps updated',
+    dailyStepsHint: (steps) => `${steps.toLocaleString()} steps tracked for this day.`,
+    invalidStepsTitle: 'Invalid steps',
+    invalidStepsBody: 'Steps must be between 0 and 120000.',
     activityBonusTitle: 'Extra activity allowance',
     activityBonusDescription:
       'Add kcal you expect to burn today (long walk, hike, etc.). Your daily calorie budget increases by this amount so meal progress and coach tips stay fair. Logged workouts already add to the budget — use this for planned movement that is not in your workout list yet.',
@@ -216,6 +233,15 @@ export const workoutsPageCopy: Record<
     burnedOnDateLabel: (date) => `Spalone (${date})`,
     proteinLeftLabel: 'Pozostałe białko',
     dayWorkoutsHeading: (date, isToday) => (isToday ? 'Treningi z dzisiejszego dnia' : `Treningi z dnia ${date}`),
+    dailyStepsTitle: 'Kroki na ten dzień',
+    dailyStepsDescription:
+      'Dodaj albo popraw kroki dla wybranej daty. Kroki są kontekstem dla Evo i średnich tygodniowych, ale nie zwiększają budżetu kalorii.',
+    dailyStepsLabel: 'Kroki',
+    dailyStepsSave: 'Zapisz kroki',
+    dailyStepsSaved: 'Kroki zapisane',
+    dailyStepsHint: (steps) => `${steps.toLocaleString('pl-PL')} kroków zapisanych dla tego dnia.`,
+    invalidStepsTitle: 'Nieprawidłowe kroki',
+    invalidStepsBody: 'Kroki muszą być między 0 a 120000.',
     activityBonusTitle: 'Dodatkowa pula na ruch',
     activityBonusDescription:
       'Dodaj kcal, które dziś planujesz dodatkowo „wyrobić” (długi spacer, wycieczka itd.). Dzienny budżet kalorii wzrośnie o tę wartość, żeby pasek posiłków i podpowiedzi Evo były uczciwe. Spalona energia z zalogowanych treningów jest już w budżecie — tego pola używaj dla planowanego ruchu, którego jeszcze nie ma na liście treningów.',

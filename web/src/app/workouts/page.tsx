@@ -64,6 +64,7 @@ export default function WorkoutsPage() {
   const [dayPanelOpen, setDayPanelOpen] = useState(true);
   const [logPanelOpen, setLogPanelOpen] = useState(true);
   const [activityBonusDraft, setActivityBonusDraft] = useState('0');
+  const [stepsDraft, setStepsDraft] = useState('0');
 
   const { data: meData } = useQuery(ME_QUERY);
   const daySnapshot = useDaySnapshot({
@@ -78,6 +79,12 @@ export default function WorkoutsPage() {
     if (raw === undefined || raw === null) return;
     setActivityBonusDraft(String(Math.max(0, Math.round(Number(raw)))));
   }, [daySnapshot.stats?.activityBonusKcal, selectedDate]);
+
+  useEffect(() => {
+    const raw = daySnapshot.activity?.steps ?? daySnapshot.stats?.steps;
+    if (raw === undefined || raw === null) return;
+    setStepsDraft(String(Math.max(0, Math.round(Number(raw)))));
+  }, [daySnapshot.activity?.steps, daySnapshot.stats?.steps, selectedDate]);
 
   useSubscription(NEW_WORKOUT_SUBSCRIPTION, {
     variables: { userId: meData?.me?.id },
@@ -136,6 +143,20 @@ export default function WorkoutsPage() {
     ],
     awaitRefetchQueries: true,
   });
+  const [upsertDailySteps, { loading: savingSteps }] = useMutation(UPSERT_DAILY_ACTIVITY_MUTATION, {
+    onCompleted: () => {
+      kickDeferredDashboardAndWeeklyEvo(client);
+      appToast.success(w.dailyStepsSaved, w.dailyStepsHint(Math.round(Number(stepsDraft) || 0)));
+    },
+    onError: (error) => {
+      appToast.error('Save failed', error.message || 'Could not save steps.');
+    },
+    refetchQueries: [
+      ...buildDayRefetchQueriesAfterLog(selectedDate, timeZone),
+      buildRollingSevenDayAverageStepsRefetch(today, timeZone),
+    ],
+    awaitRefetchQueries: true,
+  });
 
   const [importWorkoutFile, { loading: importingWorkoutFile }] = useMutation(IMPORT_WORKOUT_FILE_MUTATION, {
     onCompleted: () => {
@@ -181,13 +202,32 @@ export default function WorkoutsPage() {
   const handleSaveActivityBonus = async () => {
     const n = Number(String(activityBonusDraft).replace(',', '.'));
     const bonus = Math.max(0, Math.min(1500, Number.isFinite(n) ? Math.round(n) : 0));
-    const steps = Math.max(0, Math.round(Number(daySnapshot.stats?.steps ?? 0)));
+    const steps = Math.max(0, Math.round(Number(daySnapshot.activity?.steps ?? daySnapshot.stats?.steps ?? 0)));
     await upsertDailyActivity({
       variables: {
         input: {
           date: selectedDate,
           steps,
           activityBonusKcal: bonus,
+        },
+      },
+    });
+  };
+
+  const handleSaveSteps = async () => {
+    const n = Number(String(stepsDraft).replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0 || n > 120000) {
+      appToast.info(w.invalidStepsTitle, w.invalidStepsBody);
+      return;
+    }
+    const steps = Math.round(n);
+    const activityBonusKcal = Math.max(0, Math.round(Number(daySnapshot.stats?.activityBonusKcal ?? 0)));
+    await upsertDailySteps({
+      variables: {
+        input: {
+          date: selectedDate,
+          steps,
+          activityBonusKcal,
         },
       },
     });
@@ -490,6 +530,36 @@ export default function WorkoutsPage() {
                     ) : (
                       <p className="text-sm text-text-secondary">{w.noWorkoutsLine(selectedDate, selectedDate === today)}</p>
                     )}
+
+                    <div className="border-t border-border/80 pt-4 space-y-2">
+                      <p className="text-sm font-medium text-text-primary">{w.dailyStepsTitle}</p>
+                      <p className="text-xs text-text-secondary leading-relaxed">{w.dailyStepsDescription}</p>
+                      <div className="flex flex-wrap items-end gap-2 pt-1">
+                        <label className="block min-w-[10rem] flex-1">
+                          <span className="text-xs text-text-muted">{w.dailyStepsLabel}</span>
+                          <NumericInput
+                            min={0}
+                            max={120000}
+                            step={1}
+                            value={stepsDraft}
+                            onChange={(e) => setStepsDraft(e.target.value)}
+                            className="mt-1 w-full tabular-nums"
+                            aria-label={w.dailyStepsLabel}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="btn-secondary shrink-0 h-10 px-3"
+                          disabled={savingSteps || daySnapshot.loading}
+                          onClick={() => void handleSaveSteps()}
+                        >
+                          {savingSteps ? <ButtonSpinner /> : w.dailyStepsSave}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-text-muted leading-snug">
+                        {w.dailyStepsHint(Math.round(Number(daySnapshot.activity?.steps ?? daySnapshot.stats?.steps ?? 0)))}
+                      </p>
+                    </div>
 
                     <div className="border-t border-border/80 pt-4 space-y-2">
                       <p className="text-sm font-medium text-text-primary">{w.activityBonusTitle}</p>
