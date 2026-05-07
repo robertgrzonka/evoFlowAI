@@ -15,12 +15,14 @@ export const workoutsPageCopy: Record<
     weeklySessionsGoal: string;
     weeklyMinutesGoal: string;
     todayWord: string;
+    selectedDayTitle: string;
+    selectedDaySubtitle: string;
+    selectedDayLabel: string;
+    useToday: string;
+    useYesterday: string;
     eyebrow: string;
     logTitle: string;
     logSubtitle: string;
-    repeatLastTitle: string;
-    repeatLastContent: (title: string, min: number | string, kcal: number | string) => string;
-    useAsTemplate: string;
     dayLabel: string;
     dayOptional: string;
     dayHint: string;
@@ -51,9 +53,6 @@ export const workoutsPageCopy: Record<
     deleteWorkoutTitle: string;
     noWorkoutsLine: (date: string, isToday: boolean) => string;
     confirmDelete: string;
-    tplUpper: string;
-    tplLower: string;
-    tplCardio: string;
     intensityLow: string;
     intensityMedium: string;
     intensityHigh: string;
@@ -98,23 +97,25 @@ export const workoutsPageCopy: Record<
     weeklySessionsGoal: 'Weekly sessions goal',
     weeklyMinutesGoal: 'Weekly minutes goal',
     todayWord: 'today',
+    selectedDayTitle: 'Selected training day',
+    selectedDaySubtitle: 'This date controls workouts, steps, and activity allowance on this page.',
+    selectedDayLabel: 'Date',
+    useToday: 'Today',
+    useYesterday: 'Yesterday',
     eyebrow: 'Workout flow',
     logTitle: 'Log your training',
-    logSubtitle: 'Track the session, then let Evo evaluate what to do with nutrition and recovery.',
-    repeatLastTitle: 'Repeat last workout',
-    repeatLastContent: (title, min, kcal) => `Last session: ${title} · ${min} min · ${kcal} kcal.`,
-    useAsTemplate: 'Use as template',
+    logSubtitle: 'Pick the day, reuse a real recent session if helpful, then save the key training details.',
     dayLabel: 'Day for this log',
     dayOptional: ' — optional',
     dayHint: 'Defaults to today. Change only if you are logging or importing a session for an earlier day.',
-    importTitle: 'Import from device file',
+    importTitle: 'Optional: import from device file',
     importSubtitle: 'Upload Garmin/fitness export file (GPX, TCX, FIT). Evo will parse and log it automatically.',
     importNotesPlaceholder: 'Optional note for imported workout',
     importing: 'Importing...',
     importFile: 'Import workout file',
     workoutTitle: 'Workout title',
     titlePlaceholder: 'e.g. Upper body strength + core',
-    chipsTitle: 'Smart workout templates',
+    chipsTitle: 'Recent real workouts',
     duration: 'Duration (min)',
     kcalBurned: 'Estimated kcal burned',
     intensity: 'Intensity',
@@ -136,9 +137,6 @@ export const workoutsPageCopy: Record<
     noWorkoutsLine: (date, isToday) =>
       `No workouts logged for ${date}${isToday ? ' yet' : ''}.`,
     confirmDelete: 'Delete this workout entry?',
-    tplUpper: 'Upper body strength · 45 min · medium',
-    tplLower: 'Lower body strength · 50 min · high',
-    tplCardio: 'Cardio intervals · 30 min · high',
     intensityLow: 'Low',
     intensityMedium: 'Medium',
     intensityHigh: 'High',
@@ -184,23 +182,25 @@ export const workoutsPageCopy: Record<
     weeklySessionsGoal: 'Cel sesji / tydzień',
     weeklyMinutesGoal: 'Cel aktywnych minut / tydzień',
     todayWord: 'dziś',
+    selectedDayTitle: 'Wybrany dzień treningowy',
+    selectedDaySubtitle: 'Ta data steruje treningami, krokami i dodatkową pulą aktywności na tej stronie.',
+    selectedDayLabel: 'Data',
+    useToday: 'Dziś',
+    useYesterday: 'Wczoraj',
     eyebrow: 'Logowanie treningu',
     logTitle: 'Zapisz trening',
-    logSubtitle: 'Dodaj sesję — Evo oceni wpływ na odżywianie i regenerację.',
-    repeatLastTitle: 'Powtórz ostatni trening',
-    repeatLastContent: (title, min, kcal) => `Ostatnia sesja: ${title} · ${min} min · ${kcal} kcal.`,
-    useAsTemplate: 'Użyj jako szablon',
+    logSubtitle: 'Wybierz dzień, użyj prawdziwego ostatniego treningu jako skrótu i zapisz najważniejsze dane sesji.',
     dayLabel: 'Dzień wpisu',
     dayOptional: ' — opcjonalnie',
     dayHint: 'Domyślnie dziś. Zmień tylko przy imporcie lub logu z wcześniejszego dnia.',
-    importTitle: 'Import z pliku',
+    importTitle: 'Opcjonalnie: import z pliku',
     importSubtitle: 'Wgraj eksport Garmin/fitness (GPX, TCX, FIT). Evo sparsuje i zapisze sesję.',
     importNotesPlaceholder: 'Opcjonalna notatka do importu',
     importing: 'Importowanie…',
     importFile: 'Importuj plik treningu',
     workoutTitle: 'Nazwa treningu',
     titlePlaceholder: 'Np. siła góry + core',
-    chipsTitle: 'Szablony treningów',
+    chipsTitle: 'Ostatnie prawdziwe treningi',
     duration: 'Czas trwania (min)',
     kcalBurned: 'Szacowane spalone kcal',
     intensity: 'Intensywność',
@@ -222,9 +222,6 @@ export const workoutsPageCopy: Record<
     noWorkoutsLine: (date, isToday) =>
       `Brak treningów na ${date}${isToday ? ' — na razie' : ''}.`,
     confirmDelete: 'Usunąć ten wpis treningu?',
-    tplUpper: 'Siła góry · 45 min · średnia',
-    tplLower: 'Siła nóg · 50 min · wysoka',
-    tplCardio: 'Interwały cardio · 30 min · wysoka',
     intensityLow: 'Niska',
     intensityMedium: 'Średnia',
     intensityHigh: 'Wysoka',

@@ -19,7 +19,7 @@ import {
   UPDATE_WORKOUT_MUTATION,
   UPSERT_DAILY_ACTIVITY_MUTATION,
 } from '@/lib/graphql/mutations';
-import { ME_QUERY, NEW_WORKOUT_SUBSCRIPTION } from '@/lib/graphql/queries';
+import { ME_QUERY, MY_WORKOUTS_QUERY, NEW_WORKOUT_SUBSCRIPTION } from '@/lib/graphql/queries';
 import { appToast } from '@/lib/app-toast';
 import {
   buildDayRefetchQueriesAfterLog,
@@ -32,7 +32,6 @@ import { useDaySnapshot } from '@/hooks/useDaySnapshot';
 import { useClientCalendarToday } from '@/hooks/useClientCalendarToday';
 import {
   AISectionHeader,
-  EvoHintCard,
   EvoThinkingOverlay,
   InsightEmptyState,
   SmartSuggestionChips,
@@ -72,6 +71,10 @@ export default function WorkoutsPage() {
     clientTimeZone: timeZone,
     enabled: true,
     includeInsight: false,
+  });
+  const recentWorkoutsQuery = useQuery(MY_WORKOUTS_QUERY, {
+    variables: { limit: 8, offset: 0 },
+    fetchPolicy: 'cache-and-network',
   });
 
   useEffect(() => {
@@ -236,6 +239,7 @@ export default function WorkoutsPage() {
   const weeklyActiveMinutesGoal = Number(meData?.me?.preferences?.weeklyActiveMinutesGoal || 180);
   const minutesOnDay = workouts.reduce((acc: number, workout: any) => acc + Number(workout.durationMinutes || 0), 0);
   const dayLabel = selectedDate === today ? w.todayWord : selectedDate;
+  const yesterday = addDaysToDateKey(today, -1);
 
   const handleConfirmDeleteWorkout = async () => {
     if (!deleteWorkoutId) return;
@@ -314,12 +318,36 @@ export default function WorkoutsPage() {
     appToast.success(w.toastWorkoutUpdatedTitle, w.toastWorkoutUpdatedBody);
   };
 
-  const lastWorkout = workouts[0];
-  const workoutTemplates = [
-    { id: 'tpl-upper', label: w.tplUpper },
-    { id: 'tpl-lower', label: w.tplLower },
-    { id: 'tpl-cardio', label: w.tplCardio },
-  ];
+  const recentWorkouts = recentWorkoutsQuery.data?.myWorkouts || [];
+  const recentWorkoutTemplates = useMemo(() => {
+    const seen = new Set<string>();
+    return recentWorkouts
+      .filter((workout: any) => {
+        const key = [
+          String(workout.title || '').trim().toLowerCase(),
+          Number(workout.durationMinutes || 0),
+          Number(workout.caloriesBurned || 0),
+          String(workout.intensity || '').toLowerCase(),
+        ].join('|');
+        if (!String(workout.title || '').trim() || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 5)
+      .map((workout: any) => ({
+        id: String(workout.id),
+        label: `${String(workout.title || '').trim()} · ${Number(workout.durationMinutes || 0)} min · ${Number(workout.caloriesBurned || 0)} kcal · ${String(workout.intensity || 'medium').toLowerCase()}`,
+      }));
+  }, [recentWorkouts]);
+
+  const applyRecentWorkoutTemplate = (id: string) => {
+    const workout = recentWorkouts.find((item: any) => String(item.id) === id);
+    if (!workout) return;
+    setTitle(String(workout.title || ''));
+    setDurationMinutes(Number(workout.durationMinutes || 45));
+    setCaloriesBurned(Number(workout.caloriesBurned || 300));
+    setIntensity(String(workout.intensity || 'MEDIUM').toUpperCase() as WorkoutIntensity);
+  };
   const delLabels = getDestructiveConfirmLabels(locale);
 
   return (
@@ -374,6 +402,40 @@ export default function WorkoutsPage() {
 
         <h1 className="text-xl font-semibold tracking-tight text-text-primary">{w.pageTitle}</h1>
         <p className="text-sm text-text-secondary max-w-3xl leading-relaxed">{w.pageIntro}</p>
+
+        <section
+          className={clsx(
+            'rounded-xl border border-border bg-surface p-4 shadow-sm shadow-black/5',
+            accentEdgeClasses('info', 'left'),
+          )}
+        >
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text-primary">{w.selectedDayTitle}</p>
+              <p className="mt-1 text-xs text-text-secondary">{w.selectedDaySubtitle}</p>
+            </div>
+            <div className="grid w-full gap-2 sm:grid-cols-[minmax(12rem,1fr)_auto] md:w-auto">
+              <label className="block">
+                <span className="mb-1 block text-xs text-text-muted">{w.selectedDayLabel}</span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  max={today}
+                  onChange={(event) => setSelectedDate(event.target.value || today)}
+                  className="input-field w-full min-w-[12rem]"
+                />
+              </label>
+              <div className="flex items-end gap-2">
+                <button type="button" className="btn-secondary h-10 px-3" onClick={() => setSelectedDate(yesterday)}>
+                  {w.useYesterday}
+                </button>
+                <button type="button" className="btn-secondary h-10 px-3" onClick={() => setSelectedDate(today)}>
+                  {w.useToday}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <MetricCard icon={<Dumbbell className="h-4 w-4" />} label={`${w.sessionsLabel} (${dayLabel})`} value={`${workouts.length}`} />
@@ -628,161 +690,117 @@ export default function WorkoutsPage() {
               </div>
               {logPanelOpen ? (
                 <div id="log-workout-panel" className="space-y-4">
-                  {lastWorkout ? (
-                    <EvoHintCard
-                      title={w.repeatLastTitle}
-                      tone="notice"
-                      content={w.repeatLastContent(
-                        String(lastWorkout.title || ''),
-                        lastWorkout.durationMinutes,
-                        lastWorkout.caloriesBurned
-                      )}
-                      action={
-                        <button
-                          type="button"
-                          className="btn-secondary w-full"
-                          onClick={() => {
-                            setTitle(String(lastWorkout.title || ''));
-                            setDurationMinutes(Number(lastWorkout.durationMinutes || 45));
-                            setCaloriesBurned(Number(lastWorkout.caloriesBurned || 300));
-                            setIntensity(String(lastWorkout.intensity || 'MEDIUM').toUpperCase() as WorkoutIntensity);
-                          }}
-                        >
-                          {w.useAsTemplate}
-                        </button>
-                      }
-                    />
-                  ) : null}
-
                   <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="space-y-2 rounded-lg border border-border bg-surface-elevated p-3.5">
-                <label htmlFor="workouts-date" className="block text-sm font-medium text-text-primary">
-                  {w.dayLabel}
-                  <span className="text-text-muted font-normal">{w.dayOptional}</span>
-                </label>
-                <input
-                  id="workouts-date"
-                  type="date"
-                  value={selectedDate}
-                  max={today}
-                  onChange={(event) => setSelectedDate(event.target.value)}
-                  className="input-field w-full"
-                />
-                <p className="text-xs text-text-muted">{w.dayHint}</p>
-              </div>
+                    <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                      <label htmlFor="workoutTitle" className="block text-sm font-medium text-text-primary mb-2">
+                        {w.workoutTitle}
+                      </label>
+                      <input
+                        id="workoutTitle"
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
+                        className="input-field w-full"
+                        placeholder={w.titlePlaceholder}
+                      />
+                      <p className="mt-2 text-xs text-text-muted">
+                        {w.dayLabel}: <span className="text-text-secondary">{selectedDate}</span>
+                        {selectedDate === today ? w.todaySuffix : ''}
+                      </p>
+                    </div>
 
-              <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
-                <p className="text-sm font-semibold text-text-primary mb-1">{w.importTitle}</p>
-                <p className="text-xs text-text-secondary mb-3">{w.importSubtitle}</p>
-                <div className="space-y-2.5">
-                  <input
-                    value={importNotes}
-                    onChange={(event) => setImportNotes(event.target.value)}
-                    className="input-field w-full"
-                    placeholder={w.importNotesPlaceholder}
-                  />
-                  <label className="btn-secondary w-full cursor-pointer">
-                    <input type="file" accept=".gpx,.tcx,.fit" className="hidden" onChange={handleImportWorkout} />
-                    <span className="inline-flex items-center gap-2">
-                      <FileUp className="h-4 w-4" />
-                      {importingWorkoutFile ? w.importing : w.importFile}
-                    </span>
-                  </label>
-                </div>
-              </div>
+                    <SmartSuggestionChips
+                      density="compact"
+                      title={w.chipsTitle}
+                      suggestions={recentWorkoutTemplates}
+                      selectValue="id"
+                      onSelect={applyRecentWorkoutTemplate}
+                    />
 
-              <div>
-                <label htmlFor="workoutTitle" className="block text-sm font-medium text-text-primary mb-2">
-                  {w.workoutTitle}
-                </label>
-                <input
-                  id="workoutTitle"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  className="input-field w-full"
-                  placeholder={w.titlePlaceholder}
-                />
-              </div>
-              <SmartSuggestionChips
-                title={w.chipsTitle}
-                suggestions={workoutTemplates}
-                onSelect={(value) => {
-                  const [name, durationPart, intensityPart] = value.split('·').map((chunk) => chunk.trim());
-                  setTitle(name);
-                  const parsedDuration = Number(durationPart?.replace(/[^\d]/g, '') || 45);
-                  setDurationMinutes(parsedDuration);
-                  if (intensityPart?.toLowerCase().includes('high')) setIntensity('HIGH');
-                  if (intensityPart?.toLowerCase().includes('medium')) setIntensity('MEDIUM');
-                  if (intensityPart?.toLowerCase().includes('low')) setIntensity('LOW');
-                }}
-              />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <label htmlFor="durationMinutes" className="block text-sm font-medium text-text-primary mb-2">
+                          {w.duration}
+                        </label>
+                        <NumericInputNumber
+                          id="durationMinutes"
+                          min={1}
+                          value={durationMinutes}
+                          onValueChange={setDurationMinutes}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="caloriesBurned" className="block text-sm font-medium text-text-primary mb-2">
+                          {w.kcalBurned}
+                        </label>
+                        <NumericInputNumber
+                          id="caloriesBurned"
+                          min={0}
+                          value={caloriesBurned}
+                          onValueChange={setCaloriesBurned}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="intensity" className="block text-sm font-medium text-text-primary mb-2">
+                          {w.intensity}
+                        </label>
+                        <select
+                          id="intensity"
+                          value={intensity}
+                          onChange={(event) => setIntensity(event.target.value as WorkoutIntensity)}
+                          className="input-field w-full"
+                        >
+                          <option value="LOW">{w.intensityLow}</option>
+                          <option value="MEDIUM">{w.intensityMedium}</option>
+                          <option value="HIGH">{w.intensityHigh}</option>
+                        </select>
+                      </div>
+                    </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="durationMinutes" className="block text-sm font-medium text-text-primary mb-2">
-                    {w.duration}
-                  </label>
-                  <NumericInputNumber
-                    id="durationMinutes"
-                    min={1}
-                    value={durationMinutes}
-                    onValueChange={setDurationMinutes}
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="caloriesBurned" className="block text-sm font-medium text-text-primary mb-2">
-                    {w.kcalBurned}
-                  </label>
-                  <NumericInputNumber
-                    id="caloriesBurned"
-                    min={0}
-                    value={caloriesBurned}
-                    onValueChange={setCaloriesBurned}
-                    className="w-full"
-                  />
-                </div>
-              </div>
+                    <div>
+                      <label htmlFor="workoutNotes" className="block text-sm font-medium text-text-primary mb-2">
+                        {w.sessionNotes}
+                      </label>
+                      <textarea
+                        id="workoutNotes"
+                        value={notes}
+                        onChange={(event) => setNotes(event.target.value)}
+                        className="input-field w-full min-h-20 resize-y"
+                        placeholder={w.notesPlaceholder}
+                      />
+                    </div>
 
-              <div>
-                <label htmlFor="intensity" className="block text-sm font-medium text-text-primary mb-2">
-                  {w.intensity}
-                </label>
-                <select
-                  id="intensity"
-                  value={intensity}
-                  onChange={(event) => setIntensity(event.target.value as WorkoutIntensity)}
-                  className="input-field w-full"
-                >
-                  <option value="LOW">{w.intensityLow}</option>
-                  <option value="MEDIUM">{w.intensityMedium}</option>
-                  <option value="HIGH">{w.intensityHigh}</option>
-                </select>
-              </div>
+                    <button type="submit" disabled={loggingWorkout} className="btn-primary w-full inline-flex items-center justify-center gap-2">
+                      {loggingWorkout ? (
+                        <>
+                          <ButtonSpinner />
+                          {w.savingEvaluating}
+                        </>
+                      ) : (
+                        w.saveAndSync
+                      )}
+                    </button>
 
-              <div>
-                <label htmlFor="workoutNotes" className="block text-sm font-medium text-text-primary mb-2">
-                  {w.sessionNotes}
-                </label>
-                <textarea
-                  id="workoutNotes"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  className="input-field w-full min-h-24 resize-y"
-                  placeholder={w.notesPlaceholder}
-                />
-              </div>
-
-              <button type="submit" disabled={loggingWorkout} className="btn-primary w-full inline-flex items-center justify-center gap-2">
-                {loggingWorkout ? (
-                  <>
-                    <ButtonSpinner />
-                    {w.savingEvaluating}
-                  </>
-                ) : (
-                  w.saveAndSync
-                )}
-              </button>
+                    <div className="rounded-lg border border-border bg-surface-elevated p-3.5">
+                      <p className="text-sm font-semibold text-text-primary mb-1">{w.importTitle}</p>
+                      <p className="text-xs text-text-secondary mb-3">{w.importSubtitle}</p>
+                      <div className="space-y-2.5">
+                        <input
+                          value={importNotes}
+                          onChange={(event) => setImportNotes(event.target.value)}
+                          className="input-field w-full"
+                          placeholder={w.importNotesPlaceholder}
+                        />
+                        <label className="btn-secondary w-full cursor-pointer">
+                          <input type="file" accept=".gpx,.tcx,.fit" className="hidden" onChange={handleImportWorkout} />
+                          <span className="inline-flex items-center gap-2">
+                            <FileUp className="h-4 w-4" />
+                            {importingWorkoutFile ? w.importing : w.importFile}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
                   </form>
                 </div>
               ) : null}
